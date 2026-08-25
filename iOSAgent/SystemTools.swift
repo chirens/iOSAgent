@@ -88,23 +88,28 @@ final class SystemTools {
 
     static let allTools: [ToolSpec] = [
         ToolSpec(type: "function", function: FunctionSpec(
+            name: "get_current_time",
+            description: "获取当前系统时间和日期。当用户提到相对时间（如“5分钟后”“明天”）而你又需要确认时间基准时调用。",
+            parameters: [:],
+            required: []
+        )),
+        ToolSpec(type: "function", function: FunctionSpec(
             name: "set_alarm",
-            description: "设置一个闹钟或一次性提醒。用户说'5分钟后叫我'、'明早9点叫我起床'时用此工具。",
+            description: "设置一个闹钟，到点以本地通知响铃/弹窗。用户说“叫我起床”“N分钟后叫我”“明早7点叫我”时使用。不会写入系统提醒事项。",
             parameters: [
-                "fire_in_minutes": ParameterSpec(type: "integer", description: "相对几分钟后触发。若用户说'5分钟后'则填5。"),
-                "fire_at": ParameterSpec(type: "string", description: "绝对触发时间 ISO8601（如 2026-08-26T09:00:00）。当用户提供明确时间如'明早9点'时使用。"),
-                "title": ParameterSpec(type: "string", description: "闹钟标题，如'起床'、'会议提醒'。"),
-                "label": ParameterSpec(type: "string", description: "额外备注内容。")
+                "fire_in_minutes": ParameterSpec(type: "integer", description: "相对几分钟后触发。若用户说“5分钟后叫我”则填5。"),
+                "fire_at": ParameterSpec(type: "string", description: "绝对触发时间 ISO8601（如 2026-08-26T09:00:00+08:00）。当用户提供明确时间如“明早9点”时使用。"),
+                "title": ParameterSpec(type: "string", description: "闹钟标题，如“起床”“会议提醒”。")
             ],
             required: ["title"]
         )),
         ToolSpec(type: "function", function: FunctionSpec(
             name: "set_timer",
-            description: "设置一个倒计时器。用户说'计时5分钟'、'5分钟倒计时'时用此工具。",
+            description: "设置一个倒计时器。用户说“计时5分钟”“5分钟倒计时”时使用。",
             parameters: [
                 "duration_minutes": ParameterSpec(type: "integer", description: "倒计时分钟数。"),
                 "duration_seconds": ParameterSpec(type: "integer", description: "倒计时秒数。"),
-                "label": ParameterSpec(type: "string", description: "计时器标签，如'煮蛋'。")
+                "label": ParameterSpec(type: "string", description: "计时器标签，如“煮蛋”。")
             ],
             required: ["duration_minutes"]
         )),
@@ -125,9 +130,9 @@ final class SystemTools {
         )),
         ToolSpec(type: "function", function: FunctionSpec(
             name: "create_reminder",
-            description: "在系统'提醒事项'App 中创建一条提醒。",
+            description: "在系统“提醒事项”App 中创建一条提醒。用户说“提醒我N分钟后做某事”“提醒我拿快递”“明天提醒我交报告”时使用。会出现在系统提醒事项和通知中心，即使 iOSAgent 不在后台也能收到。",
             parameters: [
-                "title": ParameterSpec(type: "string", description: "提醒标题。"),
+                "title": ParameterSpec(type: "string", description: "提醒标题，即要做的事情，如“喝水”“拿快递”。"),
                 "notes": ParameterSpec(type: "string", description: "备注。"),
                 "due_in_minutes": ParameterSpec(type: "integer", description: "相对几分钟后到期。"),
                 "due_at": ParameterSpec(type: "string", description: "绝对到期时间 ISO8601。")
@@ -136,8 +141,8 @@ final class SystemTools {
         )),
         ToolSpec(type: "function", function: FunctionSpec(
             name: "list_reminders",
-            description: "列出未来 N 条系统提醒事项。",
-            parameters: ["limit": ParameterSpec(type: "integer", description: "最多返回条数，默认10。")],
+            description: "列出未来 N 条系统提醒事项中的未完成任务。",
+            parameters: ["limit": ParameterSpec(type: "integer", description: "最多返回条数，默认20。")],
             required: []
         )),
         ToolSpec(type: "function", function: FunctionSpec(
@@ -148,13 +153,13 @@ final class SystemTools {
         )),
         ToolSpec(type: "function", function: FunctionSpec(
             name: "create_calendar_event",
-            description: "在系统'日历'中创建日程。",
+            description: "在系统“日历”中创建日程。用户说“周五下午3点开会”“明天上午10点日程”时使用。",
             parameters: [
                 "title": ParameterSpec(type: "string", description: "事件标题。"),
                 "start_at": ParameterSpec(type: "string", description: "开始时间 ISO8601。"),
                 "end_at": ParameterSpec(type: "string", description: "结束时间 ISO8601。"),
                 "notes": ParameterSpec(type: "string", description: "备注。"),
-                "calendar_name": ParameterSpec(type: "string", description: "日历名称，如'iCloud'、'工作'。默认主日历。")
+                "calendar_name": ParameterSpec(type: "string", description: "日历名称，如“iCloud”、“工作”。默认主日历。")
             ],
             required: ["title", "start_at"]
         )),
@@ -220,6 +225,7 @@ final class SystemTools {
     static func execute(tool name: String, call: [String: AnyCodable]) async -> ToolResult {
         do {
             switch name {
+            case "get_current_time": return currentTime(call)
             case "set_alarm": return try await setAlarm(call)
             case "set_timer": return try await setTimer(call)
             case "list_alarms": return try await listAlarms(call)
@@ -242,6 +248,24 @@ final class SystemTools {
         } catch {
             return ToolResult(success: false, message: "执行失败：\(error.localizedDescription)", data: nil)
         }
+    }
+
+    // MARK: - Current time
+
+    private static func currentTime(_ call: [String: AnyCodable]) -> ToolResult {
+        let now = Date()
+        let fmt = ISO8601DateFormatter()
+        fmt.formatOptions = [.withInternetDateTime]
+        let iso = fmt.string(from: now)
+        let df = DateFormatter()
+        df.locale = Locale(identifier: "zh_CN")
+        df.dateFormat = "yyyy-MM-dd HH:mm:ss EEEE"
+        let readable = df.string(from: now)
+        return ToolResult(success: true, message: "当前时间：\(readable)", data: [
+            "iso": AnyCodable(iso),
+            "readable": AnyCodable(readable),
+            "timezone": AnyCodable("Asia/Shanghai")
+        ])
     }
 
     // MARK: - Alarms / Timers
@@ -345,7 +369,7 @@ final class SystemTools {
                 continuation.resume(returning: items ?? [])
             }
         }
-        let limit = int(call, "limit") ?? 10
+        let limit = int(call, "limit") ?? 20
         let result = reminders.prefix(limit).map { r in
             ["id": AnyCodable(r.calendarItemIdentifier),
              "title": AnyCodable(r.title ?? ""),

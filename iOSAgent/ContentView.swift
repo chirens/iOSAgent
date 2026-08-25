@@ -2,6 +2,7 @@ import SwiftUI
 
 enum SidebarItem: Hashable {
     case conversation(UUID)
+    case reminders
     case capabilities
     case settings
 }
@@ -24,6 +25,8 @@ struct ContentView: View {
         switch selectedItem {
         case .conversation(let id):
             ChatView(conversationId: id)
+        case .reminders:
+            RemindersView()
         case .capabilities, .none:
             CapabilitiesView()
         case .settings:
@@ -38,16 +41,23 @@ struct SidebarView: View {
 
     var body: some View {
         List(selection: $selectedItem) {
+            // 更紧凑的新建对话按钮
             Section {
                 Button {
                     let id = store.newConversation()
                     selectedItem = .conversation(id)
                 } label: {
-                    Label("新建对话", systemImage: "plus.circle.fill")
-                        .font(.headline)
-                        .foregroundStyle(.white)
+                    HStack(spacing: 8) {
+                        Image(systemName: "plus.circle.fill")
+                            .font(.system(size: 18))
+                        Text("新建对话")
+                            .font(.subheadline.weight(.semibold))
+                        Spacer()
+                    }
+                    .foregroundStyle(Color.accentColor)
+                    .padding(.vertical, 6)
                 }
-                .listRowBackground(Color.accentColor)
+                .listRowBackground(Color.accentColor.opacity(0.10))
                 .tag(Optional<SidebarItem>(nil))
             }
 
@@ -65,6 +75,8 @@ struct SidebarView: View {
             Section("更多") {
                 Label("能力", systemImage: "sparkles.rectangle.stack.fill")
                     .tag(SidebarItem.capabilities)
+                Label("提醒 / 待办", systemImage: "checklist.checked")
+                    .tag(SidebarItem.reminders)
                 Label("设置", systemImage: "gear")
                     .tag(SidebarItem.settings)
             }
@@ -80,14 +92,14 @@ struct ConversationRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(conversation.title)
-                .font(.headline)
+                .font(.subheadline.weight(.semibold))
                 .lineLimit(1)
             Text(lastPreview)
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, 3)
     }
 
     private var lastPreview: String {
