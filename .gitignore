@@ -1,0 +1,18 @@
+# Xcode / Swift
+.DS_Store
+*.xcuserdata/
+xcuserdata/
+DerivedData/
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+.build/
+.swiftpm/
+
+# 不要把证书/密钥提交进仓库
+*.p12
+*.mobileprovision
+*.cer
+*.key
+secrets*

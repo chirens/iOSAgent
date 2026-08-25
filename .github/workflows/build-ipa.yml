@@ -1,0 +1,45 @@
+name: Build iOSAgent IPA (unsigned)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Show Xcode version
+        run: xcodebuild -version
+
+      - name: Build app (unsigned, device SDK)
+        run: |
+          xcodebuild \
+            -project iOSAgent.xcodeproj \
+            -target iOSAgent \
+            -sdk iphoneos \
+            -configuration Release \
+            CODE_SIGNING_ALLOWED=NO \
+            SYMROOT="$PWD/build" \
+            build
+
+      - name: Package unsigned IPA
+        run: |
+          APP_PATH=$(find "$PWD/build" -name "iOSAgent.app" -type d | head -n 1)
+          echo "APP_PATH=$APP_PATH"
+          if [ -z "$APP_PATH" ]; then echo "App not found"; exit 1; fi
+          cd "$(dirname "$APP_PATH")"
+          rm -rf Payload
+          mkdir -p Payload
+          cp -r iOSAgent.app Payload/
+          zip -r "$PWD/iOSAgent-unsigned.ipa" Payload
+          echo "IPA=$(pwd)/iOSAgent-unsigned.ipa"
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: iOSAgent-unsigned
+          path: build/*/iOSAgent-unsigned.ipa
