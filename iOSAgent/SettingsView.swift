@@ -3,83 +3,149 @@ import SwiftUI
 struct SettingsView: View {
     @EnvironmentObject var settings: SettingsStore
     @State private var testResult: String?
+    @State private var isTesting = false
 
     var body: some View {
-        Form {
-            Section("API 配置（云端模式）") {
-                TextField("Base URL", text: $settings.baseURL)
-                    .textInputAutocapitalization(.never).autocorrectionDisabled()
-                SecureField("API Key", text: $settings.apiKey)
-                TextField("模型名称", text: $settings.model)
-                    .textInputAutocapitalization(.never).autocorrectionDisabled()
-                Text("默认 deepseek-chat，需使用支持 function calling 的模型。").font(.caption).foregroundStyle(.secondary)
+        NavigationStack {
+            Form {
+                apiSection
+                capabilitiesSection
+                customPromptSection
+                aboutSection
             }
-
-            Section("连接测试") {
-                Button("测试连接") { Task { await testConnection() } }
-                if let testResult {
-                    Text(testResult).font(.caption).foregroundStyle(.secondary)
-                }
-            }
-
-            Section("系统能力（按需开启）") {
-                capabilityRow(title: "提醒事项", desc: "创建 / 列出系统提醒", on: $settings.enableReminders, status: settings.authReminders) {
-                    settings.requestReminders()
-                }
-                capabilityRow(title: "日历", desc: "创建系统日历事件", on: $settings.enableCalendar, status: settings.authCalendar) {
-                    settings.requestCalendar()
-                }
-                capabilityRow(title: "健康数据", desc: "读取步数/心率/睡眠等", on: $settings.enableHealth, status: settings.authHealth) {
-                    settings.requestHealth()
-                }
-                capabilityRow(title: "闹钟 / 本地提醒", desc: "到点弹出通知提醒", on: $settings.enableAlarm, status: settings.authAlarm) {
-                    settings.requestAlarm()
-                }
-                capabilityRow(title: "通讯录", desc: "预留（后续版本）", on: $settings.enableContacts, status: "unused") {
-                    // 通讯录暂未接入工具，仅占位
-                }
-            }
-
-            Section("说明") {
-                Text(
-"""
-iOSAgent 是对标 OpenMinis 的手机端 Agent。Minis 在 App 内跑一个 Alpine Linux(iSH) 并用命令行桥接原生框架；本 App 直接在 Swift 里调用 EventKit / HealthKit / 通知中心，效果一致且更轻。
-
-开启上方开关后，你可以在对话里直接说：
-• "明早 8 点提醒我开会" → 写入「提醒事项」
-• "周五下午 3 点加个日历会议" → 写入「日历」
-• "30 分钟后叫我喝水" → 设置本地提醒
-• "我最近一周走了多少步 / 平均心率多少" → 读取健康数据
-
-⚠️ 限制：iOS 第三方 App 无法写入系统「时钟」App 的闹钟，本 App 的"闹钟"以本地通知形式提醒。也**无法**读取其他 App 界面或系统截图，这是 iOS 沙盒的硬墙。
-""")
-                .font(.caption).foregroundStyle(.secondary)
-            }
+            .navigationTitle("设置")
+            .scrollContentBackground(.visible)
+            .background(Color(.systemGroupedBackground))
         }
-        .navigationTitle("设置")
     }
 
-    private func capabilityRow(title: String, desc: String, on: Binding<Bool>, status: String, onEnable: @escaping () -> Void) -> some View {
-        Toggle(isOn: on) {
-            VStack(alignment: .leading) {
+    private var apiSection: some View {
+        Section("API 配置") {
+            TextField("Base URL", text: $settings.apiBaseURL)
+                .autocapitalization(.none)
+                .keyboardType(.URL)
+            SecureField("API Key", text: $settings.apiKey)
+                .autocapitalization(.none)
+            TextField("模型名", text: $settings.modelName)
+                .autocapitalization(.none)
+
+            HStack {
+                Spacer()
+                if isTesting {
+                    ProgressView()
+                } else if let testResult {
+                    Text(testResult)
+                        .font(.caption)
+                        .foregroundStyle(testResult.contains("成功") || testResult.contains("OK") ? .green : .red)
+                }
+                Button("测试连接") {
+                    testConnection()
+                }
+                .disabled(isTesting || settings.apiKey.isEmpty)
+            }
+        }
+    }
+
+    private var capabilitiesSection: some View {
+        Section(header: Text("系统能力"), footer: Text("开启后可在对话中说“5分钟后叫我”“帮我设个明天9点的提醒”等。每项首次开启时会请求系统授权。")) {
+            CapabilityToggleRow(key: "notifications", icon: "alarm.fill", color: .orange, title: "闹钟 / 计时器", subtitle: "本地通知，到点响铃")
+            CapabilityToggleRow(key: "reminders", icon: "checkmark.square.fill", color: .blue, title: "提醒事项", subtitle: "读写系统提醒事项")
+            CapabilityToggleRow(key: "calendar", icon: "calendar.badge.plus", color: .red, title: "日历", subtitle: "读写系统日历")
+            CapabilityToggleRow(key: "health", icon: "heart.fill", color: .pink, title: "健康", subtitle: "读取步数/心率/睡眠等")
+            CapabilityToggleRow(key: "contacts", icon: "person.2.fill", color: .green, title: "通讯录", subtitle: "搜索联系人")
+            CapabilityToggleRow(key: "location", icon: "location.fill", color: .indigo, title: "位置", subtitle: "获取当前位置")
+            CapabilityToggleRow(key: "clipboard", icon: "doc.on.clipboard", color: .yellow, title: "剪贴板", subtitle: "读取/写入剪贴板")
+            CapabilityToggleRow(key: "photos", icon: "photo.fill", color: .purple, title: "相册", subtitle: "枚举最近照片")
+            CapabilityToggleRow(key: "device", icon: "iphone", color: .gray, title: "设备信息", subtitle: "型号/电量/系统版本")
+
+            Button("刷新授权状态") {
+                settings.refreshAuthStatuses()
+            }
+        }
+    }
+
+    private var customPromptSection: some View {
+        Section(header: Text("自定义系统提示"), footer: Text("会追加在默认系统提示之后。")) {
+            TextEditor(text: $settings.systemPrompt)
+                .frame(minHeight: 80)
+        }
+    }
+
+    private var aboutSection: some View {
+        Section("关于") {
+            HStack {
+                Text("版本")
+                Spacer()
+                Text("3.0")
+                    .foregroundStyle(.secondary)
+            }
+            HStack {
+                Text("仓库")
+                Spacer()
+                Text("github.com/chirens/iOSAgent")
+                    .foregroundStyle(.secondary)
+                    .font(.caption)
+            }
+        }
+    }
+
+    private func testConnection() {
+        isTesting = true
+        testResult = nil
+        Task {
+            do {
+                _ = try await AgentClient.shared.ask("hello")
+                testResult = "连接成功 / OK"
+            } catch {
+                testResult = error.localizedDescription
+            }
+            isTesting = false
+        }
+    }
+}
+
+struct CapabilityToggleRow: View {
+    @EnvironmentObject var settings: SettingsStore
+    let key: String
+    let icon: String
+    let color: Color
+    let title: String
+    let subtitle: String
+
+    var body: some View {
+        HStack(spacing: 12) {
+            ZStack {
+                Circle()
+                    .fill(color.opacity(0.15))
+                    .frame(width: 36, height: 36)
+                Image(systemName: icon)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(color)
+            }
+            VStack(alignment: .leading, spacing: 2) {
                 Text(title)
-                Text(desc).font(.caption).foregroundStyle(.secondary)
-                if status == "granted" {
-                    Text("已授权").font(.caption2).foregroundStyle(.green)
-                } else if status == "denied" {
-                    Text("已拒绝，请在系统设置中允许").font(.caption2).foregroundStyle(.red)
-                }
+                    .font(.subheadline.weight(.semibold))
+                Text(subtitle + " · " + settings.status(key).rawValue)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
+            Spacer()
+            Toggle("", isOn: Binding(
+                get: { settings.isEnabled(key) },
+                set: { newValue in
+                    settings.setEnabled(key, newValue)
+                    if newValue {
+                        Task {
+                            let status = await settings.requestAuth(for: key)
+                            if status != .authorized && status != .limited {
+                                settings.setEnabled(key, false)
+                            }
+                        }
+                    }
+                }
+            ))
+            .labelsHidden()
         }
-        .onChange(of: on.wrappedValue) { _, nv in if nv { onEnable() } }
-    }
-
-    func testConnection() async {
-        do {
-            let r = try await AgentClient.shared.ask("ping，请只回复 ok")
-            testResult = "成功：\(String(r.prefix(60)))"
-        } catch {
-            testResult = "失败：\(error.localizedDescription)"
-        }
+        .padding(.vertical, 2)
     }
 }

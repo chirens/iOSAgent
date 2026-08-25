@@ -1,28 +1,43 @@
 import Foundation
 import UIKit
 
+enum AgentError: Error, LocalizedError {
+    case missingAPIKey
+    case invalidResponse
+    case http(Int, String)
+    var errorDescription: String? {
+        switch self {
+        case .missingAPIKey: return "请在设置中填写 API Key"
+        case .invalidResponse: return "API 返回异常"
+        case .http(let code, let msg): return "HTTP \(code): \(msg)"
+        }
+    }
+}
+
 /// 云端 API 客户端：支持**工具调用循环**（agent 核心）。
 /// 与 OpenMinis 用 iSH+CLI 让 LLM 调系统能力不同，这里直接在 Swift 里实现：
 /// LLM 决定调用工具 → app 用 EventKit/HealthKit/通知执行 → 结果喂回 LLM → 生成自然语言回复。
+@MainActor
 final class AgentClient {
     static let shared = AgentClient()
     private let session = URLSession.shared
     private init() {}
 
     /// 运行 agent 循环：传入完整消息历史，返回更新后的历史 + 最终文本。
-    /// image 仅由 ChatView 在新增的 user 消息上携带（见 ChatView），此处不再重写历史。
+    /// image 仅由 ChatView 在新增的 user 消息上携带，此处不再重写历史。
     func run(messages: [StoredMessage], image: UIImage?, tools: [ToolSpec]) async throws
         -> (messages: [StoredMessage], finalText: String) {
-        let d = UserDefaults.standard
-        let base = (d.string(forKey: "baseURL") ?? "https://api.openai.com/v1").trimmingCharacters(in: .whitespacesAndNewlines)
-        let key = d.string(forKey: "apiKey") ?? ""
-        let model = (d.string(forKey: "model") ?? "deepseek-chat").trimmingCharacters(in: .whitespacesAndNewlines)
+
+        let settings = SettingsStore.shared
+        let base = settings.apiBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        let key = settings.apiKey
+        let model = settings.modelName.trimmingCharacters(in: .whitespacesAndNewlines)
+
         guard !key.isEmpty else { throw AgentError.missingAPIKey }
         guard let url = URL(string: base.trimmingCharacters(in: ["/"]) + "/chat/completions") else {
             throw AgentError.invalidResponse
         }
 
-        // 仅在本轮新增的 user 消息上附加截图（不污染历史）
         var out = messages
         if let image, let jpeg = image.jpegData(compressionQuality: 0.8),
            let lastUserIdx = out.indices.last(where: { out[$0].role == "user" }) {
@@ -32,13 +47,13 @@ final class AgentClient {
         let toolSchemas = tools.map { $0.schema }
         var finalText = ""
 
-        for _ in 0..<6 {
+        for _ in 0..<8 {
             let reqMessages = buildAPIMessages(out, includeSystem: !out.contains { $0.role == "system" })
             var body: [String: Any] = [
                 "model": model,
                 "messages": reqMessages,
-                "max_tokens": 1500,
-                "temperature": 0.7
+                "max_tokens": 2000,
+                "temperature": 0.5
             ]
             if !toolSchemas.isEmpty {
                 body["tools"] = toolSchemas
@@ -82,9 +97,13 @@ final class AgentClient {
                 finalText = asst.content
                 break
             }
+
+            // 执行每个工具，并把结果追加为 tool 消息
             for tc in toolCalls {
-                let result = await SystemTools.shared.dispatch(tc.name, arguments: tc.arguments)
-                out.append(StoredMessage(role: "tool", content: result,
+                let args = parseArgs(tc.arguments)
+                let result = await SystemTools.execute(tool: tc.name, call: args)
+                let content = toolResultString(result)
+                out.append(StoredMessage(role: "tool", content: content,
                                          toolCallId: tc.id, toolName: tc.name))
             }
         }
@@ -107,7 +126,7 @@ final class AgentClient {
     private func buildAPIMessages(_ msgs: [StoredMessage], includeSystem: Bool) -> [[String: Any]] {
         var arr: [[String: Any]] = []
         if includeSystem {
-            arr.append(["role": "system", "content": systemPrompt])
+            arr.append(["role": "system", "content": systemPrompt()])
         }
         for m in msgs {
             if m.role == "user", let b64 = m.imageBase64 {
@@ -119,13 +138,11 @@ final class AgentClient {
                 let tca = tcs.map { [
                     "id": $0.id, "type": "function",
                     "function": ["name": $0.name, "arguments": $0.arguments]
-                ] }
-                arr.append(["role": "assistant", "content": m.content, "tool_calls": tca])
+                ]}
+                var item: [String: Any] = ["role": "assistant", "content": m.content, "tool_calls": tca]
+                arr.append(item)
             } else if m.role == "tool" {
-                arr.append(["role": "tool",
-                            "tool_call_id": m.toolCallId ?? "",
-                            "name": m.toolName ?? "",
-                            "content": m.content])
+                arr.append(["role": "tool", "tool_call_id": m.toolCallId ?? "", "content": m.content])
             } else {
                 arr.append(["role": m.role, "content": m.content])
             }
@@ -133,28 +150,88 @@ final class AgentClient {
         return arr
     }
 
-    private let systemPrompt = """
-    你是一个运行在 iPhone 上的本地 AI 助手 iOSAgent，可以帮助用户操作手机系统功能。
-    你具备以下可调用的工具（具体可用哪些由用户在「设置 → 系统能力」中决定）：
-    - 创建 / 列出「提醒事项」（EventKit）
-    - 创建「日历」事件（EventKit）
-    - 设置本地提醒（schedule_alarm，会以本地通知形式在指定时间弹出，**并非**系统「时钟」App 的闹钟）
-    - 读取 Apple「健康」数据（步数 / 心率 / 睡眠 / 活动能量 / 体重，HealthKit）
-    当用户要求"设置闹钟"时，请使用 schedule_alarm 工具（第三方 App 无法写入系统时钟 App）。
-    当用户要求读取健康数据时，使用 read_health 工具，先确认指标与天数。
-    请用简洁中文回答，并明确告知用户你已实际执行了什么操作（或为什么做不到）。
-    """
+    private func parseArgs(_ json: String) -> [String: AnyCodable] {
+        guard let data = json.data(using: .utf8),
+              let dict = try? JSONDecoder().decode([String: AnyCodable].self, from: data) else { return [:] }
+        return dict
+    }
 
-    enum AgentError: LocalizedError {
-        case missingAPIKey
-        case invalidResponse
-        case http(Int, String)
-        var errorDescription: String? {
-            switch self {
-            case .missingAPIKey: return "请先在「设置」中填写 API Key"
-            case .invalidResponse: return "接口返回格式异常"
-            case .http(let code, let msg): return "HTTP \(code): \(String(msg.prefix(200)))"
-            }
+    private func toolResultString(_ result: ToolResult) -> String {
+        var base = result.success ? "[执行成功]" : "[执行失败]"
+        base += " \(result.message)"
+        if let data = result.data, let dataJson = try? JSONSerialization.data(withJSONObject: data.mapValues { $0.value }, options: .fragmentsAllowed),
+           let s = String(data: dataJson, encoding: .utf8) {
+            base += "\n数据：\(s)"
         }
+        return base
+    }
+
+    // MARK: - 系统提示词
+
+    private func systemPrompt() -> String {
+        let now = Date()
+        let fmt = DateFormatter()
+        fmt.locale = Locale(identifier: "zh_CN")
+        fmt.dateFormat = "yyyy-MM-dd HH:mm:ss EEEE"
+        let nowStr = fmt.string(from: now)
+
+        var enabled: [String] = []
+        if SettingsStore.shared.isEnabled("reminders") { enabled.append("提醒事项") }
+        if SettingsStore.shared.isEnabled("calendar") { enabled.append("日历") }
+        if SettingsStore.shared.isEnabled("health") { enabled.append("健康数据") }
+        if SettingsStore.shared.isEnabled("contacts") { enabled.append("通讯录") }
+        if SettingsStore.shared.isEnabled("location") { enabled.append("当前位置") }
+        if SettingsStore.shared.isEnabled("clipboard") { enabled.append("剪贴板") }
+        if SettingsStore.shared.isEnabled("photos") { enabled.append("相册") }
+        if SettingsStore.shared.isEnabled("notifications") { enabled.append("闹钟/计时器/本地通知") }
+        if SettingsStore.shared.isEnabled("device") { enabled.append("设备信息") }
+
+        let capabilities = enabled.isEmpty ? "（当前未开启任何系统能力，请在设置中开启）" : enabled.joined(separator: "、")
+
+        let custom = SettingsStore.shared.systemPrompt
+        let customBlock = custom.isEmpty ? "" : "\n\n用户自定义补充：\(custom)"
+
+        return """
+        你是 iOSAgent，一个运行在 iPhone 上的本地 AI 助手。你可以调用系统工具帮用户完成操作。
+
+        当前时间：\(nowStr)
+        已开启的系统能力：\(capabilities)
+
+        重要规则：
+        1. 当用户请求设置闹钟、提醒、日程、倒计时等时间相关操作时，必须使用对应的工具函数，不要只回答文字。
+        2. 对于"5分钟后叫我"这类相对时间，使用 fire_in_minutes/duration_minutes/due_in_minutes；对于"明早9点"这类绝对时间，使用 fire_at/due_at/start_at（ISO8601 格式，如 2026-08-26T09:00:00+08:00）。
+        3. "闹钟"和"计时器"使用 set_alarm / set_timer；"提醒事项"App 里的提醒用 create_reminder；"日历"App 里的日程用 create_calendar_event。
+        4. 如果用户没有指定标题，根据内容推断一个合适的标题。
+        5. 工具执行后，根据结果用一句话向用户确认，不要暴露内部 ID 或 JSON。
+        6. 如果某个能力未开启，引导用户到设置页开启，不要重复尝试调用失败工具。
+
+        示例：
+        用户：5分钟后提醒我喝水
+        → 调用 create_reminder(title="喝水", due_in_minutes=5)
+
+        用户：帮我设个明早7点的闹钟
+        → 调用 set_alarm(title="起床闹钟", fire_at="\(formatISODate(now.addingTimeInterval(86400), hour: 7))")
+
+        \(customBlock)
+        """
+    }
+
+    private func formatISODate(_ date: Date, hour: Int) -> String {
+        let fmt = ISO8601DateFormatter()
+        fmt.formatOptions = [.withInternetDateTime]
+        var comps = Calendar.current.dateComponents([.year, .month, .day], from: date)
+        comps.hour = hour
+        comps.minute = 0
+        return fmt.string(from: Calendar.current.date(from: comps) ?? date)
+    }
+}
+
+// MARK: - ToolSpec schema 转 OpenAI 可用字典
+
+extension ToolSpec {
+    var schema: [String: Any] {
+        guard let data = try? JSONEncoder().encode(self),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return [:] }
+        return obj
     }
 }

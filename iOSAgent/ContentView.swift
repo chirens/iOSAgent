@@ -1,78 +1,97 @@
 import SwiftUI
 
+enum SidebarItem: Hashable {
+    case conversation(UUID)
+    case capabilities
+    case settings
+}
+
 struct ContentView: View {
     @EnvironmentObject var store: ChatStore
-    @State private var columnVisibility: NavigationSplitViewVisibility = .automatic
+    @State private var selectedItem: SidebarItem? = .capabilities
 
     var body: some View {
-        NavigationSplitView(columnVisibility: $columnVisibility) {
-            Sidebar()
+        NavigationSplitView {
+            SidebarView(selectedItem: $selectedItem)
         } detail: {
-            NavigationStack {
-                if store.selectedId != nil {
-                    ChatView()
-                } else {
-                    Text("选择或新建一个对话")
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .navigationDestination(for: UUID.self) { id in
-                ChatView().id(id)
-            }
+            detailView
+        }
+        .navigationSplitViewStyle(.balanced)
+    }
+
+    @ViewBuilder
+    private var detailView: some View {
+        switch selectedItem {
+        case .conversation(let id):
+            ChatView(conversationId: id)
+        case .capabilities, .none:
+            CapabilitiesView()
+        case .settings:
+            SettingsView()
         }
     }
 }
 
-/// 侧栏：会话列表（可切换/归档）+ 新建 + 设置入口
-private struct Sidebar: View {
+struct SidebarView: View {
     @EnvironmentObject var store: ChatStore
+    @Binding var selectedItem: SidebarItem?
 
     var body: some View {
-        List(selection: $store.selectedId) {
+        List(selection: $selectedItem) {
             Section {
                 Button {
-                    store.newConversation()
+                    let id = store.newConversation()
+                    selectedItem = .conversation(id)
                 } label: {
-                    Label("新建对话", systemImage: "square.and.pencil")
+                    Label("新建对话", systemImage: "plus.circle.fill")
+                        .font(.headline)
+                        .foregroundStyle(.white)
+                }
+                .listRowBackground(Color.accentColor)
+                .tag(Optional<SidebarItem>(nil))
+            }
+
+            Section("对话") {
+                ForEach(store.sorted) { c in
+                    ConversationRow(conversation: c)
+                        .tag(SidebarItem.conversation(c.id))
+                }
+                .onDelete { indexSet in
+                    let ids = indexSet.map { store.sorted[$0].id }
+                    ids.forEach { store.delete($0) }
                 }
             }
 
-            Section("会话") {
-                ForEach(store.sorted) { conv in
-                    NavigationLink(value: conv.id) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(conv.title.isEmpty ? "新对话" : conv.title)
-                                .lineLimit(1)
-                            Text(relative(conv.updatedAt))
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    .contextMenu {
-                        Button(role: .destructive) {
-                            store.delete(conv.id)
-                        } label: { Label("归档 / 删除", systemImage: "trash") }
-                    }
-                }
+            Section("更多") {
+                Label("能力", systemImage: "sparkles.rectangle.stack.fill")
+                    .tag(SidebarItem.capabilities)
+                Label("设置", systemImage: "gear")
+                    .tag(SidebarItem.settings)
             }
         }
-        .navigationTitle("iOSAgent")
         .listStyle(.sidebar)
-        .safeAreaInset(edge: .bottom) {
-            NavigationLink {
-                SettingsView()
-            } label: {
-                Label("设置", systemImage: "gearshape")
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(10)
-            }
-            .background(.bar)
+        .navigationTitle("iOSAgent")
+    }
+}
+
+struct ConversationRow: View {
+    let conversation: Conversation
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(conversation.title)
+                .font(.headline)
+                .lineLimit(1)
+            Text(lastPreview)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
         }
+        .padding(.vertical, 4)
     }
 
-    private func relative(_ d: Date) -> String {
-        let f = RelativeDateTimeFormatter()
-        f.locale = Locale(identifier: "zh_CN")
-        return f.localizedString(for: d, relativeTo: Date())
+    private var lastPreview: String {
+        let last = conversation.messages.last { !$0.content.isEmpty }
+        return last?.content ?? "无消息"
     }
 }

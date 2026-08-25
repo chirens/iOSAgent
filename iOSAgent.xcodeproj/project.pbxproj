@@ -12,12 +12,19 @@
 		1A0000000000000000000203 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000103 /* SettingsView.swift */; };
 		1A0000000000000000000204 /* ChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000104 /* ChatView.swift */; };
 		1A0000000000000000000205 /* AgentClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000105 /* AgentClient.swift */; };
-		1A0000000000000000000206 /* PhotoPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000106 /* PhotoPicker.swift */; };
 		1A0000000000000000000207 /* AgentIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000107 /* AgentIntents.swift */; };
 		1A0000000000000000000208 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000108 /* Models.swift */; };
 		1A0000000000000000000209 /* ChatStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000109 /* ChatStore.swift */; };
-		1A0000000000000000000210 /* SettingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000110 /* SettingsStore.swift */; };
-		1A0000000000000000000211 /* SystemTools.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000111 /* SystemTools.swift */; };
+		1A000000000000000000020A /* SettingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000110 /* SettingsStore.swift */; };
+		1A000000000000000000020B /* SystemTools.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000111 /* SystemTools.swift */; };
+		1A000000000000000000020C /* CapabilitiesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000112 /* CapabilitiesView.swift */; };
+		1A000000000000000000020D /* NotificationsManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000113 /* NotificationsManager.swift */; };
+		1A0000000000000000000211 /* EventKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000301 /* EventKit.framework */; };
+		1A0000000000000000000212 /* HealthKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000302 /* HealthKit.framework */; };
+		1A0000000000000000000213 /* Contacts.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000303 /* Contacts.framework */; };
+		1A0000000000000000000214 /* CoreLocation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000304 /* CoreLocation.framework */; };
+		1A0000000000000000000215 /* Photos.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000305 /* Photos.framework */; };
+		1A0000000000000000000216 /* UserNotifications.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000306 /* UserNotifications.framework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -27,13 +34,20 @@
 		1A0000000000000000000103 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		1A0000000000000000000104 /* ChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatView.swift; sourceTree = "<group>"; };
 		1A0000000000000000000105 /* AgentClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentClient.swift; sourceTree = "<group>"; };
-		1A0000000000000000000106 /* PhotoPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoPicker.swift; sourceTree = "<group>"; };
 		1A0000000000000000000107 /* AgentIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentIntents.swift; sourceTree = "<group>"; };
 		1A0000000000000000000108 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		1A0000000000000000000109 /* ChatStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatStore.swift; sourceTree = "<group>"; };
 		1A0000000000000000000110 /* SettingsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsStore.swift; sourceTree = "<group>"; };
 		1A0000000000000000000111 /* SystemTools.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemTools.swift; sourceTree = "<group>"; };
+		1A0000000000000000000112 /* CapabilitiesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CapabilitiesView.swift; sourceTree = "<group>"; };
+		1A0000000000000000000113 /* NotificationsManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationsManager.swift; sourceTree = "<group>"; };
 		1A0000000000000000000120 /* iOSAgent.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = iOSAgent.entitlements; sourceTree = "<group>"; };
+		1A0000000000000000000301 /* EventKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = EventKit.framework; path = System/Library/Frameworks/EventKit.framework; sourceTree = SDKROOT; };
+		1A0000000000000000000302 /* HealthKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = HealthKit.framework; path = System/Library/Frameworks/HealthKit.framework; sourceTree = SDKROOT; };
+		1A0000000000000000000303 /* Contacts.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Contacts.framework; path = System/Library/Frameworks/Contacts.framework; sourceTree = SDKROOT; };
+		1A0000000000000000000304 /* CoreLocation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreLocation.framework; path = System/Library/Frameworks/CoreLocation.framework; sourceTree = SDKROOT; };
+		1A0000000000000000000305 /* Photos.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Photos.framework; path = System/Library/Frameworks/Photos.framework; sourceTree = SDKROOT; };
+		1A0000000000000000000306 /* UserNotifications.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UserNotifications.framework; path = System/Library/Frameworks/UserNotifications.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -41,6 +55,12 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				1A0000000000000000000211 /* EventKit.framework in Frameworks */,
+				1A0000000000000000000212 /* HealthKit.framework in Frameworks */,
+				1A0000000000000000000213 /* Contacts.framework in Frameworks */,
+				1A0000000000000000000214 /* CoreLocation.framework in Frameworks */,
+				1A0000000000000000000215 /* Photos.framework in Frameworks */,
+				1A0000000000000000000216 /* UserNotifications.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -52,6 +72,7 @@
 			children = (
 				1A0000000000000000000031 /* iOSAgent */,
 				1A0000000000000000000032 /* Products */,
+				1A0000000000000000000040 /* Frameworks */,
 			);
 			sourceTree = "<group>";
 		};
@@ -60,15 +81,16 @@
 			children = (
 				1A0000000000000000000101 /* iOSAgentApp.swift */,
 				1A0000000000000000000102 /* ContentView.swift */,
+				1A0000000000000000000112 /* CapabilitiesView.swift */,
 				1A0000000000000000000103 /* SettingsView.swift */,
 				1A0000000000000000000104 /* ChatView.swift */,
 				1A0000000000000000000105 /* AgentClient.swift */,
-				1A0000000000000000000106 /* PhotoPicker.swift */,
 				1A0000000000000000000107 /* AgentIntents.swift */,
 				1A0000000000000000000108 /* Models.swift */,
 				1A0000000000000000000109 /* ChatStore.swift */,
 				1A0000000000000000000110 /* SettingsStore.swift */,
 				1A0000000000000000000111 /* SystemTools.swift */,
+				1A0000000000000000000113 /* NotificationsManager.swift */,
 				1A0000000000000000000120 /* iOSAgent.entitlements */,
 			);
 			path = iOSAgent;
@@ -80,6 +102,19 @@
 				1A0000000000000000000020 /* iOSAgent.app */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		1A0000000000000000000040 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				1A0000000000000000000301 /* EventKit.framework */,
+				1A0000000000000000000302 /* HealthKit.framework */,
+				1A0000000000000000000303 /* Contacts.framework */,
+				1A0000000000000000000304 /* CoreLocation.framework */,
+				1A0000000000000000000305 /* Photos.framework */,
+				1A0000000000000000000306 /* UserNotifications.framework */,
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -152,15 +187,16 @@
 			files = (
 				1A0000000000000000000201 /* iOSAgentApp.swift in Sources */,
 				1A0000000000000000000202 /* ContentView.swift in Sources */,
+				1A000000000000000000020C /* CapabilitiesView.swift in Sources */,
 				1A0000000000000000000203 /* SettingsView.swift in Sources */,
 				1A0000000000000000000204 /* ChatView.swift in Sources */,
 				1A0000000000000000000205 /* AgentClient.swift in Sources */,
-				1A0000000000000000000206 /* PhotoPicker.swift in Sources */,
 				1A0000000000000000000207 /* AgentIntents.swift in Sources */,
 				1A0000000000000000000208 /* Models.swift in Sources */,
 				1A0000000000000000000209 /* ChatStore.swift in Sources */,
-				1A0000000000000000000210 /* SettingsStore.swift in Sources */,
-				1A0000000000000000000211 /* SystemTools.swift in Sources */,
+				1A000000000000000000020A /* SettingsStore.swift in Sources */,
+				1A000000000000000000020B /* SystemTools.swift in Sources */,
+				1A000000000000000000020D /* NotificationsManager.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -244,7 +280,7 @@
 				ASSETCATALOG_COMPILER_GENERATE_ASSET_SYMBOLS = YES;
 				CODE_SIGN_ENTITLEMENTS = iOSAgent/iOSAgent.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 3;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "需要读取相册截图以进行视觉识别";
@@ -252,18 +288,20 @@
 				INFOPLIST_KEY_NSCalendarsUsageDescription = "需要访问日历，以创建日历事件";
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "需要读取健康数据（步数、心率、睡眠等）";
 				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "iOSAgent 预留写入健康数据权限";
-				INFOPLIST_KEY_NSContactsUsageDescription = "iOSAgent 预留访问通讯录权限";
+				INFOPLIST_KEY_NSContactsUsageDescription = "iOSAgent 需要搜索通讯录联系人";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "iOSAgent 需要获取当前位置";
+				INFOPLIST_KEY_NSUserNotificationsUsageDescription = "iOSAgent 需要发送闹钟、计时器和提醒通知";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 2.0;
+				MARKETING_VERSION = 3.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.chen.iOSAgent;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -278,7 +316,7 @@
 				ASSETCATALOG_COMPILER_GENERATE_ASSET_SYMBOLS = YES;
 				CODE_SIGN_ENTITLEMENTS = iOSAgent/iOSAgent.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 3;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "需要读取相册截图以进行视觉识别";
@@ -286,18 +324,20 @@
 				INFOPLIST_KEY_NSCalendarsUsageDescription = "需要访问日历，以创建日历事件";
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "需要读取健康数据（步数、心率、睡眠等）";
 				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "iOSAgent 预留写入健康数据权限";
-				INFOPLIST_KEY_NSContactsUsageDescription = "iOSAgent 预留访问通讯录权限";
+				INFOPLIST_KEY_NSContactsUsageDescription = "iOSAgent 需要搜索通讯录联系人";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "iOSAgent 需要获取当前位置";
+				INFOPLIST_KEY_NSUserNotificationsUsageDescription = "iOSAgent 需要发送闹钟、计时器和提醒通知";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 2.0;
+				MARKETING_VERSION = 3.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.chen.iOSAgent;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
