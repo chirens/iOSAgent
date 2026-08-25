@@ -110,6 +110,46 @@ Photos、HealthKit、Contacts、Calendar、Reminders、Location、Motion、HomeK
 
 ---
 
+## 六之二、v2.0 已交付（2026-08-25，对标 OpenMinis 强化系统能力）
+
+把 1.0 的「纯聊天壳」升级为真正能「动手」的 agent：
+
+**1. Agent 工具调用循环（核心）**
+- `AgentClient.run()` 改为带 `tool_calling` 的循环：发消息 → 若模型返回 `tool_calls` → 在 Swift 里执行 → 结果回灌模型 → 直到模型给出最终自然语言回复（最多 6 轮）。
+- 模型用 DeepSeek（默认 `deepseek-chat`，支持 function calling）。你在对话里说「明早 8 点提醒我开会」，模型自动调用 `create_reminder` 工具，app 用 EventKit 真实写入「提醒事项」App。
+
+**2. 与 OpenMinis 的对比（它怎么做的 / 我们怎么做的）**
+| 能力 | OpenMinis 实现方式 | iOSAgent 2.0 实现方式 |
+|---|---|---|
+| 提醒 / 日历 | iSH(Alpine) 里写 CLI 桥接 EventKit | 直接在 Swift 调 EventKit（同等效果，更轻更稳） |
+| 健康数据 | iSH + HealthKit CLI | 直接在 Swift 调 HealthKit |
+| 闹钟 | 本地通知 / 日历提醒（非系统时钟） | `UNUserNotificationCenter` 本地通知（同样非系统时钟） |
+| 权限控制 | App 内细粒度开关 | 设置里逐项开关 + 按需弹系统授权 |
+
+> 结论：**两者底层都只能用苹果开放的框架（EventKit/HealthKit/通知），都不能写系统「时钟」App 的闹钟、不能读别的 App 界面/系统截图**——这是 iOS 沙盒硬墙。Minis 的"16 个闹钟"本质是循环创建本地通知/日历提醒。我们走同效但更直接的路线，不塞一个 Linux 进 App。
+
+**3. 已接入的系统工具（随设置开关启用）**
+`create_reminder` / `list_reminders` / `create_calendar_event` / `schedule_alarm`（本地通知）/ `read_health`（步数/心率/睡眠/活动能量/体重）。
+
+**4. 多会话 + 归档**
+- `ChatStore` 全局管理多个会话，持久化到 `Documents/conversations.json`。
+- 侧栏可「新建对话」「归档/删除（左滑或长按）」，打开即不再是单一对话框。
+- 会话按更新时间排序、自动置顶、首条用户消息自动生成标题。
+
+**5. 设置页增强**
+- API 配置（Base URL / Key / 模型）+ 连接测试（保留）。
+- **系统能力开关**：提醒事项 / 日历 / 健康数据 / 闹钟·本地提醒 / 通讯录（预留），开关打开时即时请求系统授权并展示授权状态。
+- 内置说明：解释 iOSAgent 与 Minis 的差异，以及"闹钟=本地通知"的限制。
+
+**6. 版本与权限**
+- `MARKETING_VERSION = 2.0`。
+- `Info.plist` 新增：提醒/日历/健康(读+写预留)/通讯录 的用途描述。
+- `entitlements` 加入 `com.apple.developer.healthkit`。
+
+> ⚠️ **侧载安装注意**：HealthKit 是特殊 entitlement，需要描述文件（mobileprovision）为该 App ID 启用 HealthKit 才能安装。若你用 Feather/ESign 自签时**安装报错提到 healthkit entitlement**，二选一：① 确认你的描述文件已为 `com.chen.iOSAgent` 启用 HealthKit（Xcode 自动签名/付费账号最稳）；② 临时删除 `iOSAgent.entitlements` 里的 `<key>com.apple.developer.healthkit</key><true/>` 这行并重新云编译，健康开关会失效但其余功能正常安装。
+
+---
+
 ## 七、自签 / 侧载构建步骤
 
 > 你在 Mac + Xcode 上操作（本机 Windows 只负责产出源码）。
