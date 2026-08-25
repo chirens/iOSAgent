@@ -141,13 +141,21 @@ class SettingsStore: ObservableObject {
     }
 
     private func mapEKStatus(_ key: String, _ status: EKAuthorizationStatus) {
-        switch status {
-        case .notDetermined: setStatus(key, .notDetermined)
-        case .restricted: setStatus(key, .restricted)
-        case .denied: setStatus(key, .denied)
-        case .fullAccess: setStatus(key, .authorized)
-        case .writeOnly: setStatus(key, .limited)
-        @unknown default: setStatus(key, .unknown)
+        if #available(iOS 17.0, *) {
+            switch status {
+            case .notDetermined: setStatus(key, .notDetermined)
+            case .restricted, .denied: setStatus(key, .denied)
+            case .fullAccess, .authorized: setStatus(key, .authorized)
+            case .writeOnly: setStatus(key, .limited)
+            @unknown default: setStatus(key, .unknown)
+            }
+        } else {
+            switch status {
+            case .notDetermined: setStatus(key, .notDetermined)
+            case .restricted, .denied: setStatus(key, .denied)
+            case .authorized: setStatus(key, .authorized)
+            @unknown default: setStatus(key, .unknown)
+            }
         }
     }
 
@@ -262,7 +270,7 @@ class SettingsStore: ObservableObject {
             if let t = HKQuantityType.quantityType(forIdentifier: q) { readTypes.insert(t) }
         }
         if let sleepType = HKObjectType.categoryType(forIdentifier: .sleepAnalysis) { readTypes.insert(sleepType) }
-        if let workoutType = HKObjectType.sampleType(for: HKObjectType.workoutType()) { readTypes.insert(workoutType) }
+        readTypes.insert(HKObjectType.workoutType())
 
         do {
             try await healthStore.requestAuthorization(toShare: [], read: readTypes)

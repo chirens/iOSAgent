@@ -10,7 +10,6 @@ class NotificationsManager: NSObject, ObservableObject, UNUserNotificationCenter
 
     override init() {
         super.init()
-        UNUserNotificationCenter.current().delegate = self
         loadPending()
     }
 
@@ -26,7 +25,7 @@ class NotificationsManager: NSObject, ObservableObject, UNUserNotificationCenter
                 PendingAlarm(id: r.identifier,
                              title: r.content.title,
                              body: r.content.body,
-                             fireDate: r.trigger?.nextTriggerDate() ?? Date.distantFuture)
+                             fireDate: (r.content.userInfo?["fireAt"] as? Date) ?? Date.distantFuture)
             }.sorted { $0.fireDate < $1.fireDate }
             DispatchQueue.main.async {
                 self?.pendingAlarms = alarms
@@ -46,6 +45,7 @@ class NotificationsManager: NSObject, ObservableObject, UNUserNotificationCenter
         content.sound = soundName != nil ? UNNotificationSound(named: UNNotificationSoundName(soundName!)) : .default
         content.badge = 1
         if isTimer { content.categoryIdentifier = "timer_category" }
+        content.userInfo = ["fireAt": fireAt]
 
         let comps = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute, .second], from: fireAt)
         let trigger = UNCalendarNotificationTrigger(dateMatching: comps, repeats: false)
@@ -74,11 +74,11 @@ class NotificationsManager: NSObject, ObservableObject, UNUserNotificationCenter
     }
 
     /// 前台也能收到通知
-    func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
         completionHandler([.banner, .sound, .badge])
     }
 
-    func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
         completionHandler()
     }
 }
