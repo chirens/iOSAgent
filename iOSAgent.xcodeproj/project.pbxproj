@@ -3,7 +3,7 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 77;
+	objectVersion = 56;
 	objects = {
 
 /* Begin PBXBuildFile section */
@@ -19,12 +19,6 @@
 		1A000000000000000000020B /* SystemTools.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000111 /* SystemTools.swift */; };
 		1A000000000000000000020C /* CapabilitiesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000112 /* CapabilitiesView.swift */; };
 		1A000000000000000000020D /* NotificationsManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000113 /* NotificationsManager.swift */; };
-		1A0000000000000000000211 /* EventKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000301 /* EventKit.framework */; };
-		1A0000000000000000000212 /* HealthKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000302 /* HealthKit.framework */; };
-		1A0000000000000000000213 /* Contacts.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000303 /* Contacts.framework */; };
-		1A0000000000000000000214 /* CoreLocation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000304 /* CoreLocation.framework */; };
-		1A0000000000000000000215 /* Photos.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000305 /* Photos.framework */; };
-		1A0000000000000000000216 /* UserNotifications.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000306 /* UserNotifications.framework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -42,12 +36,6 @@
 		1A0000000000000000000112 /* CapabilitiesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CapabilitiesView.swift; sourceTree = "<group>"; };
 		1A0000000000000000000113 /* NotificationsManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationsManager.swift; sourceTree = "<group>"; };
 		1A0000000000000000000120 /* iOSAgent.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = iOSAgent.entitlements; sourceTree = "<group>"; };
-		1A0000000000000000000301 /* EventKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = EventKit.framework; path = System/Library/Frameworks/EventKit.framework; sourceTree = SDKROOT; };
-		1A0000000000000000000302 /* HealthKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = HealthKit.framework; path = System/Library/Frameworks/HealthKit.framework; sourceTree = SDKROOT; };
-		1A0000000000000000000303 /* Contacts.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Contacts.framework; path = System/Library/Frameworks/Contacts.framework; sourceTree = SDKROOT; };
-		1A0000000000000000000304 /* CoreLocation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreLocation.framework; path = System/Library/Frameworks/CoreLocation.framework; sourceTree = SDKROOT; };
-		1A0000000000000000000305 /* Photos.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Photos.framework; path = System/Library/Frameworks/Photos.framework; sourceTree = SDKROOT; };
-		1A0000000000000000000306 /* UserNotifications.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UserNotifications.framework; path = System/Library/Frameworks/UserNotifications.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -55,12 +43,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				1A0000000000000000000211 /* EventKit.framework in Frameworks */,
-				1A0000000000000000000212 /* HealthKit.framework in Frameworks */,
-				1A0000000000000000000213 /* Contacts.framework in Frameworks */,
-				1A0000000000000000000214 /* CoreLocation.framework in Frameworks */,
-				1A0000000000000000000215 /* Photos.framework in Frameworks */,
-				1A0000000000000000000216 /* UserNotifications.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -72,7 +54,6 @@
 			children = (
 				1A0000000000000000000031 /* iOSAgent */,
 				1A0000000000000000000032 /* Products */,
-				1A0000000000000000000040 /* Frameworks */,
 			);
 			sourceTree = "<group>";
 		};
@@ -102,19 +83,6 @@
 				1A0000000000000000000020 /* iOSAgent.app */,
 			);
 			name = Products;
-			sourceTree = "<group>";
-		};
-		1A0000000000000000000040 /* Frameworks */ = {
-			isa = PBXGroup;
-			children = (
-				1A0000000000000000000301 /* EventKit.framework */,
-				1A0000000000000000000302 /* HealthKit.framework */,
-				1A0000000000000000000303 /* Contacts.framework */,
-				1A0000000000000000000304 /* CoreLocation.framework */,
-				1A0000000000000000000305 /* Photos.framework */,
-				1A0000000000000000000306 /* UserNotifications.framework */,
-			);
-			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -153,7 +121,7 @@
 				};
 			};
 			buildConfigurationList = 1A0000000000000000000040 /* Build configuration list for PBXProject "iOSAgent" */;
-			compatibilityVersion = "Xcode 16.0";
+			compatibilityVersion = "Xcode 14.0";
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
