@@ -1,329 +1,673 @@
 import Foundation
+import SwiftUI
 import EventKit
 import HealthKit
+import Contacts
+import CoreLocation
+import Photos
 import UserNotifications
+import UIKit
 
-/// 一个工具定义（OpenAI function-calling 格式）
-struct ToolSpec {
-    let schema: [String: Any]
+/// OpenAI / DeepSeek function calling schema
+struct ToolSpec: Codable {
+    let type: String
+    let function: FunctionSpec
 }
 
-/// 系统能力工具：把 LLM 的"意图"落实为真实的 iOS 系统写入/读取。
-/// 对标 OpenMinis 用 iSH + CLI 桥接原生框架的做法，这里直接在 Swift 里调用
-/// EventKit / HealthKit / UserNotifications，效果一致但更稳更轻。
+struct FunctionSpec: Codable {
+    let name: String
+    let description: String
+    let parameters: ParametersSchema
+
+    init(name: String, description: String, parameters: [String: ParameterSpec], required: [String]) {
+        self.name = name
+        self.description = description
+        self.parameters = ParametersSchema(properties: parameters, required: required)
+    }
+}
+
+struct ParametersSchema: Codable {
+    let type = "object"
+    let properties: [String: ParameterSpec]
+    let required: [String]
+}
+
+struct ParameterSpec: Codable {
+    let type: String
+    let description: String
+    let enumValues: [String]?
+    private enum CodingKeys: String, CodingKey {
+        case type, description, enumValues = "enum"
+    }
+    init(type: String, description: String, enumValues: [String]? = nil) {
+        self.type = type
+        self.description = description
+        self.enumValues = enumValues
+    }
+}
+
+struct ToolCall: Codable {
+    let name: String
+    let arguments: [String: AnyCodable]
+}
+
+struct ToolResult: Codable {
+    let success: Bool
+    let message: String
+    let data: [String: AnyCodable]?
+}
+
+/// 万能包装，让 [String: Any] 可以 Codable
+struct AnyCodable: Codable {
+    let value: Any
+    init(_ value: Any) { self.value = value }
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if let v = try? container.decode(Bool.self) { value = v }
+        else if let v = try? container.decode(Int.self) { value = v }
+        else if let v = try? container.decode(Double.self) { value = v }
+        else if let v = try? container.decode(String.self) { value = v }
+        else if let v = try? container.decode([AnyCodable].self) { value = v.map { $0.value } }
+        else if let v = try? container.decode([String: AnyCodable].self) { value = v.mapValues { $0.value } }
+        else { value = "" }
+    }
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        if let v = value as? Bool { try container.encode(v) }
+        else if let v = value as? Int { try container.encode(v) }
+        else if let v = value as? Double { try container.encode(v) }
+        else if let v = value as? String { try container.encode(v) }
+        else if let v = value as? [Any] { try container.encode(v.map { AnyCodable($0) }) }
+        else if let v = value as? [String: Any] { try container.encode(v.mapValues { AnyCodable($0) }) }
+        else { try container.encode(String(describing: value)) }
+    }
+}
+
+@MainActor
 final class SystemTools {
-    static let shared = SystemTools()
-    private let eventStore = EKEventStore()
-    private let healthStore = HKHealthStore()
 
-    // MARK: - 当前应暴露给 LLM 的工具（由设置开关决定）
+    static let allTools: [ToolSpec] = [
+        ToolSpec(type: "function", function: FunctionSpec(
+            name: "set_alarm",
+            description: "设置一个闹钟或一次性提醒。用户说'5分钟后叫我'、'明早9点叫我起床'时用此工具。",
+            parameters: [
+                "fire_in_minutes": ParameterSpec(type: "integer", description: "相对几分钟后触发。若用户说'5分钟后'则填5。"),
+                "fire_at": ParameterSpec(type: "string", description: "绝对触发时间 ISO8601（如 2026-08-26T09:00:00）。当用户提供明确时间如'明早9点'时使用。"),
+                "title": ParameterSpec(type: "string", description: "闹钟标题，如'起床'、'会议提醒'。"),
+                "label": ParameterSpec(type: "string", description: "额外备注内容。")
+            ],
+            required: ["title"]
+        )),
+        ToolSpec(type: "function", function: FunctionSpec(
+            name: "set_timer",
+            description: "设置一个倒计时器。用户说'计时5分钟'、'5分钟倒计时'时用此工具。",
+            parameters: [
+                "duration_minutes": ParameterSpec(type: "integer", description: "倒计时分钟数。"),
+                "duration_seconds": ParameterSpec(type: "integer", description: "倒计时秒数。"),
+                "label": ParameterSpec(type: "string", description: "计时器标签，如'煮蛋'。")
+            ],
+            required: ["duration_minutes"]
+        )),
+        ToolSpec(type: "function", function: FunctionSpec(
+            name: "list_alarms",
+            description: "列出当前已设置的所有闹钟/计时器/本地通知。",
+            parameters: [:],
+            required: []
+        )),
+        ToolSpec(type: "function", function: FunctionSpec(
+            name: "cancel_alarm",
+            description: "取消指定 id 的闹钟或取消全部闹钟。",
+            parameters: [
+                "id": ParameterSpec(type: "string", description: "要取消的通知 id。"),
+                "cancel_all": ParameterSpec(type: "boolean", description: "是否取消全部。")
+            ],
+            required: []
+        )),
+        ToolSpec(type: "function", function: FunctionSpec(
+            name: "create_reminder",
+            description: "在系统'提醒事项'App 中创建一条提醒。",
+            parameters: [
+                "title": ParameterSpec(type: "string", description: "提醒标题。"),
+                "notes": ParameterSpec(type: "string", description: "备注。"),
+                "due_in_minutes": ParameterSpec(type: "integer", description: "相对几分钟后到期。"),
+                "due_at": ParameterSpec(type: "string", description: "绝对到期时间 ISO8601。")
+            ],
+            required: ["title"]
+        )),
+        ToolSpec(type: "function", function: FunctionSpec(
+            name: "list_reminders",
+            description: "列出未来 N 条系统提醒事项。",
+            parameters: ["limit": ParameterSpec(type: "integer", description: "最多返回条数，默认10。")],
+            required: []
+        )),
+        ToolSpec(type: "function", function: FunctionSpec(
+            name: "complete_reminder",
+            description: "把指定 id 的提醒事项标记为完成。",
+            parameters: ["id": ParameterSpec(type: "string", description: "提醒 id。")],
+            required: ["id"]
+        )),
+        ToolSpec(type: "function", function: FunctionSpec(
+            name: "create_calendar_event",
+            description: "在系统'日历'中创建日程。",
+            parameters: [
+                "title": ParameterSpec(type: "string", description: "事件标题。"),
+                "start_at": ParameterSpec(type: "string", description: "开始时间 ISO8601。"),
+                "end_at": ParameterSpec(type: "string", description: "结束时间 ISO8601。"),
+                "notes": ParameterSpec(type: "string", description: "备注。"),
+                "calendar_name": ParameterSpec(type: "string", description: "日历名称，如'iCloud'、'工作'。默认主日历。")
+            ],
+            required: ["title", "start_at"]
+        )),
+        ToolSpec(type: "function", function: FunctionSpec(
+            name: "list_events",
+            description: "列出从今天起 N 天内的日历事件。",
+            parameters: ["days": ParameterSpec(type: "integer", description: "查看未来几天，默认7。")],
+            required: []
+        )),
+        ToolSpec(type: "function", function: FunctionSpec(
+            name: "read_health",
+            description: "读取健康数据。支持的指标：steps(步数)、heart_rate(心率)、sleep(睡眠时长分钟)、active_energy(活动能量千卡)、distance(步行距离公里)、body_mass(体重kg)。",
+            parameters: [
+                "metric": ParameterSpec(type: "string", description: "指标名", enumValues: ["steps", "heart_rate", "sleep", "active_energy", "distance", "body_mass"]),
+                "days": ParameterSpec(type: "integer", description: "过去多少天，默认7。")
+            ],
+            required: ["metric"]
+        )),
+        ToolSpec(type: "function", function: FunctionSpec(
+            name: "search_contacts",
+            description: "搜索通讯录联系人。",
+            parameters: ["name": ParameterSpec(type: "string", description: "姓名关键词。")],
+            required: ["name"]
+        )),
+        ToolSpec(type: "function", function: FunctionSpec(
+            name: "get_location",
+            description: "获取当前位置（经纬度与城市名）。",
+            parameters: [:],
+            required: []
+        )),
+        ToolSpec(type: "function", function: FunctionSpec(
+            name: "get_clipboard",
+            description: "读取剪贴板文本。",
+            parameters: [:],
+            required: []
+        )),
+        ToolSpec(type: "function", function: FunctionSpec(
+            name: "set_clipboard",
+            description: "写入文本到剪贴板。",
+            parameters: ["text": ParameterSpec(type: "string", description: "要写入的文本。")],
+            required: ["text"]
+        )),
+        ToolSpec(type: "function", function: FunctionSpec(
+            name: "list_photos",
+            description: "获取相册最近 N 张图片。",
+            parameters: ["limit": ParameterSpec(type: "integer", description: "最多返回条数，默认5。")],
+            required: []
+        )),
+        ToolSpec(type: "function", function: FunctionSpec(
+            name: "open_url",
+            description: "用系统打开一个 URL 或启动支持 URL Scheme 的 App。",
+            parameters: ["url": ParameterSpec(type: "string", description: "URL 或 scheme，如 weixin://、https://example.com、tel://10086")],
+            required: ["url"]
+        )),
+        ToolSpec(type: "function", function: FunctionSpec(
+            name: "device_info",
+            description: "获取设备信息：型号、系统版本、电量、存储等。",
+            parameters: [:],
+            required: []
+        ))
+    ]
 
-    static func activeTools() -> [ToolSpec] {
-        let s = SettingsStore.shared
-        var list: [ToolSpec] = []
-        if s.enableReminders {
-            list.append(ToolSpec(schema: createReminderSchema))
-            list.append(ToolSpec(schema: listRemindersSchema))
+    static func execute(tool name: String, call: [String: AnyCodable]) async -> ToolResult {
+        do {
+            switch name {
+            case "set_alarm": return try await setAlarm(call)
+            case "set_timer": return try await setTimer(call)
+            case "list_alarms": return try await listAlarms(call)
+            case "cancel_alarm": return try await cancelAlarm(call)
+            case "create_reminder": return try await createReminder(call)
+            case "list_reminders": return try await listReminders(call)
+            case "complete_reminder": return try await completeReminder(call)
+            case "create_calendar_event": return try await createCalendarEvent(call)
+            case "list_events": return try await listEvents(call)
+            case "read_health": return try await readHealth(call)
+            case "search_contacts": return try await searchContacts(call)
+            case "get_location": return try await getLocation(call)
+            case "get_clipboard": return try await getClipboard(call)
+            case "set_clipboard": return try await setClipboard(call)
+            case "list_photos": return try await listPhotos(call)
+            case "open_url": return try await openURL(call)
+            case "device_info": return try await deviceInfo(call)
+            default: return ToolResult(success: false, message: "未知工具 \(name)", data: nil)
+            }
+        } catch {
+            return ToolResult(success: false, message: "执行失败：\(error.localizedDescription)", data: nil)
         }
-        if s.enableCalendar { list.append(ToolSpec(schema: createEventSchema)) }
-        if s.enableAlarm   { list.append(ToolSpec(schema: scheduleAlarmSchema)) }
-        if s.enableHealth  { list.append(ToolSpec(schema: readHealthSchema)) }
-        return list
     }
 
-    // MARK: - 派发执行
+    // MARK: - Alarms / Timers
 
-    func dispatch(_ name: String, arguments: String) async -> String {
-        let args = (try? JSONSerialization.jsonObject(with: Data(arguments.utf8), options: [])) as? [String: Any] ?? [:]
-        switch name {
-        case "create_reminder":      return await createReminder(args)
-        case "list_reminders":       return await listReminders()
-        case "create_calendar_event":return await createEvent(args)
-        case "schedule_alarm":       return await scheduleAlarm(args)
-        case "read_health":          return await readHealth(args)
-        default:                     return "未知工具：\(name)"
+    private static func setAlarm(_ call: [String: AnyCodable]) async throws -> ToolResult {
+        guard SettingsStore.shared.isEnabled("notifications") else { return needEnable("通知/闹钟") }
+        let title = string(call, "title") ?? "闹钟"
+        let body = string(call, "label") ?? "时间到了"
+        let fireAt: Date
+        if let mins = int(call, "fire_in_minutes"), mins > 0 {
+            fireAt = Date().addingTimeInterval(TimeInterval(mins) * 60)
+        } else if let iso = string(call, "fire_at"), let d = parseISO(iso) {
+            fireAt = d
+        } else {
+            return ToolResult(success: false, message: "需要提供 fire_in_minutes 或 fire_at", data: nil)
         }
+        let id = try await NotificationsManager.shared.scheduleAlarm(title: title, body: body, fireAt: fireAt)
+        return ToolResult(success: true, message: "已设置闹钟：\(formatDate(fireAt))",
+                          data: ["id": AnyCodable(id), "fire_at": AnyCodable(formatDate(fireAt)), "title": AnyCodable(title)])
     }
 
-    // MARK: - 提醒事项（EventKit）
+    private static func setTimer(_ call: [String: AnyCodable]) async throws -> ToolResult {
+        guard SettingsStore.shared.isEnabled("notifications") else { return needEnable("通知/闹钟") }
+        let minutes = int(call, "duration_minutes") ?? 0
+        let seconds = int(call, "duration_seconds") ?? 0
+        let total = TimeInterval(minutes * 60 + seconds)
+        guard total > 0 else { return ToolResult(success: false, message: "倒计时时间必须大于0", data: nil) }
+        let label = string(call, "label") ?? "计时器"
+        let id = try await NotificationsManager.shared.scheduleTimer(duration: total, label: label)
+        return ToolResult(success: true, message: "已开始 \(formatDuration(total)) 倒计时",
+                          data: ["id": AnyCodable(id), "fires_at": AnyCodable(formatDate(Date().addingTimeInterval(total)))])
+    }
 
-    private func createReminder(_ a: [String: Any]) async -> String {
-        guard SettingsStore.shared.enableReminders else { return "提醒事项功能未开启，请在「设置 → 系统能力」中打开。" }
-        let title = (a["title"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "提醒"
-        let notes = a["notes"] as? String
-        let due = parseDate(a["due"] as? String)
-        return await withCheckedContinuation { cont in
-            eventStore.requestFullAccessToReminders { granted, _ in
-                guard granted else { cont.resume(returning: "无权访问提醒事项，请在系统设置中授权。"); return }
-                let r = EKReminder(eventStore: self.eventStore)
-                r.title = title
-                r.notes = notes
-                r.calendar = self.eventStore.defaultCalendarForNewReminders()
-                if let due {
-                    r.dueDateComponents = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: due)
-                    r.addAlarm(EKAlarm(absoluteDate: due))
-                }
-                do {
-                    try self.eventStore.save(r, commit: true)
-                    cont.resume(returning: "✅ 已创建提醒「\(title)」" + (due != nil ? "，时间 \(self.fmt(due!))" : "（无截止时间）"))
-                } catch {
-                    cont.resume(returning: "❌ 创建提醒失败：\(error.localizedDescription)")
-                }
+    private static func listAlarms(_ call: [String: AnyCodable]) async throws -> ToolResult {
+        await NotificationsManager.shared.refreshPending()
+        let list = NotificationsManager.shared.pendingAlarms.map { ["id": AnyCodable($0.id), "title": AnyCodable($0.title), "fire_at": AnyCodable(formatDate($0.fireDate))] }
+        return ToolResult(success: true, message: "当前有 \(list.count) 个待触发通知", data: ["alarms": AnyCodable(list)])
+    }
+
+    private static func cancelAlarm(_ call: [String: AnyCodable]) async throws -> ToolResult {
+        if bool(call, "cancel_all") {
+            await NotificationsManager.shared.cancelAllAlarms()
+            return ToolResult(success: true, message: "已取消全部闹钟/计时器", data: nil)
+        }
+        guard let id = string(call, "id") else {
+            return ToolResult(success: false, message: "需要提供 id 或 cancel_all=true", data: nil)
+        }
+        await NotificationsManager.shared.cancelAlarm(id: id)
+        return ToolResult(success: true, message: "已取消通知 \(id)", data: nil)
+    }
+
+    // MARK: - Reminders
+
+    private static func createReminder(_ call: [String: AnyCodable]) async throws -> ToolResult {
+        guard SettingsStore.shared.isEnabled("reminders") else { return needEnable("提醒事项") }
+        guard EKEventStore.authorizationStatus(for: .reminder) == .fullAccess || EKEventStore.authorizationStatus(for: .reminder) == .authorized else {
+            return ToolResult(success: false, message: "提醒事项未授权，请在设置中开启", data: nil)
+        }
+        let title = string(call, "title") ?? "提醒"
+        let notes = string(call, "notes")
+        let reminder = EKReminder(eventStore: SettingsStore.shared.eventStore)
+        reminder.title = title
+        reminder.notes = notes
+        reminder.calendar = SettingsStore.shared.eventStore.defaultCalendarForNewReminders() ?? SettingsStore.shared.eventStore.calendars(for: .reminder).first
+
+        var due: Date?
+        if let mins = int(call, "due_in_minutes"), mins > 0 {
+            due = Date().addingTimeInterval(TimeInterval(mins) * 60)
+        } else if let iso = string(call, "due_at"), let d = parseISO(iso) {
+            due = d
+        }
+        if let due = due {
+            let comps = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: due)
+            reminder.dueDateComponents = comps
+            reminder.addAlarm(EKAlarm(absoluteDate: due))
+        }
+        try SettingsStore.shared.eventStore.save(reminder, commit: true)
+        return ToolResult(success: true, message: due != nil ? "已创建提醒：\(title)，到期 \(formatDate(due!))" : "已创建提醒：\(title)",
+                          data: ["id": AnyCodable(reminder.calendarItemIdentifier), "title": AnyCodable(title), "due": AnyCodable(due.map(formatDate) ?? "")])
+    }
+
+    private static func listReminders(_ call: [String: AnyCodable]) async throws -> ToolResult {
+        guard SettingsStore.shared.isEnabled("reminders") else { return needEnable("提醒事项") }
+        let store = SettingsStore.shared.eventStore
+        let calendars = store.calendars(for: .reminder)
+        let predicate = store.predicateForIncompleteReminders(withDueDateStarting: nil, ending: nil, calendars: calendars)
+        let reminders = await withCheckedContinuation { continuation in
+            store.fetchReminders(matching: predicate) { items in
+                continuation.resume(returning: items ?? [])
             }
         }
+        let limit = int(call, "limit") ?? 10
+        let result = reminders.prefix(limit).map { r in
+            ["id": AnyCodable(r.calendarItemIdentifier),
+             "title": AnyCodable(r.title ?? ""),
+             "due": AnyCodable(r.dueDateComponents?.date.map(formatDate) ?? "")]
+        }
+        return ToolResult(success: true, message: "找到 \(result.count) 条未完成提醒", data: ["reminders": AnyCodable(result)])
     }
 
-    private func listReminders() async -> String {
-        guard SettingsStore.shared.enableReminders else { return "提醒事项功能未开启。" }
-        return await withCheckedContinuation { cont in
-            eventStore.requestFullAccessToReminders { granted, _ in
-                guard granted else { cont.resume(returning: "无权访问提醒事项。"); return }
-                let pred = self.eventStore.predicateForReminders(in: nil)
-                self.eventStore.fetchReminders(matching: pred) { reminders in
-                    guard let reminders else { cont.resume(returning: "读取提醒失败。"); return }
-                    let incomplete = reminders.filter { !$0.isCompleted }
-                    if incomplete.isEmpty { cont.resume(returning: "当前没有未完成的提醒。"); return }
-                    let lines = incomplete.prefix(12).map { r -> String in
-                        var s = "• \(r.title ?? "")"
-                        if let c = r.dueDateComponents, let d = Calendar.current.date(from: c) {
-                            s += "（\(self.fmt(d))）"
-                        }
-                        return s
-                    }
-                    cont.resume(returning: "未完成提醒（共 \(incomplete.count) 条）：\n" + lines.joined(separator: "\n"))
-                }
+    private static func completeReminder(_ call: [String: AnyCodable]) async throws -> ToolResult {
+        guard SettingsStore.shared.isEnabled("reminders") else { return needEnable("提醒事项") }
+        guard let id = string(call, "id") else { return ToolResult(success: false, message: "缺少 id", data: nil) }
+        let store = SettingsStore.shared.eventStore
+        let predicate = store.predicateForReminders(in: nil)
+        let reminders = await withCheckedContinuation { continuation in
+            store.fetchReminders(matching: predicate) { items in
+                continuation.resume(returning: items ?? [])
             }
         }
+        guard let reminder = reminders.first(where: { $0.calendarItemIdentifier == id }) else {
+            return ToolResult(success: false, message: "未找到该提醒", data: nil)
+        }
+        reminder.isCompleted = true
+        try store.save(reminder, commit: true)
+        return ToolResult(success: true, message: "已完成提醒：\(reminder.title ?? "")", data: ["id": AnyCodable(id)])
     }
 
-    // MARK: - 日历事件（EventKit）
+    // MARK: - Calendar
 
-    private func createEvent(_ a: [String: Any]) async -> String {
-        guard SettingsStore.shared.enableCalendar else { return "日历功能未开启，请在设置中打开。" }
-        let title = (a["title"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "事件"
-        let notes = a["notes"] as? String
-        guard let start = parseDate(a["start"] as? String) else {
-            return "请提供有效的 start（ISO8601 开始时间）。"
+    private static func createCalendarEvent(_ call: [String: AnyCodable]) async throws -> ToolResult {
+        guard SettingsStore.shared.isEnabled("calendar") else { return needEnable("日历") }
+        guard EKEventStore.authorizationStatus(for: .event) == .fullAccess || EKEventStore.authorizationStatus(for: .event) == .authorized else {
+            return ToolResult(success: false, message: "日历未授权，请在设置中开启", data: nil)
         }
-        let end = parseDate(a["end"] as? String) ?? start.addingTimeInterval(3600)
-        return await withCheckedContinuation { cont in
-            eventStore.requestFullAccessToEvents { granted, _ in
-                guard granted else { cont.resume(returning: "无权访问日历，请在系统设置中授权。"); return }
-                let ev = EKEvent(eventStore: self.eventStore)
-                ev.title = title
-                ev.notes = notes
-                ev.startDate = start
-                ev.endDate = end
-                ev.calendar = self.eventStore.defaultCalendarForNewEvents
-                do {
-                    try self.eventStore.save(ev, span: .thisEvent, commit: true)
-                    cont.resume(returning: "✅ 已创建日历事件「\(title)」，\(self.fmt(start)) – \(self.fmt(end))")
-                } catch {
-                    cont.resume(returning: "❌ 创建日历事件失败：\(error.localizedDescription)")
-                }
-            }
+        let title = string(call, "title") ?? "日程"
+        guard let startIso = string(call, "start_at"), let start = parseISO(startIso) else {
+            return ToolResult(success: false, message: "缺少 start_at", data: nil)
         }
+        let end = string(call, "end_at").flatMap(parseISO) ?? start.addingTimeInterval(3600)
+        let event = EKEvent(eventStore: SettingsStore.shared.eventStore)
+        event.title = title
+        event.startDate = start
+        event.endDate = end
+        event.notes = string(call, "notes")
+        if let calName = string(call, "calendar_name") {
+            event.calendar = SettingsStore.shared.eventStore.calendars(for: .event).first { $0.title == calName }
+        }
+        event.calendar = event.calendar ?? SettingsStore.shared.eventStore.defaultCalendarForNewEvents
+        try SettingsStore.shared.eventStore.save(event, span: .thisEvent)
+        return ToolResult(success: true, message: "已创建日程：\(title) \(formatDate(start)) - \(formatDate(end))",
+                          data: ["id": AnyCodable(event.calendarItemIdentifier), "title": AnyCodable(title), "start": AnyCodable(formatDate(start))])
     }
 
-    // MARK: - 闹钟 / 本地提醒（UNUserNotificationCenter）
-    // 说明：iOS 第三方 App 无法写入系统「时钟」App 的闹钟，
-    // 此工具以「本地通知」形式在指定时间弹出提醒，是最接近闹钟的可行方案。
-
-    private func scheduleAlarm(_ a: [String: Any]) async -> String {
-        guard SettingsStore.shared.enableAlarm else { return "闹钟/提醒功能未开启，请在设置中打开。" }
-        let label = (a["label"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "提醒"
-        guard let fire = parseDate(a["fire_at"] as? String) else {
-            return "请提供有效的 fire_at（ISO8601 时间）。"
+    private static func listEvents(_ call: [String: AnyCodable]) async throws -> ToolResult {
+        guard SettingsStore.shared.isEnabled("calendar") else { return needEnable("日历") }
+        let days = int(call, "days") ?? 7
+        let start = Date()
+        let end = Calendar.current.date(byAdding: .day, value: days, to: start)!
+        let predicate = SettingsStore.shared.eventStore.predicateForEvents(withStart: start, end: end, calendars: nil)
+        let events = SettingsStore.shared.eventStore.events(matching: predicate).map { e in
+            ["id": AnyCodable(e.calendarItemIdentifier),
+             "title": AnyCodable(e.title ?? ""),
+             "start": AnyCodable(formatDate(e.startDate)),
+             "end": AnyCodable(formatDate(e.endDate))]
         }
-        guard fire > Date() else { return "时间必须晚于当前时间。" }
-        return await withCheckedContinuation { cont in
-            UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
-                guard granted else { cont.resume(returning: "未授权通知，无法设置。"); return }
-                let content = UNMutableNotificationContent()
-                content.title = "⏰ \(label)"
-                content.body = "来自 iOSAgent 的提醒"
-                content.sound = .default
-                let trigger = UNCalendarNotificationTrigger(
-                    dateMatching: Calendar.current.dateComponents([.year, .month, .day, .hour, .minute, .second], from: fire),
-                    repeats: false)
-                let req = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: trigger)
-                UNUserNotificationCenter.current().add(req) { err in
-                    if let err {
-                        cont.resume(returning: "❌ 设置失败：\(err.localizedDescription)")
-                    } else {
-                        cont.resume(returning: "✅ 已设置提醒「\(label)」，时间 \(self.fmt(fire))（以本地通知形式提醒，非系统时钟 App 闹钟）。")
-                    }
-                }
-            }
-        }
+        return ToolResult(success: true, message: "未来 \(days) 天共有 \(events.count) 个日程", data: ["events": AnyCodable(events)])
     }
 
-    // MARK: - 健康数据（HealthKit）
+    // MARK: - HealthKit
 
-    private func readHealth(_ a: [String: Any]) async -> String {
-        guard SettingsStore.shared.enableHealth else { return "健康数据功能未开启，请在设置中打开。" }
-        let metric = (a["metric"] as? String) ?? "steps"
-        let days = max(1, min(90, (a["days"] as? Int) ?? 7))
-        let type: HKObjectType?
+    private static func readHealth(_ call: [String: AnyCodable]) async throws -> ToolResult {
+        guard SettingsStore.shared.isEnabled("health") else { return needEnable("健康") }
+        guard HKHealthStore.isHealthDataAvailable() else { return ToolResult(success: false, message: "设备不支持 HealthKit", data: nil) }
+        let metric = string(call, "metric") ?? "steps"
+        let days = int(call, "days") ?? 7
+        let store = SettingsStore.shared.healthStore
+
+        let end = Date()
+        let start = Calendar.current.date(byAdding: .day, value: -days, to: end)!
+
         switch metric {
-        case "heart_rate":  type = HKObjectType.quantityType(forIdentifier: .heartRate)
-        case "active_energy": type = HKObjectType.quantityType(forIdentifier: .activeEnergyBurned)
-        case "weight":      type = HKObjectType.quantityType(forIdentifier: .bodyMass)
-        case "sleep":       type = HKObjectType.categoryType(forIdentifier: .sleepAnalysis)
-        default:            type = HKObjectType.quantityType(forIdentifier: .stepCount)
-        }
-        guard let type else { return "不支持的指标：\(metric)" }
-        return await withCheckedContinuation { cont in
-            guard self.healthStore.authorizationStatus(for: type) == .sharingAuthorized else {
-                cont.resume(returning: "健康数据未授权，请在设置中开启并允许读取。"); return
-            }
-            let start = Calendar.current.date(byAdding: .day, value: -days, to: Date())!
-            let end = Date()
-            let pred = HKQuery.predicateForSamples(withStart: start, end: end, options: .strictStartDate)
-
-            if metric == "sleep" {
-                let q = HKSampleQuery(sampleType: type as! HKSampleType, predicate: pred,
-                                      limit: HKObjectQueryNoLimit, sortDescriptors: nil) { _, samples, err in
-                    guard let samples = samples as? [HKCategorySample], err == nil else {
-                        cont.resume(returning: "读取睡眠失败。"); return
-                    }
-                    let secs = samples.reduce(0.0) { $0 + $1.endDate.timeIntervalSince($1.startDate) }
-                    cont.resume(returning: "近 \(days) 天共 \(samples.count) 段睡眠记录，总时长约 \(String(format: "%.1f", secs / 3600)) 小时。")
-                }
-                self.healthStore.execute(q)
-                return
-            }
-
-            let qType = type as! HKQuantityType
-            let opts: HKStatisticsOptions = (metric == "heart_rate") ? .discreteAverage : .cumulativeSum
-            let q = HKStatisticsCollectionQuery(quantityType: qType, quantitySamplePredicate: pred,
-                                                options: opts, anchorDate: start,
-                                                intervalComponents: DateComponents(day: 1))
-            q.initialResultsHandler = { _, stats, err in
-                guard let stats, err == nil else { cont.resume(returning: "读取\(metric)失败。"); return }
-                if metric == "heart_rate" {
-                    var sum = 0.0, n = 0
-                    let unit = HKUnit.count().unitDivided(by: .minute())
-                    stats.enumerateStatistics(from: start, to: end) { st, _ in
-                        if let v = st.averageQuantity()?.doubleValue(for: unit) { sum += v; n += 1 }
-                    }
-                    cont.resume(returning: n > 0 ? "近 \(days) 天平均心率约 \(String(format: "%.0f", sum / Double(n))) bpm。" : "近 \(days) 天无心率数据。")
-                } else {
-                    let unit: HKUnit = (metric == "weight") ? .gramUnit(with: .kilo) : (metric == "active_energy" ? .kilocalorie() : .count())
-                    var total = 0.0
-                    stats.enumerateStatistics(from: start, to: end) { st, _ in
-                        if let v = st.sumQuantity()?.doubleValue(for: unit) { total += v }
-                    }
-                    let label = metric == "steps" ? "步数" : (metric == "weight" ? "体重" : "活动能量")
-                    let unitS = metric == "steps" ? "步" : (metric == "weight" ? "kg" : "kcal")
-                    cont.resume(returning: "近 \(days) 天累计\(label)约 \(String(format: "%.0f", total)) \(unitS)。")
-                }
-            }
-            self.healthStore.execute(q)
+        case "steps":
+            guard let type = HKQuantityType.quantityType(forIdentifier: .stepCount) else { return unavailable }
+            let (value, unit) = try await healthSum(type, .count(), start, end, store)
+            return ToolResult(success: true, message: "过去 \(days) 天共 \(Int(value)) 步", data: ["steps": AnyCodable(Int(value)), "unit": AnyCodable(unit.unitString)])
+        case "distance":
+            guard let type = HKQuantityType.quantityType(forIdentifier: .distanceWalkingRunning) else { return unavailable }
+            let (value, _) = try await healthSum(type, .meterUnit(with: .kilo), start, end, store)
+            return ToolResult(success: true, message: "过去 \(days) 天步行距离约 \(String(format: "%.2f", value)) 公里", data: ["distance_km": AnyCodable(value)])
+        case "active_energy":
+            guard let type = HKQuantityType.quantityType(forIdentifier: .activeEnergyBurned) else { return unavailable }
+            let (value, _) = try await healthSum(type, .kilocalorie(), start, end, store)
+            return ToolResult(success: true, message: "过去 \(days) 天活动能量约 \(Int(value)) 千卡", data: ["kcal": AnyCodable(Int(value))])
+        case "heart_rate":
+            guard let type = HKQuantityType.quantityType(forIdentifier: .heartRate) else { return unavailable }
+            let samples = try await healthSamples(type, start, end, store)
+            guard !samples.isEmpty else { return ToolResult(success: true, message: "未找到心率数据", data: nil) }
+            let avg = samples.map { $0.quantity.doubleValue(for: HKUnit.count().unitDivided(by: .minute()) ) }.reduce(0, +) / Double(samples.count)
+            return ToolResult(success: true, message: "过去 \(days) 天平均心率约 \(Int(avg)) 次/分", data: ["avg_bpm": AnyCodable(Int(avg)), "samples": AnyCodable(samples.count)])
+        case "sleep":
+            guard let type = HKObjectType.categoryType(forIdentifier: .sleepAnalysis) else { return unavailable }
+            let samples = try await healthCategorySamples(type, start, end, store)
+            let totalMin = samples.filter { $0.value != HKCategoryValueSleepAnalysis.awake.rawValue && $0.value != HKCategoryValueSleepAnalysis.inBed.rawValue }
+                .map { $0.endDate.timeIntervalSince($0.startDate) / 60 }.reduce(0, +)
+            return ToolResult(success: true, message: "过去 \(days) 天睡眠约 \(Int(totalMin / 60)) 小时 \(Int(totalMin.truncatingRemainder(dividingBy: 60))) 分", data: ["sleep_minutes": AnyCodable(Int(totalMin))])
+        case "body_mass":
+            guard let type = HKQuantityType.quantityType(forIdentifier: .bodyMass) else { return unavailable }
+            let samples = try await healthSamples(type, start, end, store)
+            guard let latest = samples.last else { return ToolResult(success: true, message: "未找到体重数据", data: nil) }
+            let kg = latest.quantity.doubleValue(for: .gramUnit(with: .kilo))
+            return ToolResult(success: true, message: "最新体重 \(String(format: "%.1f", kg)) kg", data: ["kg": AnyCodable(kg)])
+        default:
+            return ToolResult(success: false, message: "不支持的指标 \(metric)", data: nil)
         }
     }
 
-    // MARK: - 日期/格式辅助
-
-    private func parseDate(_ s: String?) -> Date? {
-        guard let s, !s.isEmpty else { return nil }
-        let f = ISO8601DateFormatter()
-        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let d = f.date(from: s) { return d }
-        f.formatOptions = [.withInternetDateTime]
-        if let d = f.date(from: s) { return d }
-        let f2 = DateFormatter()
-        f2.timeZone = .current
-        f2.dateFormat = "yyyy-MM-dd HH:mm:ss"
-        if let d = f2.date(from: s) { return d }
-        f2.dateFormat = "yyyy-MM-dd HH:mm"
-        return f2.date(from: s)
+    private static func healthSum(_ type: HKQuantityType, _ unit: HKUnit, _ start: Date, _ end: Date, _ store: HKHealthStore) async throws -> (Double, HKUnit) {
+        let predicate = HKQuery.predicateForSamples(withStart: start, end: end, options: .strictStartDate)
+        return try await withCheckedThrowingContinuation { continuation in
+            let query = HKStatisticsQuery(quantityType: type, quantitySamplePredicate: predicate, options: .cumulativeSum) { _, result, error in
+                if let error = error { continuation.resume(throwing: error); return }
+                let value = result?.sumQuantity()?.doubleValue(for: unit) ?? 0
+                continuation.resume(returning: (value, unit))
+            }
+            store.execute(query)
+        }
     }
 
-    private func fmt(_ d: Date) -> String {
-        let f = DateFormatter()
-        f.dateFormat = "yyyy-MM-dd HH:mm"
-        f.timeZone = .current
-        return f.string(from: d)
+    private static func healthSamples(_ type: HKQuantityType, _ start: Date, _ end: Date, _ store: HKHealthStore) async throws -> [HKQuantitySample] {
+        let predicate = HKQuery.predicateForSamples(withStart: start, end: end, options: .strictStartDate)
+        return try await withCheckedThrowingContinuation { continuation in
+            let query = HKSampleQuery(sampleType: type, predicate: predicate, limit: HKObjectQueryNoLimit, sortDescriptors: [NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: true)]) { _, samples, error in
+                if let error = error { continuation.resume(throwing: error); return }
+                continuation.resume(returning: (samples as? [HKQuantitySample]) ?? [])
+            }
+            store.execute(query)
+        }
     }
 
-    // MARK: - 工具 JSON Schema（OpenAI function-calling）
+    private static func healthCategorySamples(_ type: HKCategoryType, _ start: Date, _ end: Date, _ store: HKHealthStore) async throws -> [HKCategorySample] {
+        let predicate = HKQuery.predicateForSamples(withStart: start, end: end, options: .strictStartDate)
+        return try await withCheckedThrowingContinuation { continuation in
+            let query = HKSampleQuery(sampleType: type, predicate: predicate, limit: HKObjectQueryNoLimit, sortDescriptors: [NSSortDescriptor(key: HKSampleSortIdentifierStartDate, ascending: true)]) { _, samples, error in
+                if let error = error { continuation.resume(throwing: error); return }
+                continuation.resume(returning: (samples as? [HKCategorySample]) ?? [])
+            }
+            store.execute(query)
+        }
+    }
 
-    private static let createReminderSchema: [String: Any] = [
-        "type": "function",
-        "function": [
-            "name": "create_reminder",
-            "description": "在系统「提醒事项」中创建一个提醒，可用于待办、备忘。",
-            "parameters": [
-                "type": "object",
-                "properties": [
-                    "title": ["type": "string", "description": "提醒标题"],
-                    "due": ["type": "string", "description": "到期时间，ISO8601，例如 2026-08-26T09:30:00"],
-                    "notes": ["type": "string", "description": "备注（可选）"]
-                ],
-                "required": ["title"]
-            ]
-        ]
-    ]
+    private static var unavailable: ToolResult {
+        ToolResult(success: false, message: "该健康指标在当前设备不可用", data: nil)
+    }
 
-    private static let listRemindersSchema: [String: Any] = [
-        "type": "function",
-        "function": [
-            "name": "list_reminders",
-            "description": "列出当前未完成的提醒事项。",
-            "parameters": ["type": "object", "properties": [:]]
-        ]
-    ]
+    // MARK: - Contacts
 
-    private static let createEventSchema: [String: Any] = [
-        "type": "function",
-        "function": [
-            "name": "create_calendar_event",
-            "description": "在系统「日历」中创建一条事件。",
-            "parameters": [
-                "type": "object",
-                "properties": [
-                    "title": ["type": "string", "description": "事件标题"],
-                    "start": ["type": "string", "description": "开始时间，ISO8601"],
-                    "end": ["type": "string", "description": "结束时间，ISO8601（可选，默认 1 小时后）"],
-                    "notes": ["type": "string", "description": "备注（可选）"]
-                ],
-                "required": ["title", "start"]
-            ]
-        ]
-    ]
+    private static func searchContacts(_ call: [String: AnyCodable]) async throws -> ToolResult {
+        guard SettingsStore.shared.isEnabled("contacts") else { return needEnable("通讯录") }
+        let name = string(call, "name") ?? ""
+        guard CNContactStore.authorizationStatus(for: .contacts) == .authorized else {
+            return ToolResult(success: false, message: "通讯录未授权", data: nil)
+        }
+        let store = SettingsStore.shared.contactStore
+        let keys: [CNKeyDescriptor] = [CNContactGivenNameKey, CNContactFamilyNameKey, CNContactPhoneNumbersKey, CNContactEmailAddressesKey, CNContactIdentifierKey] as [CNKeyDescriptor]
+        let predicate = CNContact.predicateForContacts(matchingName: name)
+        let contacts = try store.unifiedContacts(matching: predicate, keysToFetch: keys)
+        let result = contacts.map { c in
+            ["id": AnyCodable(c.identifier),
+             "name": AnyCodable("\(c.familyName)\(c.givenName)"),
+             "phones": AnyCodable(c.phoneNumbers.map { $0.value.stringValue }),
+             "emails": AnyCodable(c.emailAddresses.map { String($0.value) })]
+        }
+        return ToolResult(success: true, message: "找到 \(result.count) 位联系人", data: ["contacts": AnyCodable(result)])
+    }
 
-    private static let scheduleAlarmSchema: [String: Any] = [
-        "type": "function",
-        "function": [
-            "name": "schedule_alarm",
-            "description": "设置一个本地提醒（以通知形式在指定时间弹出，并非系统时钟 App 的闹钟）。",
-            "parameters": [
-                "type": "object",
-                "properties": [
-                    "label": ["type": "string", "description": "提醒标签"],
-                    "fire_at": ["type": "string", "description": "触发时间，ISO8601，必须晚于当前时间"]
-                ],
-                "required": ["label", "fire_at"]
-            ]
-        ]
-    ]
+    // MARK: - Location
 
-    private static let readHealthSchema: [String: Any] = [
-        "type": "function",
-        "function": [
-            "name": "read_health",
-            "description": "读取 Apple 健康数据（步数/心率/睡眠/活动能量/体重）。",
-            "parameters": [
-                "type": "object",
-                "properties": [
-                    "metric": ["type": "string",
-                               "description": "指标：steps(步数) / heart_rate(心率) / sleep(睡眠) / active_energy(活动能量) / weight(体重)",
-                               "enum": ["steps", "heart_rate", "sleep", "active_energy", "weight"]],
-                    "days": ["type": "integer", "description": "统计最近多少天，默认 7，最大 90"]
-                ],
-                "required": ["metric"]
-            ]
+    private static func getLocation(_ call: [String: AnyCodable]) async throws -> ToolResult {
+        guard SettingsStore.shared.isEnabled("location") else { return needEnable("位置") }
+        let manager = CLLocationManager()
+        let status = manager.authorizationStatus
+        guard status == .authorizedWhenInUse || status == .authorizedAlways else {
+            return ToolResult(success: false, message: "位置权限未授权", data: nil)
+        }
+        let location = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<CLLocation, Error>) in
+            let delegate = LocationFetchDelegate { result in
+                continuation.resume(with: result)
+            }
+            LocationFetchDelegate.retain(delegate)
+            manager.delegate = delegate
+            manager.requestLocation()
+        }
+        let coord = ["latitude": AnyCodable(location.coordinate.latitude), "longitude": AnyCodable(location.coordinate.longitude)]
+        return ToolResult(success: true, message: "当前位置：纬度 \(String(format: "%.5f", location.coordinate.latitude))，经度 \(String(format: "%.5f", location.coordinate.longitude))",
+                          data: ["coordinate": AnyCodable(coord), "accuracy": AnyCodable(location.horizontalAccuracy)])
+    }
+
+    // MARK: - Clipboard
+
+    private static func getClipboard(_ call: [String: AnyCodable]) async throws -> ToolResult {
+        guard SettingsStore.shared.isEnabled("clipboard") else { return needEnable("剪贴板") }
+        let text = UIPasteboard.general.string ?? ""
+        return ToolResult(success: true, message: text.isEmpty ? "剪贴板为空" : "剪贴板内容：\(text)", data: ["text": AnyCodable(text)])
+    }
+
+    private static func setClipboard(_ call: [String: AnyCodable]) async throws -> ToolResult {
+        guard SettingsStore.shared.isEnabled("clipboard") else { return needEnable("剪贴板") }
+        guard let text = string(call, "text") else { return ToolResult(success: false, message: "缺少 text", data: nil) }
+        UIPasteboard.general.string = text
+        return ToolResult(success: true, message: "已写入剪贴板", data: ["text": AnyCodable(text)])
+    }
+
+    // MARK: - Photos
+
+    private static func listPhotos(_ call: [String: AnyCodable]) async throws -> ToolResult {
+        guard SettingsStore.shared.isEnabled("photos") else { return needEnable("相册") }
+        let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+        guard status == .authorized || status == .limited else { return ToolResult(success: false, message: "相册未授权", data: nil) }
+        let limit = int(call, "limit") ?? 5
+        let options = PHFetchOptions()
+        options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
+        options.fetchLimit = limit
+        let assets = PHAsset.fetchAssets(with: options)
+        var items: [[String: Any]] = []
+        assets.enumerateObjects { asset, idx, stop in
+            items.append([
+                "id": asset.localIdentifier,
+                "width": asset.pixelWidth,
+                "height": asset.pixelHeight,
+                "created": asset.creationDate?.ISO8601Format() ?? ""
+            ])
+        }
+        return ToolResult(success: true, message: "最近 \(items.count) 张照片", data: ["photos": AnyCodable(items)])
+    }
+
+    // MARK: - Open URL
+
+    private static func openURL(_ call: [String: AnyCodable]) async throws -> ToolResult {
+        guard let urlString = string(call, "url"), let url = URL(string: urlString) else {
+            return ToolResult(success: false, message: "无效的 URL", data: nil)
+        }
+        let canOpen = await UIApplication.shared.canOpenURL(url)
+        guard canOpen else { return ToolResult(success: false, message: "系统无法打开该 URL：\(urlString)", data: nil) }
+        await UIApplication.shared.open(url)
+        return ToolResult(success: true, message: "已打开 \(urlString)", data: ["url": AnyCodable(urlString)])
+    }
+
+    // MARK: - Device
+
+    private static func deviceInfo(_ call: [String: AnyCodable]) async throws -> ToolResult {
+        let device = UIDevice.current
+        let info: [String: Any] = [
+            "name": device.name,
+            "model": device.model,
+            "system_name": device.systemName,
+            "system_version": device.systemVersion,
+            "battery_level": Int(device.batteryLevel * 100),
+            "is_battery_monitoring": device.isBatteryMonitoringEnabled,
+            "thermal_state": ProcessInfo.processInfo.thermalStateDescription
         ]
-    ]
+        return ToolResult(success: true,
+                          message: "\(device.model)，iOS \(device.systemVersion)，电量 \(Int(device.batteryLevel * 100))%",
+                          data: ["device": AnyCodable(info)])
+    }
+
+    // MARK: - Helpers
+
+    private static func needEnable(_ name: String) -> ToolResult {
+        ToolResult(success: false, message: "请在设置中开启\(name)能力", data: nil)
+    }
+
+    private static func string(_ call: [String: AnyCodable], _ key: String) -> String? {
+        call[key]?.value as? String
+    }
+    private static func int(_ call: [String: AnyCodable], _ key: String) -> Int? {
+        call[key]?.value as? Int
+    }
+    private static func bool(_ call: [String: AnyCodable], _ key: String) -> Bool {
+        call[key]?.value as? Bool ?? false
+    }
+
+    private static func parseISO(_ iso: String) -> Date? {
+        let fmt = ISO8601DateFormatter()
+        fmt.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let d = fmt.date(from: iso) { return d }
+        fmt.formatOptions = [.withInternetDateTime]
+        return fmt.date(from: iso)
+    }
+
+    private static func formatDate(_ date: Date) -> String {
+        let fmt = ISO8601DateFormatter()
+        fmt.formatOptions = [.withInternetDateTime]
+        return fmt.string(from: date)
+    }
+
+    private static func formatDuration(_ interval: TimeInterval) -> String {
+        let m = Int(interval) / 60
+        let s = Int(interval) % 60
+        if m > 0 { return "\(m)分\(s)秒" }
+        return "\(s)秒"
+    }
+}
+
+// MARK: - Location delegates
+
+final class LocationFetchDelegate: NSObject, CLLocationManagerDelegate {
+    static private var retained: [LocationFetchDelegate] = []
+    static func retain(_ d: LocationFetchDelegate) { retained.append(d) }
+
+    private let completion: (Result<CLLocation, Error>) -> Void
+    private var done = false
+    init(_ completion: @escaping (Result<CLLocation, Error>) -> Void) { self.completion = completion }
+
+    func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+        guard !done, let loc = locations.last else { return }
+        done = true
+        completion(.success(loc))
+        LocationFetchDelegate.retained.removeAll { $0 === self }
+    }
+    func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+        guard !done else { return }
+        done = true
+        completion(.failure(error))
+        LocationFetchDelegate.retained.removeAll { $0 === self }
+    }
+}
+
+extension ProcessInfo {
+    var thermalStateDescription: String {
+        switch thermalState {
+        case .nominal: return "正常"
+        case .fair: return "轻微发热"
+        case .serious: return "严重发热"
+        case .critical: return "极热"
+        @unknown default: return "未知"
+        }
+    }
 }

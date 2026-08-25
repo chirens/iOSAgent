@@ -1,118 +1,231 @@
 import SwiftUI
+import PhotosUI
 
-/// 对话页：多会话、支持截图视觉识别、并触发 agent 工具调用循环。
 struct ChatView: View {
+    let conversationId: UUID
     @EnvironmentObject var store: ChatStore
     @State private var input = ""
-    @State private var attachedImage: UIImage?
-    @State private var isBusy = false
+    @State private var isLoading = false
+    @State private var selectedImage: UIImage?
+    @State private var photoItem: PhotosPickerItem?
     @State private var errorText: String?
+    @State private var scrollToBottom = false
 
     var body: some View {
         VStack(spacing: 0) {
+            // 顶部导航
+            HStack {
+                Text(store.selected?.title ?? "对话")
+                    .font(.headline)
+                    .lineLimit(1)
+                Spacer()
+                Button {
+                    _ = store.newConversation()
+                } label: {
+                    Image(systemName: "square.and.pencil")
+                        .font(.title3)
+                }
+            }
+            .padding(.horizontal)
+            .padding(.vertical, 10)
+            .background(.ultraThinMaterial)
+
+            // 消息列表
             ScrollViewReader { proxy in
                 ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 10) {
-                        ForEach(displayMessages) { m in
-                            row(m).id(m.id)
+                    LazyVStack(spacing: 14) {
+                        ForEach(messages) { msg in
+                            MessageBubble(message: msg)
+                                .id(msg.id)
+                        }
+                        if isLoading {
+                            HStack(spacing: 6) {
+                                Dot()
+                                Dot(delay: 0.15)
+                                Dot(delay: 0.3)
+                            }
+                            .padding(.horizontal)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .id("typing")
                         }
                     }
-                    .padding()
+                    .padding(.horizontal)
+                    .padding(.vertical, 12)
                 }
-                .onChange(of: store.selected?.messages.count ?? 0) { _, _ in
-                    if let last = displayMessages.last { withAnimation { proxy.scrollTo(last.id, anchor: .bottom) } }
+                .onChange(of: messages.count) { _ in
+                    scrollToBottom(proxy)
+                }
+                .onChange(of: isLoading) { _ in
+                    scrollToBottom(proxy)
                 }
             }
 
-            if let img = attachedImage {
-                HStack {
-                    Image(uiImage: img).resizable().scaledToFit().frame(height: 80).cornerRadius(8)
-                    Button("移除截图") { attachedImage = nil }
-                    Spacer()
-                }
-                .padding(.horizontal)
+            if let error = errorText {
+                Text(error)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .padding(.horizontal)
             }
 
-            Divider()
+            // 输入栏
+            HStack(spacing: 10) {
+                PhotosPicker(selection: $photoItem, matching: .images) {
+                    Image(systemName: "photo")
+                        .font(.title3)
+                        .foregroundStyle(Color.accentColor)
+                }
+                .onChange(of: photoItem) { item in
+                    Task {
+                        if let data = try? await item?.loadTransferable(type: Data.self),
+                           let image = UIImage(data: data) {
+                            selectedImage = image
+                        }
+                    }
+                }
 
-            HStack {
-                AttachPhotoButton(image: $attachedImage)
-                TextField("说点什么…（如：明早 8 点提醒我开会）", text: $input)
+                if let selectedImage {
+                    Image(uiImage: selectedImage)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 36, height: 36)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .overlay(alignment: .topTrailing) {
+                            Button { self.selectedImage = nil } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .font(.caption)
+                                    .foregroundStyle(.white)
+                            }
+                        }
+                }
+
+                TextField("说点什么…", text: $input, axis: .vertical)
                     .textFieldStyle(.roundedBorder)
-                Button { send() } label: { Image(systemName: "paperplane.fill") }
-                    .disabled(isBusy || input.isEmpty)
-                if isBusy { ProgressView() }
+                    .lineLimit(1...5)
+
+                Button(action: send) {
+                    Image(systemName: "arrow.up.circle.fill")
+                        .font(.system(size: 32))
+                        .foregroundStyle(input.isEmpty ? .secondary : Color.accentColor)
+                }
+                .disabled(input.isEmpty || isLoading)
             }
             .padding()
-
-            if let errorText {
-                Text(errorText).foregroundStyle(.red).font(.caption).padding(.horizontal)
-            }
+            .background(.ultraThinMaterial)
         }
-        .navigationTitle(store.selected?.title ?? "对话")
+        .id(conversationId)
     }
 
-    /// 用于展示的消息：用户消息、以及有内容的助手消息；
-    /// 助手"仅调用工具"的中间消息显示为一行工具提示；纯 tool 消息隐藏。
-    private var displayMessages: [StoredMessage] {
-        guard let msgs = store.selected?.messages else { return [] }
-        return msgs.filter { m in
-            if m.role == "user" { return true }
-            if m.role == "assistant" { return !m.content.isEmpty || (m.toolCalls?.isEmpty == false) }
-            return false
-        }
+    private var messages: [StoredMessage] {
+        store.conversations.first(where: { $0.id == conversationId })?.messages ?? []
     }
 
-    @ViewBuilder
-    private func row(_ m: StoredMessage) -> some View {
-        if m.role == "user" {
-            HStack {
-                Spacer()
-                Text(m.content).padding(10)
-                    .background(Color.blue.opacity(0.18)).cornerRadius(12)
-            }
-        } else if let tcs = m.toolCalls, m.content.isEmpty {
-            HStack {
-                Text("🛠 调用工具：" + tcs.map(\.name).joined(separator: ", "))
-                    .font(.caption).foregroundStyle(.secondary)
-                Spacer()
-            }
-        } else {
-            HStack {
-                Text(m.content).padding(10)
-                    .background(Color(.secondarySystemBackground)).cornerRadius(12)
-                Spacer()
-            }
+    private func scrollToBottom(_ proxy: ScrollViewProxy) {
+        if let last = messages.last {
+            withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
+        } else if isLoading {
+            withAnimation { proxy.scrollTo("typing", anchor: .bottom) }
         }
     }
 
     private func send() {
-        guard let convId = store.selectedId else { return }
-        let text = input
+        let text = input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
-        input = ""
-        let img = attachedImage
-        var msgs = store.selected?.messages ?? []
-        var userMsg = StoredMessage(role: "user", content: text)
-        if let img, let jpeg = img.jpegData(compressionQuality: 0.8) {
-            userMsg.imageBase64 = jpeg.base64EncodedString()
-        }
-        msgs.append(userMsg)
-        isBusy = true
         errorText = nil
-        let cid = convId
+        input = ""
+
+        var msgs = messages
+        msgs.append(StoredMessage(role: "user", content: text, imageBase64: nil))
+        store.update(conversationId, messages: msgs)
+
+        isLoading = true
+        let image = selectedImage
+        selectedImage = nil
+        photoItem = nil
+
         Task {
             do {
-                let tools = SystemTools.activeTools()
-                let (newMsgs, _) = try await AgentClient.shared.run(messages: msgs, image: img, tools: tools)
-                await MainActor.run {
-                    store.update(cid, messages: newMsgs)
-                    attachedImage = nil
-                    isBusy = false
-                }
+                let (updated, final) = try await AgentClient.shared.run(
+                    messages: msgs,
+                    image: image,
+                    tools: SettingsStore.shared.anyToolEnabled ? SystemTools.allTools : []
+                )
+                store.update(conversationId, messages: updated)
             } catch {
-                await MainActor.run { errorText = error.localizedDescription; isBusy = false }
+                errorText = error.localizedDescription
             }
+            isLoading = false
         }
+    }
+}
+
+struct MessageBubble: View {
+    let message: StoredMessage
+
+    var body: some View {
+        HStack {
+            if message.role == "user" { Spacer(minLength: 40) }
+
+            VStack(alignment: message.role == "user" ? .trailing : .leading, spacing: 4) {
+                if let toolName = message.toolName {
+                    Label(toolName, systemImage: "hammer.fill")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 12)
+                }
+
+                Text(message.content)
+                    .font(.body)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .background(bubbleColor)
+                    .foregroundStyle(message.role == "user" ? .white : .primary)
+                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .contextMenu {
+                        Button {
+                            UIPasteboard.general.string = message.content
+                        } label: {
+                            Label("复制", systemImage: "doc.on.doc")
+                        }
+                    }
+
+                if message.role == "assistant" {
+                    HStack(spacing: 4) {
+                        Image(systemName: "sparkle")
+                            .font(.caption2)
+                        Text("iOSAgent")
+                            .font(.caption2)
+                    }
+                    .foregroundStyle(.secondary)
+                }
+            }
+            .frame(maxWidth: 280, alignment: message.role == "user" ? .trailing : .leading)
+
+            if message.role != "user" { Spacer(minLength: 40) }
+        }
+    }
+
+    private var bubbleColor: Color {
+        switch message.role {
+        case "user": return Color.accentColor
+        case "assistant": return Color(.secondarySystemBackground)
+        default: return Color(.tertiarySystemBackground)
+        }
+    }
+}
+
+struct Dot: View {
+    let delay: Double
+    init(delay: Double = 0) { self.delay = delay }
+    @State private var scale: CGFloat = 0.5
+    var body: some View {
+        Circle()
+            .fill(.secondary)
+            .frame(width: 8, height: 8)
+            .scaleEffect(scale)
+            .onAppear {
+                withAnimation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true).delay(delay)) {
+                    scale = 1.0
+                }
+            }
     }
 }
