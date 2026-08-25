@@ -293,11 +293,23 @@ final class SystemTools {
         return ToolResult(success: true, message: "已取消通知 \(id)", data: nil)
     }
 
+    // MARK: - Authorization helpers
+
+    /// EKEntityType 是否已授权（兼容 iOS 16 仅有 .authorized 与 iOS 17+ 新增 .fullAccess）
+    private static func ekAuthorized(_ type: EKEntityType) -> Bool {
+        let status = EKEventStore.authorizationStatus(for: type)
+        if #available(iOS 17.0, *) {
+            return status == .fullAccess || status == .authorized
+        } else {
+            return status == .authorized
+        }
+    }
+
     // MARK: - Reminders
 
     private static func createReminder(_ call: [String: AnyCodable]) async throws -> ToolResult {
         guard SettingsStore.shared.isEnabled("reminders") else { return needEnable("提醒事项") }
-        guard EKEventStore.authorizationStatus(for: .reminder) == .fullAccess || EKEventStore.authorizationStatus(for: .reminder) == .authorized else {
+        guard ekAuthorized(.reminder) else {
             return ToolResult(success: false, message: "提醒事项未授权，请在设置中开启", data: nil)
         }
         let title = string(call, "title") ?? "提醒"
@@ -364,7 +376,7 @@ final class SystemTools {
 
     private static func createCalendarEvent(_ call: [String: AnyCodable]) async throws -> ToolResult {
         guard SettingsStore.shared.isEnabled("calendar") else { return needEnable("日历") }
-        guard EKEventStore.authorizationStatus(for: .event) == .fullAccess || EKEventStore.authorizationStatus(for: .event) == .authorized else {
+        guard ekAuthorized(.event) else {
             return ToolResult(success: false, message: "日历未授权，请在设置中开启", data: nil)
         }
         let title = string(call, "title") ?? "日程"
