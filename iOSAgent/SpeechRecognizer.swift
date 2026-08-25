@@ -1,11 +1,10 @@
 import Foundation
 import Speech
 import AVFoundation
-import Combine
 
 /// 语音转文字封装，供 ChatView 使用。
 @MainActor
-final class SpeechRecognizer: ObservableObject {
+final class SpeechRecognizer: NSObject, ObservableObject {
     @Published var transcript: String = ""
     @Published var isRecording: Bool = false
     @Published var authorizationStatus: SFSpeechRecognizerAuthorizationStatus = .notDetermined
@@ -15,10 +14,8 @@ final class SpeechRecognizer: ObservableObject {
     private var recognitionTask: SFSpeechRecognitionTask?
     private let audioEngine = AVAudioEngine()
 
-    private let _transcript = PassthroughSubject<String, Never>()
-    var transcriptPublisher: AnyPublisher<String, Never> { _transcript.eraseToAnyPublisher() }
-
     init(localeIdentifier: String = "zh-CN") {
+        super.init()
         speechRecognizer = SFSpeechRecognizer(locale: Locale(identifier: localeIdentifier))
         speechRecognizer?.delegate = self
     }
@@ -29,16 +26,14 @@ final class SpeechRecognizer: ObservableObject {
                 continuation.resume(returning: status)
             }
         }
-        await MainActor.run {
-            self.authorizationStatus = speechStatus
-        }
+        self.authorizationStatus = speechStatus
 
         let audioStatus = AVCaptureDevice.authorizationStatus(for: .audio)
         if audioStatus == .notDetermined {
             _ = await AVCaptureDevice.requestAccess(for: .audio)
         }
 
-        return speechStatus == .authorized && (AVCaptureDevice.authorizationStatus(for: .audio) == .authorized)
+        return speechStatus == .authorized && AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
     }
 
     func startRecording() async throws {
@@ -67,8 +62,9 @@ final class SpeechRecognizer: ObservableObject {
             guard let self = self else { return }
             if let result = result {
                 let text = result.bestTranscription.formattedString
-                self.transcript = text
-                self._transcript.send(text)
+                Task { @MainActor in
+                    self.transcript = text
+                }
             }
             if error != nil || (result?.isFinal ?? false) {
                 Task { @MainActor in
@@ -84,9 +80,7 @@ final class SpeechRecognizer: ObservableObject {
         audioEngine.prepare()
         try audioEngine.start()
 
-        await MainActor.run {
-            self.isRecording = true
-        }
+        self.isRecording = true
     }
 
     func stopRecording() {

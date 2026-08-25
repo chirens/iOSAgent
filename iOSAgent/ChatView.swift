@@ -145,9 +145,9 @@ struct ChatView: View {
         } message: {
             Text("请在系统设置中为 iOSAgent 开启麦克风和语音识别权限。")
         }
-        .onReceive(speech.transcriptPublisher) { text in
-            self.input = text
-        }
+            .onReceive(speech.$transcript) { text in
+                self.input = text
+            }
     }
 
     private var messages: [StoredMessage] {
