@@ -14,6 +14,10 @@
 		1A0000000000000000000205 /* AgentClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000105 /* AgentClient.swift */; };
 		1A0000000000000000000206 /* PhotoPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000106 /* PhotoPicker.swift */; };
 		1A0000000000000000000207 /* AgentIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000107 /* AgentIntents.swift */; };
+		1A0000000000000000000208 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000108 /* Models.swift */; };
+		1A0000000000000000000209 /* ChatStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000109 /* ChatStore.swift */; };
+		1A0000000000000000000210 /* SettingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000110 /* SettingsStore.swift */; };
+		1A0000000000000000000211 /* SystemTools.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000111 /* SystemTools.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -25,7 +29,11 @@
 		1A0000000000000000000105 /* AgentClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentClient.swift; sourceTree = "<group>"; };
 		1A0000000000000000000106 /* PhotoPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoPicker.swift; sourceTree = "<group>"; };
 		1A0000000000000000000107 /* AgentIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentIntents.swift; sourceTree = "<group>"; };
-		1A0000000000000000000108 /* iOSAgent.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = iOSAgent.entitlements; sourceTree = "<group>"; };
+		1A0000000000000000000108 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		1A0000000000000000000109 /* ChatStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatStore.swift; sourceTree = "<group>"; };
+		1A0000000000000000000110 /* SettingsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsStore.swift; sourceTree = "<group>"; };
+		1A0000000000000000000111 /* SystemTools.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemTools.swift; sourceTree = "<group>"; };
+		1A0000000000000000000120 /* iOSAgent.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = iOSAgent.entitlements; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -57,7 +65,11 @@
 				1A0000000000000000000105 /* AgentClient.swift */,
 				1A0000000000000000000106 /* PhotoPicker.swift */,
 				1A0000000000000000000107 /* AgentIntents.swift */,
-				1A0000000000000000000108 /* iOSAgent.entitlements */,
+				1A0000000000000000000108 /* Models.swift */,
+				1A0000000000000000000109 /* ChatStore.swift */,
+				1A0000000000000000000110 /* SettingsStore.swift */,
+				1A0000000000000000000111 /* SystemTools.swift */,
+				1A0000000000000000000120 /* iOSAgent.entitlements */,
 			);
 			path = iOSAgent;
 			sourceTree = "<group>";
@@ -145,6 +157,10 @@
 				1A0000000000000000000205 /* AgentClient.swift in Sources */,
 				1A0000000000000000000206 /* PhotoPicker.swift in Sources */,
 				1A0000000000000000000207 /* AgentIntents.swift in Sources */,
+				1A0000000000000000000208 /* Models.swift in Sources */,
+				1A0000000000000000000209 /* ChatStore.swift in Sources */,
+				1A0000000000000000000210 /* SettingsStore.swift in Sources */,
+				1A0000000000000000000211 /* SystemTools.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -228,10 +244,15 @@
 				ASSETCATALOG_COMPILER_GENERATE_ASSET_SYMBOLS = YES;
 				CODE_SIGN_ENTITLEMENTS = iOSAgent/iOSAgent.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "需要读取相册截图以进行视觉识别";
+				INFOPLIST_KEY_NSRemindersUsageDescription = "需要访问提醒事项，以创建和列出提醒";
+				INFOPLIST_KEY_NSCalendarsUsageDescription = "需要访问日历，以创建日历事件";
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "需要读取健康数据（步数、心率、睡眠等）";
+				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "iOSAgent 预留写入健康数据权限";
+				INFOPLIST_KEY_NSContactsUsageDescription = "iOSAgent 预留访问通讯录权限";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -242,7 +263,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.chen.iOSAgent;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -257,10 +278,15 @@
 				ASSETCATALOG_COMPILER_GENERATE_ASSET_SYMBOLS = YES;
 				CODE_SIGN_ENTITLEMENTS = iOSAgent/iOSAgent.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "需要读取相册截图以进行视觉识别";
+				INFOPLIST_KEY_NSRemindersUsageDescription = "需要访问提醒事项，以创建和列出提醒";
+				INFOPLIST_KEY_NSCalendarsUsageDescription = "需要访问日历，以创建日历事件";
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "需要读取健康数据（步数、心率、睡眠等）";
+				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "iOSAgent 预留写入健康数据权限";
+				INFOPLIST_KEY_NSContactsUsageDescription = "iOSAgent 预留访问通讯录权限";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -271,7 +297,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.chen.iOSAgent;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
