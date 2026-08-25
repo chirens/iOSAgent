@@ -25,7 +25,7 @@ class NotificationsManager: NSObject, ObservableObject, UNUserNotificationCenter
                 PendingAlarm(id: r.identifier,
                              title: r.content.title,
                              body: r.content.body,
-                             fireDate: (r.content.userInfo?["fireAt"] as? Date) ?? Date.distantFuture)
+                             fireDate: (r.content.userInfo["fireAt"] as? Date) ?? Date.distantFuture)
             }.sorted { $0.fireDate < $1.fireDate }
             DispatchQueue.main.async {
                 self?.pendingAlarms = alarms
