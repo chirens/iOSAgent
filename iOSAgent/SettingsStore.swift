@@ -101,32 +101,26 @@ class SettingsStore: ObservableObject {
     /// 刷新所有授权状态（不弹窗）
     func refreshAuthStatuses() {
         // Reminders
-        let remStatus = EKEventStore.authorizationStatus(for: .reminder)
-        mapEKStatus("reminders", remStatus)
+        mapEKStatus("reminders", EKEventStore.authorizationStatus(for: .reminder))
 
         // Calendar
-        let calStatus = EKEventStore.authorizationStatus(for: .event)
-        mapEKStatus("calendar", calStatus)
+        mapEKStatus("calendar", EKEventStore.authorizationStatus(for: .event))
 
         // Health
         if HKHealthStore.isHealthDataAvailable() {
-            let status: AuthStatus = healthStore.authorizationStatus(for: HKObjectType.quantityType(forIdentifier: .stepCount)!) == .sharingAuthorized ? .authorized : .notDetermined
-            setStatus("health", healthStore.authorizationStatus(for: HKObjectType.quantityType(forIdentifier: .stepCount)!) == .notDetermined ? .notDetermined : status)
+            mapHealthStatus()
         } else {
             setStatus("health", .unavailable)
         }
 
         // Contacts
-        let cnStatus = CNContactStore.authorizationStatus(for: .contacts)
-        mapCNStatus("contacts", cnStatus)
+        mapCNStatus("contacts", CNContactStore.authorizationStatus(for: .contacts))
 
         // Location
-        let locStatus = CLLocationManager.authorizationStatus()
-        mapCLStatus("location", locStatus)
+        mapCLStatus("location", CLLocationManager.authorizationStatus())
 
         // Photos
-        let phStatus = PHPhotoLibrary.authorizationStatus(for: .readWrite)
-        mapPHStatus("photos", phStatus)
+        mapPHStatus("photos", PHPhotoLibrary.authorizationStatus(for: .readWrite))
 
         // Notifications
         UNUserNotificationCenter.current().getNotificationSettings { [weak self] s in
@@ -138,6 +132,21 @@ class SettingsStore: ObservableObject {
         // Clipboard / Device require no auth
         setStatus("clipboard", .authorized)
         setStatus("device", .authorized)
+    }
+
+    private func mapHealthStatus() {
+        // 只要步数授权状态能拿到，就以它为代表状态
+        guard let stepType = HKQuantityType.quantityType(forIdentifier: .stepCount) else {
+            setStatus("health", .unavailable)
+            return
+        }
+        let status = healthStore.authorizationStatus(for: stepType)
+        switch status {
+        case .notDetermined: setStatus("health", .notDetermined)
+        case .sharingDenied: setStatus("health", .denied)
+        case .sharingAuthorized: setStatus("health", .authorized)
+        @unknown default: setStatus("health", .unknown)
+        }
     }
 
     private func mapEKStatus(_ key: String, _ status: EKAuthorizationStatus) {
@@ -264,13 +273,31 @@ class SettingsStore: ObservableObject {
             setStatus("health", .unavailable)
             return .unavailable
         }
-        var readTypes: Set<HKObjectType> = []
-        let quantities: [HKQuantityTypeIdentifier] = [.stepCount, .heartRate, .distanceWalkingRunning, .activeEnergyBurned, .bodyMass, .bloodPressureSystolic, .oxygenSaturation, .bodyTemperature, .height]
-        for q in quantities {
-            if let t = HKQuantityType.quantityType(forIdentifier: q) { readTypes.insert(t) }
+
+        // 只请求常见、稳定的指标，避免某些类型在特定设备上不存在导致整批授权失败
+        var readTypes = Set<HKObjectType>()
+        let quantityIDs: [HKQuantityTypeIdentifier] = [
+            .stepCount,
+            .heartRate,
+            .distanceWalkingRunning,
+            .activeEnergyBurned,
+            .bodyMass,
+            .height
+        ]
+        for id in quantityIDs {
+            if let t = HKQuantityType.quantityType(forIdentifier: id) {
+                readTypes.insert(t)
+            }
         }
-        if let sleepType = HKObjectType.categoryType(forIdentifier: .sleepAnalysis) { readTypes.insert(sleepType) }
+        if let sleepType = HKObjectType.categoryType(forIdentifier: .sleepAnalysis) {
+            readTypes.insert(sleepType)
+        }
         readTypes.insert(HKObjectType.workoutType())
+
+        guard !readTypes.isEmpty else {
+            setStatus("health", .unavailable)
+            return .unavailable
+        }
 
         do {
             try await healthStore.requestAuthorization(toShare: [], read: readTypes)

@@ -4,26 +4,32 @@ import PhotosUI
 struct ChatView: View {
     let conversationId: UUID
     @EnvironmentObject var store: ChatStore
+    @StateObject private var speech = SpeechRecognizer()
     @State private var input = ""
     @State private var isLoading = false
     @State private var selectedImage: UIImage?
     @State private var photoItem: PhotosPickerItem?
     @State private var errorText: String?
     @State private var scrollToBottom = false
+    @State private var showMicError = false
 
     var body: some View {
         VStack(spacing: 0) {
-            // 顶部导航
-            HStack {
+            // 顶部导航：更紧凑
+            HStack(spacing: 12) {
                 Text(store.selected?.title ?? "对话")
-                    .font(.headline)
+                    .font(.headline.weight(.semibold))
                     .lineLimit(1)
                 Spacer()
                 Button {
                     _ = store.newConversation()
                 } label: {
                     Image(systemName: "square.and.pencil")
-                        .font(.title3)
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(Color.accentColor)
+                        .padding(8)
+                        .background(Color.accentColor.opacity(0.12))
+                        .clipShape(Circle())
                 }
             }
             .padding(.horizontal)
@@ -33,7 +39,7 @@ struct ChatView: View {
             // 消息列表
             ScrollViewReader { proxy in
                 ScrollView {
-                    LazyVStack(spacing: 14) {
+                    LazyVStack(spacing: 16) {
                         ForEach(messages) { msg in
                             MessageBubble(message: msg)
                                 .id(msg.id)
@@ -50,7 +56,7 @@ struct ChatView: View {
                         }
                     }
                     .padding(.horizontal)
-                    .padding(.vertical, 12)
+                    .padding(.vertical, 14)
                 }
                 .onChange(of: messages.count) { _ in
                     scrollToBottom(proxy)
@@ -67,11 +73,11 @@ struct ChatView: View {
                     .padding(.horizontal)
             }
 
-            // 输入栏
+            // 输入栏：圆角胶囊、更灵动
             HStack(spacing: 10) {
                 PhotosPicker(selection: $photoItem, matching: .images) {
                     Image(systemName: "photo")
-                        .font(.title3)
+                        .font(.system(size: 20))
                         .foregroundStyle(Color.accentColor)
                 }
                 .onChange(of: photoItem) { item in
@@ -88,7 +94,7 @@ struct ChatView: View {
                         .resizable()
                         .scaledToFill()
                         .frame(width: 36, height: 36)
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                         .overlay(alignment: .topTrailing) {
                             Button { self.selectedImage = nil } label: {
                                 Image(systemName: "xmark.circle.fill")
@@ -98,21 +104,50 @@ struct ChatView: View {
                         }
                 }
 
-                TextField("说点什么…", text: $input, axis: .vertical)
-                    .textFieldStyle(.roundedBorder)
-                    .lineLimit(1...5)
+                HStack(spacing: 8) {
+                    TextField("说点什么…", text: $input, axis: .vertical)
+                        .lineLimit(1...5)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+
+                    // 语音按钮
+                    Button {
+                        toggleRecording()
+                    } label: {
+                        Image(systemName: speech.isRecording ? "waveform" : "mic.fill")
+                            .font(.system(size: 18))
+                            .foregroundStyle(speech.isRecording ? .red : Color.accentColor)
+                            .padding(8)
+                            .background(speech.isRecording ? Color.red.opacity(0.12) : Color.accentColor.opacity(0.12))
+                            .clipShape(Circle())
+                    }
+                    .buttonStyle(.plain)
+                }
+                .background(Color(.systemBackground))
+                .clipShape(Capsule())
+                .shadow(color: .black.opacity(0.05), radius: 6, x: 0, y: 2)
 
                 Button(action: send) {
                     Image(systemName: "arrow.up.circle.fill")
-                        .font(.system(size: 32))
+                        .font(.system(size: 34))
                         .foregroundStyle(input.isEmpty ? .secondary : Color.accentColor)
                 }
                 .disabled(input.isEmpty || isLoading)
+                .buttonStyle(.plain)
             }
-            .padding()
+            .padding(.horizontal)
+            .padding(.vertical, 10)
             .background(.ultraThinMaterial)
         }
         .id(conversationId)
+        .alert("麦克风/语音识别未授权", isPresented: $showMicError) {
+            Button("确定", role: .cancel) {}
+        } message: {
+            Text("请在系统设置中为 iOSAgent 开启麦克风和语音识别权限。")
+        }
+        .onReceive(speech.transcriptPublisher) { text in
+            self.input = text
+        }
     }
 
     private var messages: [StoredMessage] {
@@ -127,11 +162,26 @@ struct ChatView: View {
         }
     }
 
+    private func toggleRecording() {
+        if speech.isRecording {
+            speech.stopRecording()
+        } else {
+            Task {
+                do {
+                    try await speech.startRecording()
+                } catch {
+                    showMicError = true
+                }
+            }
+        }
+    }
+
     private func send() {
         let text = input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
         errorText = nil
         input = ""
+        speech.stopRecording()
 
         var msgs = messages
         msgs.append(StoredMessage(role: "user", content: text, imageBase64: nil))
@@ -163,23 +213,23 @@ struct MessageBubble: View {
 
     var body: some View {
         HStack {
-            if message.role == "user" { Spacer(minLength: 40) }
+            if message.role == "user" { Spacer(minLength: 28) }
 
-            VStack(alignment: message.role == "user" ? .trailing : .leading, spacing: 4) {
+            VStack(alignment: message.role == "user" ? .trailing : .leading, spacing: 5) {
                 if let toolName = message.toolName {
                     Label(toolName, systemImage: "hammer.fill")
-                        .font(.caption2)
+                        .font(.caption2.weight(.medium))
                         .foregroundStyle(.secondary)
-                        .padding(.horizontal, 12)
+                        .padding(.horizontal, 14)
                 }
 
                 Text(message.content)
                     .font(.body)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 10)
-                    .background(bubbleColor)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .background(bubbleBackground)
                     .foregroundStyle(message.role == "user" ? .white : .primary)
-                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .clipShape(RoundedRectangle(cornerRadius: message.role == "user" ? 22 : 18, style: .continuous))
                     .contextMenu {
                         Button {
                             UIPasteboard.general.string = message.content
@@ -193,22 +243,26 @@ struct MessageBubble: View {
                         Image(systemName: "sparkle")
                             .font(.caption2)
                         Text("iOSAgent")
-                            .font(.caption2)
+                            .font(.caption2.weight(.medium))
                     }
                     .foregroundStyle(.secondary)
+                    .padding(.leading, 4)
                 }
             }
-            .frame(maxWidth: 280, alignment: message.role == "user" ? .trailing : .leading)
+            .frame(maxWidth: 300, alignment: message.role == "user" ? .trailing : .leading)
 
-            if message.role != "user" { Spacer(minLength: 40) }
+            if message.role != "user" { Spacer(minLength: 28) }
         }
     }
 
-    private var bubbleColor: Color {
+    private var bubbleBackground: Color {
         switch message.role {
-        case "user": return Color.accentColor
-        case "assistant": return Color(.secondarySystemBackground)
-        default: return Color(.tertiarySystemBackground)
+        case "user":
+            return Color.accentColor
+        case "assistant":
+            return Color(.secondarySystemBackground)
+        default:
+            return Color(.tertiarySystemBackground)
         }
     }
 }
