@@ -90,14 +90,21 @@ struct ChatRootView: View {
                         FilesHistoryView()
                     }
                 }
-                .gesture(
-                    DragGesture(coordinateSpace: .local)
-                        .onEnded { value in
-                            if path.count == 0, value.startLocation.x < 44, value.translation.width > 60 {
-                                onMenu()
-                            }
-                        }
-                )
+                .overlay(alignment: .leading) {
+                    if path.count == 0 {
+                        Color.clear
+                            .frame(width: 44)
+                            .contentShape(Rectangle())
+                            .gesture(
+                                DragGesture()
+                                    .onEnded { value in
+                                        if value.translation.width > 50 {
+                                            onMenu()
+                                        }
+                                    }
+                            )
+                    }
+                }
         }
     }
 }
@@ -108,6 +115,7 @@ struct ChatRootList: View {
     @Binding var path: NavigationPath
     @State private var reminders: [EKReminder] = []
     @State private var loadingReminders = false
+    @State private var reminderExpanded = false
 
     var body: some View {
         List {
@@ -166,38 +174,44 @@ struct ChatRootList: View {
 
     private var remindersSection: some View {
         Section {
-            if !settings.isEnabled("reminders") {
-                Text("在设置中开启“提醒事项”以查看待办")
-                    .foregroundStyle(.secondary)
-                    .font(.subheadline)
-            } else if reminders.isEmpty && !loadingReminders {
-                Text("没有待完成的提醒")
-                    .foregroundStyle(.secondary)
-                    .font(.subheadline)
-            } else {
-                ForEach(reminders.prefix(5), id: \.calendarItemIdentifier) { reminder in
-                    MiniReminderRow(reminder: reminder) {
-                        complete(reminder)
+            DisclosureGroup(isExpanded: $reminderExpanded) {
+                if !settings.isEnabled("reminders") {
+                    Text("在设置中开启“提醒事项”以查看待办")
+                        .foregroundStyle(.secondary)
+                        .font(.subheadline)
+                } else if reminders.isEmpty && !loadingReminders {
+                    Text("没有待完成的提醒")
+                        .foregroundStyle(.secondary)
+                        .font(.subheadline)
+                } else {
+                    ForEach(reminders.prefix(5), id: \.calendarItemIdentifier) { reminder in
+                        MiniReminderRow(reminder: reminder) {
+                            complete(reminder)
+                        }
+                    }
+                    if reminders.count > 5 {
+                        Button {
+                            path.append(ChatRoute.reminders)
+                        } label: {
+                            Text("查看全部 \(reminders.count) 条")
+                                .font(.subheadline.weight(.medium))
+                                .foregroundStyle(Color.accentColor)
+                        }
                     }
                 }
-
-                if reminders.count > 5 {
-                    Button {
-                        path.append(ChatRoute.reminders)
-                    } label: {
-                        Text("查看全部 \(reminders.count) 条")
-                            .font(.subheadline.weight(.medium))
-                            .foregroundStyle(Color.accentColor)
+            } label: {
+                HStack {
+                    Text("提醒 / 待办")
+                    Spacer()
+                    if !reminders.isEmpty {
+                        Text("\(reminders.count)")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
                     }
-                }
-            }
-        } header: {
-            HStack {
-                Text("提醒 / 待办")
-                Spacer()
-                if loadingReminders {
-                    ProgressView()
-                        .scaleEffect(0.7)
+                    if loadingReminders {
+                        ProgressView()
+                            .scaleEffect(0.7)
+                    }
                 }
             }
         }
@@ -318,15 +332,15 @@ struct SideMenuOverlay: View {
 
                     Spacer(minLength: 0)
                 }
-                .gesture(
-                    DragGesture()
-                        .onEnded { value in
-                            if value.translation.width > 60 {
-                                isPresented = false
-                            }
-                        }
-                )
             }
+            .gesture(
+                DragGesture()
+                    .onEnded { value in
+                        if value.translation.width > 60 {
+                            isPresented = false
+                        }
+                    }
+            )
         }
     }
 
