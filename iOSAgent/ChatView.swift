@@ -16,6 +16,10 @@ struct ChatView: View {
     @State private var errorText: String?
     @State private var scrollToBottom = false
     @State private var showMicError = false
+    /// 语音识别结果是否“待落框”：用于避免识别结果在发送之后才回调时把文字回填输入框
+    @State private var awaitingVoice = false
+    /// 发送后强制 TextField 重建以读取空值（根治 iOS 多行 TextField 焦点下不清空的已知坑）
+    @State private var inputID = UUID()
 
     // 文件附件（图片或任意本地文件）
     @State private var selectedFileURL: URL?
@@ -123,14 +127,18 @@ struct ChatView: View {
                 }
 
                 HStack(spacing: 8) {
-                    TextField("说点什么…", text: $input, axis: .vertical)
-                        .lineLimit(1...5)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
+                TextField("说点什么…", text: $input, axis: .vertical)
+                    .lineLimit(1...5)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .id(inputID)
 
                     // 按住说话
                     VoiceButton(voice: voice,
-                                onStart: { Task { await voice.start() } },
+                                onStart: {
+                                    awaitingVoice = true
+                                    Task { await voice.start() }
+                                },
                                 onFinish: { Task { await finishVoice() } })
                 }
                 .background(Color(.systemBackground))
@@ -216,7 +224,7 @@ struct ChatView: View {
             }
         }
         .onReceive(speech.$transcript) { text in
-            if !text.isEmpty {
+            if !text.isEmpty && awaitingVoice {
                 self.input = text
             }
         }
@@ -256,7 +264,7 @@ struct ChatView: View {
     }
 
     private func finishVoice() async {
-        guard let url = voice.stop() else { return }
+        guard let url = voice.stop() else { awaitingVoice = false; return }
         defer { try? FileManager.default.removeItem(at: url) }
 
         do {
@@ -264,15 +272,18 @@ struct ChatView: View {
             guard !text.isEmpty else {
                 throw NSError(domain: "Voice", code: 0, userInfo: [NSLocalizedDescriptionKey: "未能识别到语音内容"])
             }
-            input = text
+            if awaitingVoice { input = text }
+            awaitingVoice = false
         } catch {
             // 服务端不可用则回退本地识别
             do {
                 let text = try await speech.transcribeFile(url: url)
-                input = text
+                if awaitingVoice { input = text }
+                awaitingVoice = false
             } catch {
                 errorText = "语音识别失败：\(error.localizedDescription)"
                 showMicError = true
+                awaitingVoice = false
             }
         }
     }
@@ -282,6 +293,8 @@ struct ChatView: View {
         guard !text.isEmpty else { return }
         errorText = nil
         input = ""
+        awaitingVoice = false
+        inputID = UUID()
         voice.stop()
 
         var msgs = messages
