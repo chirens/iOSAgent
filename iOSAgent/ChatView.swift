@@ -379,15 +379,13 @@ struct MessageBubble: View {
 
                 Text(message.content)
                     .font(.body)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .foregroundStyle(message.role == "user" ? .white : .primary)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 12)
                     .background(
-                        RoundedRectangle(cornerRadius: message.role == "user" ? 18 : 16, style: .continuous)
+                        RoundedRectangle(cornerRadius: 18, style: .circular)
                             .fill(bubbleBackground)
                     )
-                    .foregroundStyle(message.role == "user" ? .white : .primary)
-                    .clipShape(RoundedRectangle(cornerRadius: message.role == "user" ? 18 : 16, style: .continuous))
                     .shadow(color: .black.opacity(0.04), radius: 6, x: 0, y: 2)
 
                 if message.role == "assistant" {
