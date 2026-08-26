@@ -24,7 +24,6 @@ struct ChatView: View {
     // 文件附件（图片或任意本地文件）
     @State private var selectedFileURL: URL?
     @State private var selectedFileName: String?
-    @State private var showAttachSheet = false
     @State private var showPhotoPicker = false
     @State private var showFilePicker = false
     @State private var fileIsImage = false
@@ -102,8 +101,9 @@ struct ChatView: View {
 
             // 输入栏
             HStack(spacing: 10) {
-                Button {
-                    showAttachSheet = true
+                Menu {
+                    Button("图片") { showPhotoPicker = true }
+                    Button("文件") { showFilePicker = true }
                 } label: {
                     Image(systemName: "plus.circle")
                         .font(.system(size: 20))
@@ -170,11 +170,10 @@ struct ChatView: View {
                     path.append(ChatRoute.chat(id))
                 } label: {
                     Image(systemName: "square.and.pencil")
-                        .font(.system(size: 15, weight: .semibold))
+                        .font(.system(size: 18, weight: .semibold))
                         .foregroundStyle(Color.accentColor)
-                        .padding(8)
-                        .background(Color.accentColor.opacity(0.12))
-                        .clipShape(Circle())
+                        .frame(width: 34, height: 34)
+                        .contentShape(Rectangle())
                 }
             }
         }
@@ -182,11 +181,6 @@ struct ChatView: View {
             Button("确定", role: .cancel) {}
         } message: {
             Text("请在系统设置中为 iOSAgent 开启麦克风和语音识别权限。")
-        }
-        .confirmationDialog("添加附件", isPresented: $showAttachSheet, titleVisibility: .visible) {
-            Button("图片") { showPhotoPicker = true }
-            Button("文件") { showFilePicker = true }
-            Button("取消", role: .cancel) {}
         }
         .photosPicker(isPresented: $showPhotoPicker, selection: $photoItem, matching: .images)
         .onChange(of: photoItem) { item in
@@ -387,6 +381,7 @@ struct MessageBubble: View {
                             .fill(bubbleBackground)
                     )
                     .shadow(color: .black.opacity(0.04), radius: 6, x: 0, y: 2)
+                    .textSelection(.enabled)
 
                 if message.role == "assistant" {
                     HStack(spacing: 4) {
