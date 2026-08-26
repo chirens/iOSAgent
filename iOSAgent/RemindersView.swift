@@ -27,10 +27,22 @@ struct RemindersView: View {
                             .foregroundStyle(.secondary)
                     }
                 } else {
-                    Section("待完成") {
-                        ForEach(reminders, id: \.calendarItemIdentifier) { reminder in
-                            ReminderRow(reminder: reminder) {
-                                complete(reminder)
+                    let grouped = Dictionary(grouping: reminders, by: { $0.calendar?.title ?? "未分类" })
+                    let keys = grouped.keys.sorted()
+                    ForEach(keys, id: \.self) { key in
+                        DisclosureGroup {
+                            ForEach(grouped[key] ?? [], id: \.calendarItemIdentifier) { reminder in
+                                ReminderRow(reminder: reminder) {
+                                    complete(reminder)
+                                }
+                            }
+                        } label: {
+                            HStack {
+                                Text(key)
+                                Spacer()
+                                Text("\(grouped[key]?.count ?? 0)")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
                             }
                         }
                     }

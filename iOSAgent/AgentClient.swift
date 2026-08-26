@@ -49,12 +49,24 @@ final class AgentClient {
 
         for _ in 0..<8 {
             let reqMessages = buildAPIMessages(out, includeSystem: !out.contains { $0.role == "system" })
+            // 推理模型（kimi-k3/k2、deepseek-r1、o1/o3/o4、qwq 等）固定采样参数，
+            // 传 temperature 会 400（"invalid temperature: only 1 is allowed"）；
+            // 且官方已废弃 max_tokens、要求改用 max_completion_tokens。
+            let lowerModel = model.lowercased()
+            let isReasoning = lowerModel.contains("kimi-k3") || lowerModel.contains("kimi-k2")
+                || lowerModel.contains("deepseek-r1") || lowerModel.contains("deepseek-reasoner")
+                || lowerModel.hasPrefix("o1") || lowerModel.hasPrefix("o3") || lowerModel.hasPrefix("o4")
+                || lowerModel.contains("qwq") || lowerModel.contains("reasoning") || lowerModel.contains("-thinking")
             var body: [String: Any] = [
                 "model": model,
-                "messages": reqMessages,
-                "max_tokens": 2000,
-                "temperature": 0.5
+                "messages": reqMessages
             ]
+            if isReasoning {
+                body["max_completion_tokens"] = 8000
+            } else {
+                body["max_tokens"] = 2000
+                body["temperature"] = 0.5
+            }
             if !toolSchemas.isEmpty {
                 body["tools"] = toolSchemas
                 body["tool_choice"] = "auto"
