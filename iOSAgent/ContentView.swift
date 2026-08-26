@@ -11,6 +11,12 @@ enum HomeRoute: Hashable {
     case chat, settings
 }
 
+// 对话导航目标（被 NavigationStack path 使用）
+enum ChatRoute: Hashable {
+    case chat(UUID)
+    case reminders
+}
+
 struct ContentView: View {
     @EnvironmentObject var store: ChatStore
     @EnvironmentObject var settings: SettingsStore
@@ -160,17 +166,17 @@ struct LiquidBackground: View {
                 Circle()
                     .fill(Color.accentColor.opacity(0.28))
                     .frame(width: w * 0.75, height: w * 0.75)
-                    .blur(70)
+                    .blur(radius: 70)
                     .offset(x: animate ? w * 0.22 : -w * 0.2, y: -h * 0.08)
                 Circle()
                     .fill(Color.pink.opacity(0.22))
                     .frame(width: w * 0.6, height: w * 0.6)
-                    .blur(70)
+                    .blur(radius: 70)
                     .offset(x: animate ? -w * 0.25 : w * 0.25, y: h * 0.28)
                 Circle()
                     .fill(Color.indigo.opacity(0.2))
                     .frame(width: w * 0.55, height: w * 0.55)
-                    .blur(70)
+                    .blur(radius: 70)
                     .offset(x: 0, y: animate ? h * 0.22 : -h * 0.22)
             }
         }
