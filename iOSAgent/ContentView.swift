@@ -351,3 +351,22 @@ struct SettingsRootView: View {
         }
     }
 }
+
+struct ConversationRow: View {
+    let conversation: Conversation
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(conversation.title)
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+            if let last = conversation.messages.last {
+                Text(last.content)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+        }
+        .padding(.vertical, 4)
+    }
+}
