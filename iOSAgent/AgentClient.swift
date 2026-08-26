@@ -25,7 +25,7 @@ final class AgentClient {
 
     /// 运行 agent 循环：传入完整消息历史，返回更新后的历史 + 最终文本。
     /// image 仅由 ChatView 在新增的 user 消息上携带，此处不再重写历史。
-    func run(messages: [StoredMessage], image: UIImage?, tools: [ToolSpec]) async throws
+    func run(messages: [StoredMessage], image: UIImage?, tools: [ToolSpec], activeSkills: [Skill] = []) async throws
         -> (messages: [StoredMessage], finalText: String) {
 
         let settings = SettingsStore.shared
@@ -48,7 +48,7 @@ final class AgentClient {
         var finalText = ""
 
         for _ in 0..<8 {
-            let reqMessages = buildAPIMessages(out, includeSystem: !out.contains { $0.role == "system" })
+            let reqMessages = buildAPIMessages(out, includeSystem: !out.contains { $0.role == "system" }, activeSkills: activeSkills)
             // 推理模型（kimi-k3/k2、deepseek-r1、o1/o3/o4、qwq 等）固定采样参数，
             // 传 temperature 会 400（"invalid temperature: only 1 is allowed"）；
             // 且官方已废弃 max_tokens、要求改用 max_completion_tokens。
@@ -180,10 +180,10 @@ final class AgentClient {
 
     // MARK: - 消息序列化
 
-    private func buildAPIMessages(_ msgs: [StoredMessage], includeSystem: Bool) -> [[String: Any]] {
+    private func buildAPIMessages(_ msgs: [StoredMessage], includeSystem: Bool, activeSkills: [Skill] = []) -> [[String: Any]] {
         var arr: [[String: Any]] = []
         if includeSystem {
-            arr.append(["role": "system", "content": systemPrompt()])
+            arr.append(["role": "system", "content": systemPrompt(activeSkills: activeSkills)])
         }
         for m in msgs {
             if m.role == "user", let b64 = m.imageBase64 {
@@ -225,7 +225,7 @@ final class AgentClient {
 
     // MARK: - 系统提示词
 
-    private func systemPrompt() -> String {
+    private func systemPrompt(activeSkills: [Skill] = []) -> String {
         let now = Date()
         let fmt = DateFormatter()
         fmt.locale = Locale(identifier: "zh_CN")
@@ -247,9 +247,10 @@ final class AgentClient {
 
         let custom = SettingsStore.shared.systemPrompt
         let customBlock = custom.isEmpty ? "" : "\n\n用户自定义补充：\(custom)"
+        let skillBlock = buildSkillBlock(activeSkills)
 
         return """
-        你是 iOSAgent，一个运行在 iPhone 上的本地 AI 助手。你可以调用系统工具帮用户完成操作。
+        你是 同步，一个运行在 iPhone 上的本地 AI Agent。你可以调用系统工具帮用户完成操作。
 
         当前时间：\(nowStr)（东八区，北京时间）。系统时间已直接提供给你，不要向用户询问现在几点或今天几号，直接用当前时间计算。
         已开启的系统能力：\(capabilities)
@@ -258,7 +259,7 @@ final class AgentClient {
         1. 当用户请求设置闹钟、提醒、日程、倒计时等时间相关操作时，必须使用对应的工具函数，不要只回答文字。
         2. 工具选择必须精确：
            - “闹钟”“叫我起床”“N分钟后叫我” → 用 set_alarm（本地通知响铃）。
-           - “提醒”“提醒我N分钟后做某事”“提醒事项” → 用 create_reminder（写入系统“提醒事项”App，会在锁屏/通知中心弹窗，即使 iOSAgent 被划掉也能收到）。
+           - “提醒”“提醒我N分钟后做某事”“提醒事项” → 用 create_reminder（写入系统“提醒事项”App，会在锁屏/通知中心弹窗，即使 同步 被划掉也能收到）。
            - “日程”“会议”“约会” → 用 create_calendar_event（写入系统“日历”App）。
            - “计时”“倒计时” → 用 set_timer。
         3. 对于相对时间如“5分钟后”“半小时后”“明天早上9点”，直接使用 fire_in_minutes / due_in_minutes / duration_minutes；对于绝对时间使用 fire_at / due_at / start_at（ISO8601 格式，如 2026-08-26T09:00:00+08:00）。
@@ -278,8 +279,15 @@ final class AgentClient {
         用户：10分钟后叫我
         → 调用 set_alarm(title="提醒", fire_in_minutes=10)
 
-        \(customBlock)
+        \(customBlock)\(skillBlock)
         """
+    }
+
+    private func buildSkillBlock(_ skills: [Skill]) -> String {
+        guard !skills.isEmpty else { return "" }
+        let header = "\n\n当前激活的专业技能：\n" + skills.map { "- \($0.name)：\($0.description)" }.joined(separator: "\n") + "\n\n请严格遵循对应技能的规则。若用户需求与技能无关，则忽略技能规则，按常规方式回答。"
+        let bodies = skills.map { "[\($0.name)]\n\($0.prompt)" }.joined(separator: "\n\n")
+        return header + "\n\n" + bodies
     }
 
     private func formatISODate(_ date: Date, hour: Int) -> String {
@@ -300,4 +308,99 @@ extension ToolSpec {
               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return [:] }
         return obj
     }
+}
+
+// MARK: - Skill 框架
+
+/// 技能定义：可插拔的领域知识 + 行为配方。
+struct Skill: Identifiable, Hashable {
+    let id: String
+    let name: String
+    let icon: String
+    let description: String
+    let triggers: [String]
+    let tools: [String]
+    let prompt: String
+}
+
+/// 技能路由：根据用户输入匹配相关技能。
+@MainActor
+final class SkillRouter: ObservableObject {
+    static let shared = SkillRouter()
+    let allSkills: [Skill] = SkillRegistry.allSkills
+    private init() {}
+
+    func match(input: String) -> [Skill] {
+        let lower = input.lowercased()
+        let matched = allSkills.filter { skill in
+            skill.triggers.contains { lower.contains($0.lowercased()) }
+        }
+        return Array(matched.prefix(2))
+    }
+
+    func match(messages: [StoredMessage]) -> [Skill] {
+        guard let lastUser = messages.last(where: { $0.role == "user" })?.content else { return [] }
+        return match(input: lastUser)
+    }
+}
+
+/// v7.5 使用内嵌注册表；v7.6 改为 bundle 内 Skills/*.md 文件便于用户随时添加。
+enum SkillRegistry {
+    static let allSkills: [Skill] = [
+        Skill(
+            id: "wxoa-writer",
+            name: "公众号写作",
+            icon: "pencil.line",
+            description: "按「忘仙」调性写公众号随笔",
+            triggers: ["公众号", "文章", "写作", "忘仙", "东邪西毒", "随笔", "山丘", "三十到三十五"],
+            tools: ["create_file"],
+            prompt: """
+            你是「忘仙」公众号主笔。当用户要求写公众号文章/随笔/诗歌时，严格遵循：
+            1. 调性：洒脱、看淡红尘，可自然化用《东邪西毒》台词与李宗盛《山丘》意象，但禁止生硬堆砌。
+            2. 主题聚焦：30-35岁生活感悟。
+            3. 格式：随笔/诗歌体，≤300字，句式稍长、句间有衔接、有文学性。
+            4. 禁用："一座又一座"等无效叠词。
+            5. 必含关键词（自然融入）：初入江湖、翻山、山丘、白了头、醉生梦死、酒、回首、追求。
+            6. 只输出文章正文，不加标题，不解释。
+            7. 如用户要求保存，调用 create_file 写入 .md。
+            """
+        ),
+        Skill(
+            id: "ea-analyzer",
+            name: "EA 解读",
+            icon: "chart.line.uptrend.xyaxis",
+            description: "解读 HJDS038OU 等 XAUUSD EA 逻辑",
+            triggers: ["EA", "HJDS", "锁利", "keepRatio", "信号塔", "MT4", "XAUUSD", "量化", "马丁", "止盈", "止损", "爆仓"],
+            tools: ["create_file"],
+            prompt: """
+            你是 XAUUSD/MT4 量化交易专家，精通 HJDS038OU 策略。回答必须基于源码+日志+交易记录交叉分析，禁用笼统定论，每条结论必须有具体数字/逻辑支撑。
+            核心参数：MagicNumber=20045，ADXRangeThreshold=18.0，MaxStopLossPercent=12。
+            锁利模型：10级，keepRatio Lv1=22%、Lv2=35%、Lv3=48%、Lv4=58%、Lv5=52%、Lv6=55%、Lv7=60%、Lv8=65%、Lv9=70%、Lv10=75%；Lv10含max-8保护；由highestProfit驱动。
+            关键修复点：
+            - signal strength 枚举 EXTREME=0、STRONG=1、MEDIUM=2、WEAK=3；EMA过滤比较应为 <=。
+            - 强趋势（signal≤STRONG + H1=YES + D1=YES）跳过距离检查，允许追涨。
+            - EMA冲突时跳过市价单，改用pending order。
+            - lock mode只在lockLevel变化时更新SL，加lastLockLevel变量。
+            - DailyHardStop=10U应移除或调至999。
+            若需要整理结论或生成报告，调用 create_file。
+            """
+        ),
+        Skill(
+            id: "domain-picker",
+            name: "域名选品",
+            icon: "globe",
+            description: "按规则筛选短域名",
+            triggers: ["域名", "选品", "expireddomains", "Whoxy", "Whois", "后缀", ".com", ".cc", ".co", ".cm", ".net", ".cn", ".org", ".pw", ".ai", ".io"],
+            tools: ["create_file"],
+            prompt: """
+            你是短域名选品助手。规则：
+            1. 优先纯字母、无符号、短到长。
+            2. 后缀优先级：.com/.cc/.co/.cm/.net/.cn/.org/.pw/.ai/.io。
+            3. 默认预算 ≤5000 RMB；若用户没给预算/后缀/用途，先反问再输出。
+            4. 输出格式：序号、域名、后缀、长度、估值理由、风险提醒。
+            5. 注意 Whoxy 免费列表存在到期日续费误区，提醒用户以注册商数据为准。
+            如需保存候选列表，调用 create_file 输出 csv/md。
+            """
+        )
+    ]
 }

@@ -28,6 +28,9 @@ struct ChatView: View {
     @State private var showFilePicker = false
     @State private var fileIsImage = false
 
+    // v7.5 Skill 框架：当前消息命中的技能
+    @State private var activeSkills: [Skill] = []
+
     var body: some View {
         VStack(spacing: 0) {
             ScrollViewReader { proxy in
@@ -97,6 +100,24 @@ struct ChatView: View {
                 }
                 .padding(.horizontal)
                 .padding(.top, 8)
+            }
+
+            // 已激活技能提示
+            if !activeSkills.isEmpty {
+                HStack(spacing: 6) {
+                    ForEach(activeSkills) { skill in
+                        Label(skill.name, systemImage: skill.icon)
+                            .font(.caption2.weight(.medium))
+                            .foregroundStyle(Color.accentColor)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Color.accentColor.opacity(0.12))
+                            .clipShape(Capsule())
+                    }
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal)
+                .padding(.top, 4)
             }
 
             // 输入栏
@@ -180,7 +201,7 @@ struct ChatView: View {
         .alert("麦克风/语音识别未授权", isPresented: $showMicError) {
             Button("确定", role: .cancel) {}
         } message: {
-            Text("请在系统设置中为 iOSAgent 开启麦克风和语音识别权限。")
+            Text("请在系统设置中为 同步 开启麦克风和语音识别权限。")
         }
         .photosPicker(isPresented: $showPhotoPicker, selection: $photoItem, matching: .images)
         .onChange(of: photoItem) { item in
@@ -285,6 +306,7 @@ struct ChatView: View {
     private func send() {
         let text = input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
+        activeSkills = SkillRouter.shared.match(input: text)
         errorText = nil
         input = ""
         awaitingVoice = false
@@ -321,7 +343,8 @@ struct ChatView: View {
                 let (updated, _) = try await AgentClient.shared.run(
                     messages: msgs,
                     image: imageToSend,
-                    tools: SettingsStore.shared.anyToolEnabled ? SystemTools.allTools : []
+                    tools: SettingsStore.shared.anyToolEnabled ? SystemTools.allTools : [],
+                    activeSkills: activeSkills
                 )
                 store.update(conversationId, messages: updated)
             } catch {
@@ -387,7 +410,7 @@ struct MessageBubble: View {
                     HStack(spacing: 4) {
                         Image(systemName: "sparkle")
                             .font(.caption2)
-                        Text("iOSAgent")
+                        Text("同步")
                             .font(.caption2.weight(.medium))
                     }
                     .foregroundStyle(.secondary)
