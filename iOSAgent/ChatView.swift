@@ -1,5 +1,7 @@
 import SwiftUI
 import PhotosUI
+import UniformTypeIdentifiers
+import UIKit
 
 struct ChatView: View {
     let conversationId: UUID
@@ -14,6 +16,14 @@ struct ChatView: View {
     @State private var errorText: String?
     @State private var scrollToBottom = false
     @State private var showMicError = false
+
+    // 文件附件（图片或任意本地文件）
+    @State private var selectedFileURL: URL?
+    @State private var selectedFileName: String?
+    @State private var showAttachSheet = false
+    @State private var showPhotoPicker = false
+    @State private var showFilePicker = false
+    @State private var fileIsImage = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -53,21 +63,49 @@ struct ChatView: View {
                     .padding(.horizontal)
             }
 
+            // 已选附件
+            if selectedImage != nil || selectedFileURL != nil {
+                HStack(spacing: 10) {
+                    if let selectedImage {
+                        Image(uiImage: selectedImage)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: 44, height: 44)
+                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    } else if let name = selectedFileName {
+                        HStack(spacing: 6) {
+                            Image(systemName: fileIcon)
+                                .foregroundStyle(.secondary)
+                            Text(name)
+                                .font(.caption)
+                                .lineLimit(1)
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 8)
+                        .background(Color(.tertiarySystemBackground))
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    }
+                    Button { clearAttachment() } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.callout)
+                            .foregroundStyle(.white)
+                    }
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal)
+                .padding(.top, 8)
+            }
+
             // 输入栏
             HStack(spacing: 10) {
-                PhotosPicker(selection: $photoItem, matching: .images) {
-                    Image(systemName: "photo")
+                Button {
+                    showAttachSheet = true
+                } label: {
+                    Image(systemName: "plus.circle")
                         .font(.system(size: 20))
                         .foregroundStyle(Color.accentColor)
                 }
-                .onChange(of: photoItem) { item in
-                    Task {
-                        if let data = try? await item?.loadTransferable(type: Data.self),
-                           let image = UIImage(data: data) {
-                            selectedImage = image
-                        }
-                    }
-                }
+                .buttonStyle(.plain)
 
                 if let selectedImage {
                     Image(uiImage: selectedImage)
@@ -121,6 +159,9 @@ struct ChatView: View {
             .padding(.horizontal)
             .padding(.vertical, 10)
             .background(.ultraThinMaterial)
+            .overlay(alignment: .top) {
+                Divider().opacity(0.3)
+            }
         }
         .id(conversationId)
         .navigationTitle(store.selected?.title ?? "对话")
@@ -145,11 +186,72 @@ struct ChatView: View {
         } message: {
             Text("请在系统设置中为 iOSAgent 开启麦克风和语音识别权限。")
         }
+        .confirmationDialog("添加附件", isPresented: $showAttachSheet, titleVisibility: .visible) {
+            Button("图片") { showPhotoPicker = true }
+            Button("文件") { showFilePicker = true }
+            Button("取消", role: .cancel) {}
+        }
+        .photosPicker(isPresented: $showPhotoPicker, selection: $photoItem, matching: .images)
+        .onChange(of: photoItem) { item in
+            Task {
+                if let data = try? await item?.loadTransferable(type: Data.self),
+                   let image = UIImage(data: data) {
+                    clearAttachment()
+                    selectedImage = image
+                }
+            }
+        }
+        .fileImporter(isPresented: $showFilePicker, allowedContentTypes: [UTType.item], allowsMultipleSelection: false) { result in
+            if case .success(let urls) = result, let url = urls.first {
+                let secured = url.startAccessingSecurityScopedResource()
+                defer { if secured { url.stopAccessingSecurityScopedResource() } }
+                let name = url.lastPathComponent
+                let isImg = (try? url.resourceValues(forKeys: [.typeIdentifierKey]))?.typeIdentifier
+                    .flatMap { UTType($0)?.conforms(to: .image) } ?? false
+                if isImg, let data = try? Data(contentsOf: url), let img = UIImage(data: data) {
+                    clearAttachment()
+                    selectedImage = img
+                } else {
+                    // 拷进 App 沙盒，避免安全作用域失效
+                    let dst = FileManager.default.temporaryDirectory
+                        .appendingPathComponent(UUID().uuidString)
+                        .appendingPathExtension((url.pathExtension.isEmpty ? "file" : url.pathExtension))
+                    _ = try? FileManager.default.removeItem(at: dst)
+                    if (try? FileManager.default.copyItem(at: url, to: dst)) != nil {
+                        clearAttachment()
+                        selectedFileURL = dst
+                        selectedFileName = name
+                        fileIsImage = false
+                    }
+                }
+            }
+        }
         .onReceive(speech.$transcript) { text in
             if !text.isEmpty {
                 self.input = text
             }
         }
+    }
+
+    private var fileIcon: String {
+        guard let ext = selectedFileName?.components(separatedBy: ".").last?.lowercased() else { return "doc.fill" }
+        switch ext {
+        case "pdf": return "doc.fill"
+        case "doc", "docx": return "doc.text.fill"
+        case "xls", "xlsx", "csv": return "tablecells.fill"
+        case "zip", "rar": return "archivebox.fill"
+        case "mp3", "wav", "m4a": return "music.note"
+        case "mp4", "mov": return "film.fill"
+        default: return "doc.fill"
+        }
+    }
+
+    private func clearAttachment() {
+        selectedImage = nil
+        selectedFileURL = nil
+        selectedFileName = nil
+        fileIsImage = false
+        photoItem = nil
     }
 
     private var messages: [StoredMessage] {
@@ -194,19 +296,35 @@ struct ChatView: View {
         voice.stop()
 
         var msgs = messages
-        msgs.append(StoredMessage(role: "user", content: text, imageBase64: nil))
+        var imageToSend: UIImage? = selectedImage
+        var fileNote: String?
+
+        if let fileURL = selectedFileURL, let fileName = selectedFileName {
+            // 文本类文件内联内容，便于模型理解；其它类型作为附件说明
+            if let ext = fileName.components(separatedBy: ".").last?.lowercased(),
+               ["txt", "md", "json", "csv", "html", "log"].contains(ext),
+               let content = try? String(contentsOf: fileURL, encoding: .utf8) {
+                fileNote = "[已附加文件 \(fileName)：\n\(content.prefix(4000))]\n"
+            } else {
+                fileNote = "[用户附加了本地文件：\(fileName)，请在回复中说明已收到，文件可在聊天中分享]"
+            }
+        }
+
+        let composed = (fileNote ?? "") + text
+        msgs.append(StoredMessage(role: "user", content: composed, imageBase64: nil))
         store.update(conversationId, messages: msgs)
 
         isLoading = true
-        let image = selectedImage
         selectedImage = nil
+        selectedFileURL = nil
+        selectedFileName = nil
         photoItem = nil
 
         Task {
             do {
                 let (updated, _) = try await AgentClient.shared.run(
                     messages: msgs,
-                    image: image,
+                    image: imageToSend,
                     tools: SettingsStore.shared.anyToolEnabled ? SystemTools.allTools : []
                 )
                 store.update(conversationId, messages: updated)
@@ -240,6 +358,7 @@ struct MessageBubble: View {
                     .background(bubbleBackground)
                     .foregroundStyle(message.role == "user" ? .white : .primary)
                     .clipShape(RoundedRectangle(cornerRadius: message.role == "user" ? 22 : 18, style: .continuous))
+                    .shadow(color: .black.opacity(0.04), radius: 6, x: 0, y: 2)
 
                 if message.role == "assistant" {
                     HStack(spacing: 4) {

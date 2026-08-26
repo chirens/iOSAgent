@@ -307,6 +307,13 @@ class SettingsStore: ObservableObject {
             setStatus("health", .denied)
             return .denied
         }
+        // 若授权后仍 notDetermined，多半是签名描述文件未含 HealthKit 能力，
+        // 系统静默拒绝了授权请求（免费 Apple ID 侧载常见）。
+        if let stepType = HKQuantityType.quantityType(forIdentifier: .stepCount),
+           healthStore.authorizationStatus(for: stepType) == .notDetermined {
+            setStatus("health", .denied)
+            return .denied
+        }
         refreshAuthStatuses()
         return status("health")
     }
