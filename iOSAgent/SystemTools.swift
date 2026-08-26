@@ -55,6 +55,14 @@ struct ToolResult: Codable {
     let success: Bool
     let message: String
     let data: [String: AnyCodable]?
+    let fileURL: URL?
+
+    init(success: Bool, message: String, data: [String: AnyCodable]? = nil, fileURL: URL? = nil) {
+        self.success = success
+        self.message = message
+        self.data = data
+        self.fileURL = fileURL
+    }
 }
 
 /// 万能包装，让 [String: Any] 可以 Codable
@@ -219,6 +227,24 @@ final class SystemTools {
             description: "获取设备信息：型号、系统版本、电量、存储等。",
             parameters: [:],
             required: []
+        )),
+        ToolSpec(type: "function", function: FunctionSpec(
+            name: "create_file",
+            description: "在 App 文档目录创建一个文本文件（txt/md/html/csv/json）。",
+            parameters: [
+                "filename": ParameterSpec(type: "string", description: "文件名，必须包含扩展名，如 notes.md、data.csv。"),
+                "content": ParameterSpec(type: "string", description: "文件内容。")
+            ],
+            required: ["filename", "content"]
+        )),
+        ToolSpec(type: "function", function: FunctionSpec(
+            name: "create_ppt",
+            description: "根据标题和每页要点生成 .pptx 文件并保存到 App 文档目录，可在聊天中分享。",
+            parameters: [
+                "title": ParameterSpec(type: "string", description: "PPT 标题，也会作为文件名（无需 .pptx 后缀）。"),
+                "slides": ParameterSpec(type: "array", description: "幻灯片数组，每项为对象：{title: 本页标题, bullets: [要点1, 要点2, ...]}")
+            ],
+            required: ["title", "slides"]
         ))
     ]
 
@@ -243,6 +269,8 @@ final class SystemTools {
             case "list_photos": return try await listPhotos(call)
             case "open_url": return try await openURL(call)
             case "device_info": return try await deviceInfo(call)
+            case "create_file": return try await createFile(call)
+            case "create_ppt": return try await createPPT(call)
             default: return ToolResult(success: false, message: "未知工具 \(name)", data: nil)
             }
         } catch {
@@ -632,6 +660,41 @@ final class SystemTools {
         return ToolResult(success: true,
                           message: "\(device.model)，iOS \(device.systemVersion)，电量 \(Int(device.batteryLevel * 100))%",
                           data: ["device": AnyCodable(info)])
+    }
+
+    // MARK: - Document generation
+
+    private static func createFile(_ call: [String: AnyCodable]) async throws -> ToolResult {
+        guard let filename = string(call, "filename"), let content = string(call, "content") else {
+            return ToolResult(success: false, message: "缺少 filename 或 content", data: nil)
+        }
+        let url = try DocumentGenerator.generateTextFile(filename: filename, content: content)
+        return ToolResult(success: true, message: "已创建文件：\(url.lastPathComponent)",
+                          data: ["path": AnyCodable(url.path), "filename": AnyCodable(filename)],
+                          fileURL: url)
+    }
+
+    private static func createPPT(_ call: [String: AnyCodable]) async throws -> ToolResult {
+        guard let title = string(call, "title") else {
+            return ToolResult(success: false, message: "缺少 title", data: nil)
+        }
+        guard let slidesRaw = call["slides"]?.value as? [Any] else {
+            return ToolResult(success: false, message: "slides 格式错误，应为数组", data: nil)
+        }
+        var slides: [(title: String, bullets: [String])] = []
+        for item in slidesRaw {
+            guard let dict = item as? [String: Any],
+                  let slideTitle = dict["title"] as? String else { continue }
+            let bullets = (dict["bullets"] as? [String]) ?? []
+            slides.append((title: slideTitle, bullets: bullets))
+        }
+        guard !slides.isEmpty else {
+            return ToolResult(success: false, message: "slides 为空或格式无法解析", data: nil)
+        }
+        let url = try DocumentGenerator.generatePPTX(title: title, slides: slides)
+        return ToolResult(success: true, message: "已生成 PPT：\(url.lastPathComponent)，可在聊天中点击分享。",
+                          data: ["path": AnyCodable(url.path), "filename": AnyCodable(url.lastPathComponent)],
+                          fileURL: url)
     }
 
     // MARK: - Helpers

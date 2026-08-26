@@ -32,7 +32,9 @@ class SettingsStore: ObservableObject {
     @AppStorage("apiBaseURL") var apiBaseURL: String = "https://api.deepseek.com"
     @AppStorage("apiKey") var apiKey: String = ""
     @AppStorage("modelName") var modelName: String = "deepseek-chat"
+    @AppStorage("sttModelName") var sttModelName: String = "whisper-1"
     @AppStorage("systemPrompt") var systemPrompt: String = ""
+    @AppStorage("hasSeenWelcome") var hasSeenWelcome: Bool = false
 
     @Published var capabilities: [String: CapabilitySetting] = [:]
 
