@@ -562,9 +562,19 @@ struct FilesHistoryView: View {
 
 struct SettingsRootView: View {
     let onBack: () -> Void
+    @State private var settingsPath = NavigationPath()
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $settingsPath) {
             SettingsView()
+                .navigationDestination(for: SettingsRoute.self) { route in
+                    switch route {
+                    case .api: APISettingsView()
+                    case .permissions: PermissionsView()
+                    case .customPrompt: CustomPromptView()
+                    case .legal(let type): LegalView(type: type)
+                    case .about: AboutView()
+                    }
+                }
                 .toolbar {
                     ToolbarItem(placement: .navigationBarLeading) {
                         Button {
@@ -576,6 +586,21 @@ struct SettingsRootView: View {
                                 .frame(width: 34, height: 34)
                                 .contentShape(Rectangle())
                         }
+                    }
+                }
+                .overlay(alignment: .leading) {
+                    if settingsPath.count == 0 {
+                        Color.clear
+                            .frame(width: 44)
+                            .contentShape(Rectangle())
+                            .gesture(
+                                DragGesture()
+                                    .onEnded { value in
+                                        if value.translation.width > 60 {
+                                            onBack()
+                                        }
+                                    }
+                            )
                     }
                 }
         }

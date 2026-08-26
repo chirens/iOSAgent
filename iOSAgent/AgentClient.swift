@@ -342,6 +342,34 @@ final class SkillRouter: ObservableObject {
         guard let lastUser = messages.last(where: { $0.role == "user" })?.content else { return [] }
         return match(input: lastUser)
     }
+
+    /// 解析 `@技能名` 前缀强制加载技能；无前缀返回 nil。
+    func matchExplicit(input: String) -> [Skill]? {
+        let trimmed = input.trimmingCharacters(in: .whitespaces)
+        guard trimmed.hasPrefix("@") else { return nil }
+        let after = String(trimmed.dropFirst())
+        let token = after.split(separator: " ", maxSplits: 1).first.map(String.init) ?? after
+        let lower = token.lowercased()
+        guard !lower.isEmpty else { return nil }
+        let hit = allSkills.first { skill in
+            let n = skill.name.lowercased()
+            let id = skill.id.lowercased()
+            return n.contains(lower) || lower.contains(n) || id.contains(lower) || lower.contains(id)
+        }
+        return hit.map { [$0] }
+    }
+
+    /// 去掉 `@技能名 ` 前缀，返回真正要发送的文本内容。
+    func stripSkillPrefix(_ input: String) -> String {
+        let trimmed = input.trimmingCharacters(in: .whitespaces)
+        guard trimmed.hasPrefix("@") else { return trimmed }
+        let after = String(trimmed.dropFirst())
+        let parts = after.split(separator: " ", maxSplits: 1)
+        if parts.count > 1 {
+            return String(parts[1]).trimmingCharacters(in: .whitespaces)
+        }
+        return ""
+    }
 }
 
 /// v7.5 使用内嵌注册表；v7.6 改为 bundle 内 Skills/*.md 文件便于用户随时添加。
