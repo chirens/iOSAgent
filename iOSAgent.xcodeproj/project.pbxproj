@@ -265,22 +265,24 @@
 		1A0000000000000000000060 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GENERATE_ASSET_SYMBOLS = YES;
 				CODE_SIGN_ENTITLEMENTS = iOSAgent/iOSAgent.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 5;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "同步";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "需要读取相册截图以进行视觉识别";
 				INFOPLIST_KEY_NSRemindersUsageDescription = "需要访问提醒事项，以创建和列出提醒";
 				INFOPLIST_KEY_NSCalendarsUsageDescription = "需要访问日历，以创建日历事件";
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "需要读取健康数据（步数、心率、睡眠等）";
-				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "iOSAgent 预留写入健康数据权限";
-				INFOPLIST_KEY_NSContactsUsageDescription = "iOSAgent 需要搜索通讯录联系人";
-				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "iOSAgent 需要获取当前位置";
-				INFOPLIST_KEY_NSUserNotificationsUsageDescription = "iOSAgent 需要发送闹钟、计时器和提醒通知";
-				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "iOSAgent 需要语音识别权限，以便在对话框中通过麦克风输入文字";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "iOSAgent 需要麦克风权限，以便进行语音输入";
+				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "同步 预留写入健康数据权限";
+				INFOPLIST_KEY_NSContactsUsageDescription = "同步 需要搜索通讯录联系人";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "同步 需要获取当前位置";
+				INFOPLIST_KEY_NSUserNotificationsUsageDescription = "同步 需要发送闹钟、计时器和提醒通知";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "同步 需要语音识别权限，以便在对话框中通过麦克风输入文字";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "同步 需要麦克风权限，以便进行语音输入";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -291,7 +293,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 7.4;
+				MARKETING_VERSION = 7.5;
 				PRODUCT_BUNDLE_IDENTIFIER = com.chen.iOSAgent;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -303,22 +305,24 @@
 		1A0000000000000000000061 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GENERATE_ASSET_SYMBOLS = YES;
 				CODE_SIGN_ENTITLEMENTS = iOSAgent/iOSAgent.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 5;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "同步";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "需要读取相册截图以进行视觉识别";
 				INFOPLIST_KEY_NSRemindersUsageDescription = "需要访问提醒事项，以创建和列出提醒";
 				INFOPLIST_KEY_NSCalendarsUsageDescription = "需要访问日历，以创建日历事件";
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "需要读取健康数据（步数、心率、睡眠等）";
-				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "iOSAgent 预留写入健康数据权限";
-				INFOPLIST_KEY_NSContactsUsageDescription = "iOSAgent 需要搜索通讯录联系人";
-				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "iOSAgent 需要获取当前位置";
-				INFOPLIST_KEY_NSUserNotificationsUsageDescription = "iOSAgent 需要发送闹钟、计时器和提醒通知";
-				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "iOSAgent 需要语音识别权限，以便在对话框中通过麦克风输入文字";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "iOSAgent 需要麦克风权限，以便进行语音输入";
+				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "同步 预留写入健康数据权限";
+				INFOPLIST_KEY_NSContactsUsageDescription = "同步 需要搜索通讯录联系人";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "同步 需要获取当前位置";
+				INFOPLIST_KEY_NSUserNotificationsUsageDescription = "同步 需要发送闹钟、计时器和提醒通知";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "同步 需要语音识别权限，以便在对话框中通过麦克风输入文字";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "同步 需要麦克风权限，以便进行语音输入";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -329,7 +333,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 7.4;
+				MARKETING_VERSION = 7.5;
 				PRODUCT_BUNDLE_IDENTIFIER = com.chen.iOSAgent;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;

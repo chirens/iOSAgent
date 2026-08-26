@@ -75,7 +75,7 @@ struct SettingsView: View {
                 NavigationLink { AboutView() } label: {
                     SettingRow(icon: "info.circle.fill",
                                colors: [.gray, .gray],
-                               title: "关于 iOSAgent",
+                               title: "关于 同步",
                                subtitle: "版本与链接")
                 }
             } header: {
@@ -311,7 +311,7 @@ struct LegalView: View {
         switch type {
         case .userAgreement:
             return """
-            欢迎使用 iOSAgent。
+            欢迎使用 同步。
 
             1. 本应用为本地 AI 助手工具，通过调用 iOS 系统 API（EventKit、HealthKit、UserNotifications 等）以及用户自配的云端大模型 API 提供服务。
             2. 用户需自行配置 API Key，并对自己输入的内容、生成的结果及执行的操作负责。
@@ -327,7 +327,7 @@ struct LegalView: View {
             """
         case .disclaimer:
             return """
-            1. iOSAgent 提供的回答、文件生成、系统操作等仅供参考与辅助，不构成任何专业建议（包括但不限于医疗、法律、金融、投资建议）。
+            1. 同步 提供的回答、文件生成、系统操作等仅供参考与辅助，不构成任何专业建议（包括但不限于医疗、法律、金融、投资建议）。
             2. 由 AI 生成内容的准确性、完整性、合法性，以及由工具操作引发的系统状态变更，均由用户自行判断与承担。
             3. 部分能力（如 HealthKit）受 iOS 签名与权限限制，可能无法在所有安装方式下正常工作。
             4. 开发者不对因使用本应用而直接或间接导致的任何损失承担责任。
@@ -377,7 +377,7 @@ struct AboutView: View {
             }
 
             Section {
-                Text("iOSAgent · 运行在 iPhone 上的本地 AI 助手")
+                Text("同步 · 运行在 iPhone 上的本地 AI Agent")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

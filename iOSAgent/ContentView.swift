@@ -53,7 +53,7 @@ struct ChatRootView: View {
     var body: some View {
         NavigationStack(path: $path) {
             ChatRootList(path: $path)
-                .navigationTitle("iOSAgent")
+                .navigationTitle("同步")
                 .toolbar {
                     ToolbarItem(placement: .navigationBarLeading) {
                         Button {
@@ -355,9 +355,9 @@ struct SideMenuOverlay: View {
                     .foregroundStyle(.white)
             }
             VStack(alignment: .leading, spacing: 2) {
-                Text("iOSAgent")
+                Text("同步")
                     .font(.title3.weight(.bold))
-                Text("本地 AI 助手 · 可操作 iPhone")
+                Text("本地 AI Agent · 可操作 iPhone")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -423,6 +423,10 @@ struct SideMenuOverlay: View {
                 onSettings()
             } label: {
                 HStack(spacing: 14) {
+                    Text("设置")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                    Spacer()
                     ZStack {
                         RoundedRectangle(cornerRadius: 12, style: .continuous)
                             .fill(Color.gray.opacity(0.15))
@@ -431,13 +435,6 @@ struct SideMenuOverlay: View {
                             .font(.system(size: 17, weight: .semibold))
                             .foregroundStyle(.gray)
                     }
-                    Text("设置")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.primary)
-                    Spacer()
-                    Image(systemName: "chevron.right")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.tertiary)
                 }
                 .padding(.horizontal, 18)
                 .padding(.vertical, 14)

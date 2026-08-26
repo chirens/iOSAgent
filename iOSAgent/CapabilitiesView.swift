@@ -26,7 +26,7 @@ struct CapabilitiesView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                Text("iOSAgent 能做什么")
+                Text("同步 能做什么")
                     .font(.largeTitle.weight(.bold))
                     .padding(.horizontal)
 
