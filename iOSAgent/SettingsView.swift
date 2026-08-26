@@ -2,50 +2,146 @@ import SwiftUI
 
 struct SettingsView: View {
     @EnvironmentObject var settings: SettingsStore
+    @State private var showClearCacheAlert = false
+    @State private var cacheSizeText: String = ""
 
     var body: some View {
         List {
+            // 核心设置
             Section {
                 NavigationLink { APISettingsView() } label: {
-                    SettingRow(icon: "key.fill", color: .blue, title: "API 设置", subtitle: "Base URL · 模型 · 连接测试")
+                    SettingRow(icon: "key.fill",
+                               colors: [.blue, .cyan],
+                               title: "API 设置",
+                               subtitle: "Base URL · 模型 · 连接测试")
                 }
                 NavigationLink { PermissionsView() } label: {
-                    SettingRow(icon: "lock.shield.fill", color: .orange, title: "系统权限", subtitle: "健康 / 提醒 / 日历 / 相册…")
+                    SettingRow(icon: "lock.shield.fill",
+                               colors: [.orange, .yellow],
+                               title: "系统权限",
+                               subtitle: "健康 / 提醒 / 日历 / 相册…")
                 }
                 NavigationLink { CustomPromptView() } label: {
-                    SettingRow(icon: "text.quote", color: .purple, title: "自定义系统提示", subtitle: "塑造助手语气与偏好")
+                    SettingRow(icon: "text.quote",
+                               colors: [.purple, .pink],
+                               title: "自定义系统提示",
+                               subtitle: "塑造助手语气与偏好")
                 }
             } header: {
-                Text("设置")
+                Text("核心设置")
             }
 
+            // 应用
+            Section {
+                Button {
+                    showClearCacheAlert = true
+                } label: {
+                    SettingRow(icon: "trash.fill",
+                               colors: [.red, .orange],
+                               title: "清除缓存",
+                               subtitle: "清理生成的临时文件与附件")
+                }
+                .buttonStyle(.plain)
+            } header: {
+                Text("应用")
+            }
+
+            // 协议与声明
+            Section {
+                NavigationLink { LegalView(type: .userAgreement) } label: {
+                    SettingRow(icon: "doc.text.fill",
+                               colors: [.indigo, .purple],
+                               title: "用户协议",
+                               subtitle: "使用条款与行为规范")
+                }
+                NavigationLink { LegalView(type: .privacyPolicy) } label: {
+                    SettingRow(icon: "hand.raised.fill",
+                               colors: [.green, .teal],
+                               title: "隐私政策",
+                               subtitle: "数据收集与使用说明")
+                }
+                NavigationLink { LegalView(type: .disclaimer) } label: {
+                    SettingRow(icon: "exclamationmark.shield.fill",
+                               colors: [.gray, .secondary],
+                               title: "免责声明",
+                               subtitle: "能力边界与风险提示")
+                }
+            } header: {
+                Text("协议与声明")
+            }
+
+            // 关于
             Section {
                 NavigationLink { AboutView() } label: {
-                    SettingRow(icon: "info.circle.fill", color: .gray, title: "关于 iOSAgent", subtitle: "版本与链接")
+                    SettingRow(icon: "info.circle.fill",
+                               colors: [.gray, .gray],
+                               title: "关于 iOSAgent",
+                               subtitle: "版本与链接")
                 }
+            } header: {
+                Text("关于")
             }
         }
         .navigationTitle("设置")
         .listStyle(.insetGrouped)
         .scrollContentBackground(.visible)
         .background(Color(.systemGroupedBackground))
+        .onAppear { calculateCacheSize() }
+        .alert("清除缓存", isPresented: $showClearCacheAlert) {
+            Button("取消", role: .cancel) {}
+            Button("清除", role: .destructive) { clearCache() }
+        } message: {
+            Text("将删除所有生成的文件（.txt / .pptx）与临时附件，历史对话不会被删除。\n当前缓存：\(cacheSizeText)")
+        }
+    }
+
+    private func calculateCacheSize() {
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        guard let urls = try? FileManager.default.contentsOfDirectory(at: docs, includingPropertiesForKeys: [.fileSizeKey], options: .skipsHiddenFiles) else {
+            cacheSizeText = "0 B"
+            return
+        }
+        let total = urls.reduce(0) { sum, url in
+            let size = (try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0
+            return sum + size
+        }
+        cacheSizeText = byteCount(total)
+    }
+
+    private func clearCache() {
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        guard let urls = try? FileManager.default.contentsOfDirectory(at: docs, includingPropertiesForKeys: nil, options: .skipsHiddenFiles) else { return }
+        for url in urls {
+            // 只删除生成的文件，保留 conversations.json
+            if ["txt", "pptx"].contains(url.pathExtension.lowercased()) {
+                try? FileManager.default.removeItem(at: url)
+            }
+        }
+        calculateCacheSize()
+    }
+
+    private func byteCount(_ bytes: Int) -> String {
+        let formatter = ByteCountFormatter()
+        formatter.countStyle = .binary
+        return formatter.string(fromByteCount: Int64(bytes))
     }
 }
 
 struct SettingRow: View {
     let icon: String
-    let color: Color
+    let colors: [Color]
     let title: String
     let subtitle: String
+
     var body: some View {
         HStack(spacing: 14) {
             ZStack {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(color.opacity(0.15))
+                    .fill(LinearGradient(colors: colors.map { $0.opacity(0.18) }, startPoint: .topLeading, endPoint: .bottomTrailing))
                     .frame(width: 38, height: 38)
                 Image(systemName: icon)
                     .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(color)
+                    .foregroundStyle(LinearGradient(colors: colors, startPoint: .topLeading, endPoint: .bottomTrailing))
             }
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
@@ -189,6 +285,57 @@ struct CustomPromptView: View {
     }
 }
 
+// MARK: - 协议与声明
+
+enum LegalType: String {
+    case userAgreement = "用户协议"
+    case privacyPolicy = "隐私政策"
+    case disclaimer = "免责声明"
+}
+
+struct LegalView: View {
+    let type: LegalType
+
+    var body: some View {
+        ScrollView {
+            Text(legalText)
+                .font(.subheadline)
+                .lineSpacing(6)
+                .padding()
+        }
+        .background(Color(.systemGroupedBackground))
+        .navigationTitle(type.rawValue)
+    }
+
+    private var legalText: String {
+        switch type {
+        case .userAgreement:
+            return """
+            欢迎使用 iOSAgent。
+
+            1. 本应用为本地 AI 助手工具，通过调用 iOS 系统 API（EventKit、HealthKit、UserNotifications 等）以及用户自配的云端大模型 API 提供服务。
+            2. 用户需自行配置 API Key，并对自己输入的内容、生成的结果及执行的操作负责。
+            3. 禁止将本应用用于任何违反法律法规、侵犯他人权益或产生危害的用途。
+            4. 开发者保留随时更新本协议的权利，更新后的协议自发布之日起生效。
+            """
+        case .privacyPolicy:
+            return """
+            1. 本应用不收集、不上传、不共享用户的对话内容、联系人、健康数据、位置信息或任何个人隐私数据。
+            2. 所有系统能力（提醒、日历、健康等）仅在本地执行，数据始终保留在您的设备上。
+            3. 用户配置的 API Key、Base URL 等仅存储在 App 本地沙盒，不会上传至开发者服务器。
+            4. 与第三方云端大模型 API 的通信由用户自行发起，相关隐私政策以第三方服务提供商为准。
+            """
+        case .disclaimer:
+            return """
+            1. iOSAgent 提供的回答、文件生成、系统操作等仅供参考与辅助，不构成任何专业建议（包括但不限于医疗、法律、金融、投资建议）。
+            2. 由 AI 生成内容的准确性、完整性、合法性，以及由工具操作引发的系统状态变更，均由用户自行判断与承担。
+            3. 部分能力（如 HealthKit）受 iOS 签名与权限限制，可能无法在所有安装方式下正常工作。
+            4. 开发者不对因使用本应用而直接或间接导致的任何损失承担责任。
+            """
+        }
+    }
+}
+
 // MARK: - 关于
 
 struct AboutView: View {
@@ -242,7 +389,7 @@ struct AboutView: View {
     }
 
     private var appVersion: String {
-        (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "6.0"
+        (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "7.0"
     }
 }
 
