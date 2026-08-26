@@ -1,240 +1,44 @@
 import SwiftUI
 import EventKit
 
-// 首页 → 子页 状态机
-enum Screen: Hashable {
-    case home, chat, settings
-}
-
-// 首页卡片导航目标
-enum HomeRoute: Hashable {
-    case chat, settings
-}
-
 // 对话导航目标（被 NavigationStack path 使用）
 enum ChatRoute: Hashable {
     case chat(UUID)
     case reminders
+    case filesHistory
 }
 
 struct ContentView: View {
     @EnvironmentObject var store: ChatStore
     @EnvironmentObject var settings: SettingsStore
-    @State private var screen: Screen = .home
+    @State private var showSideMenu = false
+    @State private var showSettings = false
+    @State private var path = NavigationPath()
 
     var body: some View {
         ZStack {
-            HomeHubView(select: { screen = $0 })
-                .opacity(screen == .home ? 1 : 0)
-                .allowsHitTesting(screen == .home)
-                .zIndex(0)
+            ChatRootView(onMenu: { withAnimation(.spring()) { showSideMenu = true } }, path: $path)
 
-            if screen == .chat {
-                ChatRootView(onBack: { screen = .home })
-                    .zIndex(1)
-                    .transition(.asymmetric(insertion: .move(edge: .trailing), removal: .move(edge: .leading)))
-            }
-            if screen == .settings {
-                SettingsRootView(onBack: { screen = .home })
-                    .zIndex(1)
-                    .transition(.asymmetric(insertion: .move(edge: .trailing), removal: .move(edge: .leading)))
+            if showSettings {
+                SettingsRootView(onBack: { withAnimation(.spring()) { showSettings = false } })
+                    .zIndex(2)
+                    .transition(.asymmetric(insertion: .move(edge: .trailing), removal: .move(edge: .trailing)))
             }
         }
-        .animation(.spring(response: 0.45, dampingFraction: 0.85), value: screen)
+        .animation(.spring(response: 0.45, dampingFraction: 0.85), value: showSettings)
         .overlay {
+            if showSideMenu {
+                SideMenuOverlay(isPresented: $showSideMenu, path: $path, onSettings: { showSettings = true })
+                    .zIndex(3)
+                    .transition(.move(edge: .leading))
+            }
             if !settings.hasSeenWelcome {
                 WelcomeOverlay {
                     withAnimation(.easeInOut) { settings.hasSeenWelcome = true }
                 }
                 .transition(.opacity)
-                .zIndex(2)
+                .zIndex(4)
             }
-        }
-    }
-}
-
-// MARK: - 首页 Hub（双玻璃卡片 + 动态渐变背景）
-
-struct HomeHubView: View {
-    let select: (Screen) -> Void
-    @State private var appear = false
-
-    var body: some View {
-        ZStack {
-            LiquidBackground()
-            ScrollView {
-                VStack(spacing: 26) {
-                    VStack(spacing: 8) {
-                        Image(systemName: "sparkles")
-                            .font(.system(size: 36, weight: .semibold))
-                            .foregroundStyle(.tint)
-                        Text("iOSAgent")
-                            .font(.largeTitle.weight(.bold))
-                        Text("本地 AI 助手 · 可操作你的 iPhone")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding(.top, 56)
-                    .opacity(appear ? 1 : 0)
-                    .offset(y: appear ? 0 : 18)
-
-                    HomeCard(icon: "bubble.left.and.bubble.right.fill",
-                             title: "对话",
-                             subtitle: "与 AI 助手聊天、生成文件与 PPT",
-                             color: .accentColor,
-                             delay: 0.06) { select(.chat) }
-
-                    HomeCard(icon: "gearshape.fill",
-                             title: "设置",
-                             subtitle: "API、系统权限、关于",
-                             color: .orange,
-                             delay: 0.16) { select(.settings) }
-
-                    Spacer(minLength: 0)
-                }
-                .padding(.horizontal, 24)
-                .padding(.bottom, 40)
-            }
-        }
-        .onAppear { withAnimation(.easeOut(duration: 0.5)) { appear = true } }
-    }
-}
-
-struct HomeCard: View {
-    let icon: String
-    let title: String
-    let subtitle: String
-    let color: Color
-    let delay: Double
-    let action: () -> Void
-
-    @State private var appear = false
-    @State private var pressed = false
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 16) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .fill(LinearGradient(colors: [color, color.opacity(0.82)], startPoint: .topLeading, endPoint: .bottomTrailing))
-                    Image(systemName: icon)
-                        .font(.system(size: 26, weight: .semibold))
-                        .foregroundStyle(.white)
-                }
-                .frame(width: 56, height: 56)
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(title)
-                        .font(.title3.weight(.semibold))
-                        .foregroundStyle(.primary)
-                    Text(subtitle)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer(minLength: 0)
-                Image(systemName: "chevron.right")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.tertiary)
-            }
-            .padding(18)
-            .glassCard()
-            .scaleEffect(pressed ? 0.96 : 1.0)
-        }
-        .buttonStyle(.plain)
-        .opacity(appear ? 1 : 0)
-        .offset(y: appear ? 0 : 28)
-        .animation(.spring(response: 0.5, dampingFraction: 0.8).delay(delay), value: appear)
-        .simultaneousGesture(
-            DragGesture(minimumDistance: 0)
-                .onChanged { _ in pressed = true }
-                .onEnded { _ in pressed = false }
-        )
-        .onAppear { appear = true }
-    }
-}
-
-// MARK: - 液态玻璃动态背景（iOS16 用模糊色块近似，非 iOS26 GlassEffect）
-
-struct LiquidBackground: View {
-    @State private var animate = false
-    var body: some View {
-        ZStack {
-            Color(.systemGroupedBackground)
-            GeometryReader { geo in
-                let w = geo.size.width
-                let h = geo.size.height
-                Circle()
-                    .fill(Color.accentColor.opacity(0.28))
-                    .frame(width: w * 0.75, height: w * 0.75)
-                    .blur(radius: 70)
-                    .offset(x: animate ? w * 0.22 : -w * 0.2, y: -h * 0.08)
-                Circle()
-                    .fill(Color.pink.opacity(0.22))
-                    .frame(width: w * 0.6, height: w * 0.6)
-                    .blur(radius: 70)
-                    .offset(x: animate ? -w * 0.25 : w * 0.25, y: h * 0.28)
-                Circle()
-                    .fill(Color.indigo.opacity(0.2))
-                    .frame(width: w * 0.55, height: w * 0.55)
-                    .blur(radius: 70)
-                    .offset(x: 0, y: animate ? h * 0.22 : -h * 0.22)
-            }
-        }
-        .ignoresSafeArea()
-        .onAppear {
-            withAnimation(.easeInOut(duration: 9).repeatForever(autoreverses: true)) {
-                animate = true
-            }
-        }
-    }
-}
-
-// MARK: - 复用：玻璃卡片样式
-
-extension View {
-    func glassCard() -> some View {
-        self
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 24, style: .continuous)
-                    .stroke(Color.white.opacity(0.3), lineWidth: 1)
-            )
-            .shadow(color: .black.opacity(0.08), radius: 22, x: 0, y: 10)
-    }
-}
-
-// MARK: - 首次启动欢迎页
-
-struct WelcomeOverlay: View {
-    let onContinue: () -> Void
-
-    var body: some View {
-        ZStack {
-            Color.black.opacity(0.45)
-                .ignoresSafeArea()
-                .onTapGesture { }
-
-            VStack(spacing: 0) {
-                CapabilitiesView()
-                    .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-
-                Button {
-                    onContinue()
-                } label: {
-                    Text("开始使用")
-                        .font(.headline.weight(.semibold))
-                        .foregroundStyle(.white)
-                        .padding(.vertical, 14)
-                        .frame(maxWidth: .infinity)
-                        .background(LinearGradient(colors: [Color.accentColor, Color.accentColor.opacity(0.85)], startPoint: .top, endPoint: .bottom))
-                        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                }
-                .padding()
-            }
-            .background(Color(.systemBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
-            .shadow(color: .black.opacity(0.2), radius: 30, x: 0, y: 10)
-            .padding(.horizontal, 20)
         }
     }
 }
@@ -243,29 +47,31 @@ struct WelcomeOverlay: View {
 
 struct ChatRootView: View {
     @EnvironmentObject var store: ChatStore
-    let onBack: () -> Void
-    @State private var path = NavigationPath()
+    let onMenu: () -> Void
+    @Binding var path: NavigationPath
 
     var body: some View {
         NavigationStack(path: $path) {
             ChatRootList(path: $path)
-                .navigationTitle("对话")
+                .navigationTitle("iOSAgent")
                 .toolbar {
                     ToolbarItem(placement: .navigationBarLeading) {
                         Button {
-                            onBack()
+                            onMenu()
                         } label: {
-                            Image(systemName: "chevron.left")
-                                .font(.system(size: 15, weight: .semibold))
-                                .foregroundStyle(Color.accentColor)
-                                .padding(8)
-                                .background(Color.accentColor.opacity(0.12))
+                            Image(systemName: "line.3.horizontal")
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundStyle(.primary)
+                                .padding(10)
+                                .background(Color(.systemBackground))
                                 .clipShape(Circle())
+                                .shadow(color: .black.opacity(0.06), radius: 4, x: 0, y: 2)
                         }
                     }
                     ToolbarItem(placement: .navigationBarTrailing) {
                         Button {
                             let id = store.newConversation()
+                            path.removeLast(path.count)
                             path.append(ChatRoute.chat(id))
                         } label: {
                             Image(systemName: "square.and.pencil")
@@ -283,6 +89,8 @@ struct ChatRootView: View {
                         ChatView(conversationId: id, path: $path)
                     case .reminders:
                         RemindersView()
+                    case .filesHistory:
+                        FilesHistoryView()
                     }
                 }
         }
@@ -421,6 +229,25 @@ struct ChatRootList: View {
     }
 }
 
+struct ConversationRow: View {
+    let conversation: Conversation
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(conversation.title)
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+            if let last = conversation.messages.last {
+                Text(last.content)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+        }
+        .padding(.vertical, 4)
+    }
+}
+
 struct MiniReminderRow: View {
     let reminder: EKReminder
     let onComplete: () -> Void
@@ -457,6 +284,256 @@ struct MiniReminderRow: View {
     }
 }
 
+// MARK: - 左侧抽屉
+
+struct SideMenuOverlay: View {
+    @Binding var isPresented: Bool
+    @Binding var path: NavigationPath
+    var onSettings: () -> Void
+    @EnvironmentObject var store: ChatStore
+
+    var body: some View {
+        GeometryReader { geo in
+            ZStack(alignment: .leading) {
+                Color.black.opacity(0.35)
+                    .ignoresSafeArea()
+                    .onTapGesture { isPresented = false }
+
+                HStack(alignment: .top, spacing: 0) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        sideMenuHeader
+                        sideMenuList
+                        Spacer(minLength: 0)
+                        sideMenuFooter
+                    }
+                    .frame(width: min(geo.size.width * 0.78, 320))
+                    .frame(maxHeight: .infinity)
+                    .background(.ultraThinMaterial)
+                    .shadow(color: .black.opacity(0.18), radius: 18, x: 8, y: 0)
+
+                    Spacer(minLength: 0)
+                }
+            }
+        }
+    }
+
+    private var sideMenuHeader: some View {
+        HStack(spacing: 14) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(LinearGradient(colors: [Color.accentColor, Color.accentColor.opacity(0.75)], startPoint: .topLeading, endPoint: .bottomTrailing))
+                    .frame(width: 48, height: 48)
+                Image(systemName: "sparkles")
+                    .font(.system(size: 22, weight: .bold))
+                    .foregroundStyle(.white)
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                Text("iOSAgent")
+                    .font(.title3.weight(.bold))
+                Text("本地 AI 助手 · 可操作 iPhone")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 18)
+        .padding(.top, 18)
+        .padding(.bottom, 12)
+    }
+
+    private var sideMenuList: some View {
+        List {
+            Section {
+                SideMenuButton(icon: "plus", color: .blue, title: "新建对话") {
+                    let id = store.newConversation()
+                    path.removeLast(path.count)
+                    path.append(ChatRoute.chat(id))
+                    isPresented = false
+                }
+                if !store.sorted.isEmpty {
+                    ForEach(store.sorted) { conversation in
+                        SideMenuButton(icon: "bubble.left", color: .indigo, title: conversation.title) {
+                            path.append(ChatRoute.chat(conversation.id))
+                            isPresented = false
+                        }
+                    }
+                } else {
+                    Text("暂无历史对话")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            } header: {
+                Text("对话")
+            }
+
+            Section {
+                SideMenuButton(icon: "checkmark.square.fill", color: .green, title: "待办 / 提醒") {
+                    path.append(ChatRoute.reminders)
+                    isPresented = false
+                }
+            } header: {
+                Text("效率")
+            }
+
+            Section {
+                SideMenuButton(icon: "folder.fill", color: .orange, title: "生成文件") {
+                    path.append(ChatRoute.filesHistory)
+                    isPresented = false
+                }
+            } header: {
+                Text("创作")
+            }
+        }
+        .listStyle(.insetGrouped)
+        .scrollContentBackground(.visible)
+    }
+
+    private var sideMenuFooter: some View {
+        VStack(spacing: 0) {
+            Divider()
+            Button {
+                isPresented = false
+                onSettings()
+            } label: {
+                HStack(spacing: 14) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(Color.gray.opacity(0.15))
+                            .frame(width: 38, height: 38)
+                        Image(systemName: "gearshape.fill")
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundStyle(.gray)
+                    }
+                    Text("设置")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                }
+                .padding(.horizontal, 18)
+                .padding(.vertical, 14)
+            }
+            .buttonStyle(.plain)
+        }
+    }
+}
+
+struct SideMenuButton: View {
+    let icon: String
+    let color: Color
+    let title: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(color.opacity(0.15))
+                        .frame(width: 34, height: 34)
+                    Image(systemName: icon)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(color)
+                }
+                Text(title)
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+            }
+            .padding(.vertical, 4)
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - 生成文件历史
+
+struct FilesHistoryView: View {
+    @State private var files: [URL] = []
+
+    var body: some View {
+        List {
+            if files.isEmpty {
+                Section {
+                    Text("还没有生成文件")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .padding(.vertical, 20)
+                }
+            } else {
+                Section {
+                    ForEach(files, id: \.self) { url in
+                        HStack(spacing: 12) {
+                            Image(systemName: fileIcon(for: url))
+                                .font(.system(size: 18, weight: .semibold))
+                                .foregroundStyle(Color.accentColor)
+                                .frame(width: 36, height: 36)
+                                .background(Color.accentColor.opacity(0.12))
+                                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(url.lastPathComponent)
+                                    .font(.subheadline.weight(.medium))
+                                    .lineLimit(1)
+                                Text(modifiedString(for: url))
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer(minLength: 0)
+                            ShareLink(item: url) {
+                                Image(systemName: "square.and.arrow.up")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.white)
+                                    .padding(8)
+                                    .background(Color.accentColor)
+                                    .clipShape(Circle())
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        .padding(.vertical, 3)
+                    }
+                }
+            }
+        }
+        .listStyle(.insetGrouped)
+        .scrollContentBackground(.visible)
+        .background(Color(.systemGroupedBackground))
+        .navigationTitle("生成文件")
+        .onAppear { scanFiles() }
+    }
+
+    private func scanFiles() {
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        guard let urls = try? FileManager.default.contentsOfDirectory(at: docs, includingPropertiesForKeys: [.contentModificationDateKey], options: .skipsHiddenFiles) else { return }
+        files = urls.filter { ["txt", "pptx"].contains($0.pathExtension.lowercased()) }
+            .sorted { a, b in
+                let da = (try? a.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? .distantPast
+                let db = (try? b.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? .distantPast
+                return da > db
+            }
+    }
+
+    private func fileIcon(for url: URL) -> String {
+        switch url.pathExtension.lowercased() {
+        case "pptx": return "play.rectangle.fill"
+        case "txt": return "doc.text.fill"
+        default: return "doc.fill"
+        }
+    }
+
+    private func modifiedString(for url: URL) -> String {
+        guard let date = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate else { return "" }
+        let fmt = DateFormatter()
+        fmt.locale = Locale(identifier: "zh_CN")
+        fmt.dateStyle = .short
+        fmt.timeStyle = .short
+        return fmt.string(from: date)
+    }
+}
+
 // MARK: - 设置 Tab
 
 struct SettingsRootView: View {
@@ -482,21 +559,38 @@ struct SettingsRootView: View {
     }
 }
 
-struct ConversationRow: View {
-    let conversation: Conversation
+// MARK: - 首次启动欢迎页
+
+struct WelcomeOverlay: View {
+    let onContinue: () -> Void
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(conversation.title)
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(.primary)
-                .lineLimit(1)
-            if let last = conversation.messages.last {
-                Text(last.content)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+        ZStack {
+            Color.black.opacity(0.45)
+                .ignoresSafeArea()
+                .onTapGesture { }
+
+            VStack(spacing: 0) {
+                CapabilitiesView()
+                    .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+
+                Button {
+                    onContinue()
+                } label: {
+                    Text("开始使用")
+                        .font(.headline.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .padding(.vertical, 14)
+                        .frame(maxWidth: .infinity)
+                        .background(LinearGradient(colors: [Color.accentColor, Color.accentColor.opacity(0.85)], startPoint: .top, endPoint: .bottom))
+                        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                }
+                .padding()
             }
+            .background(Color(.systemBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+            .shadow(color: .black.opacity(0.2), radius: 30, x: 0, y: 10)
+            .padding(.horizontal, 20)
         }
-        .padding(.vertical, 4)
     }
 }
