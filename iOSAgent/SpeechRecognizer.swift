@@ -100,6 +100,28 @@ final class SpeechRecognizer: NSObject, ObservableObject {
         transcript = ""
     }
 
+    /// 对录音文件做一次性识别（服务端失败后的回退）
+    func transcribeFile(url: URL) async throws -> String {
+        guard await requestAuthorization() else { throw RecognizerError.notAuthorized }
+        guard let recognizer = speechRecognizer, recognizer.isAvailable else { throw RecognizerError.unavailable }
+
+        return try await withCheckedThrowingContinuation { continuation in
+            let request = SFSpeechURLRecognitionRequest(url: url)
+            request.requiresOnDeviceRecognition = false
+            recognitionTask = recognizer.recognitionTask(with: request) { [weak self] result, error in
+                if let error = error {
+                    continuation.resume(throwing: error)
+                    self?.recognitionTask = nil
+                    return
+                }
+                if let result = result, result.isFinal {
+                    continuation.resume(returning: result.bestTranscription.formattedString)
+                    self?.recognitionTask = nil
+                }
+            }
+        }
+    }
+
     enum RecognizerError: Error, LocalizedError {
         case notAuthorized
         case unavailable
@@ -116,4 +138,70 @@ extension SpeechRecognizer: SFSpeechRecognizerDelegate {
     nonisolated func speechRecognizer(_ speechRecognizer: SFSpeechRecognizer, availabilityDidChange available: Bool) {
         // 可用性变化时暂不处理，调用处会检查 isAvailable
     }
+}
+
+// MARK: - 按住说话录音器
+
+@MainActor
+final class VoiceRecorder: NSObject, ObservableObject {
+    @Published var isRecording = false
+    @Published var errorMessage: String?
+
+    private var recorder: AVAudioRecorder?
+    private var recordingURL: URL?
+
+    private var recordURL: URL {
+        FileManager.default.temporaryDirectory.appendingPathComponent("iosagent_recording.m4a")
+    }
+
+    func start() async {
+        do {
+            let session = AVAudioSession.sharedInstance()
+            let granted = await requestPermission()
+            guard granted else {
+                errorMessage = "需要麦克风权限"
+                return
+            }
+            try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetooth])
+            try session.setActive(true)
+
+            let settings: [String: Any] = [
+                AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
+                AVSampleRateKey: 16000,
+                AVNumberOfChannelsKey: 1,
+                AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue
+            ]
+            let url = recordURL
+            if FileManager.default.fileExists(atPath: url.path) {
+                try? FileManager.default.removeItem(at: url)
+            }
+            recorder = try AVAudioRecorder(url: url, settings: settings)
+            recorder?.delegate = self
+            recorder?.isMeteringEnabled = true
+            recorder?.record()
+            recordingURL = url
+            isRecording = true
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    @discardableResult
+    func stop() -> URL? {
+        recorder?.stop()
+        isRecording = false
+        return recordingURL
+    }
+
+    private func requestPermission() async -> Bool {
+        await withCheckedContinuation { continuation in
+            AVAudioSession.sharedInstance().requestRecordPermission { granted in
+                continuation.resume(returning: granted)
+            }
+        }
+    }
+}
+
+extension VoiceRecorder: AVAudioRecorderDelegate {
+    nonisolated func audioRecorderDidFinishRecording(_ recorder: AVAudioRecorder, successfully flag: Bool) {}
 }

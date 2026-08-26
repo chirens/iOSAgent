@@ -16,15 +16,17 @@ struct StoredMessage: Codable, Identifiable {
     var toolCallId: String? = nil            // tool 消息对应
     var toolName: String? = nil
     var imageBase64: String? = nil           // 仅 user 消息可携带一张截图
+    var fileURL: URL? = nil                  // 工具生成的本地文件
 
     init(role: String, content: String, toolCalls: [StoredToolCall]? = nil,
-         toolCallId: String? = nil, toolName: String? = nil, imageBase64: String? = nil) {
+         toolCallId: String? = nil, toolName: String? = nil, imageBase64: String? = nil, fileURL: URL? = nil) {
         self.role = role
         self.content = content
         self.toolCalls = toolCalls
         self.toolCallId = toolCallId
         self.toolName = toolName
         self.imageBase64 = imageBase64
+        self.fileURL = fileURL
     }
 }
 

@@ -3,7 +3,9 @@ import PhotosUI
 
 struct ChatView: View {
     let conversationId: UUID
+    @Binding var path: NavigationPath
     @EnvironmentObject var store: ChatStore
+    @StateObject private var voice = VoiceRecorder()
     @StateObject private var speech = SpeechRecognizer()
     @State private var input = ""
     @State private var isLoading = false
@@ -15,28 +17,6 @@ struct ChatView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // 顶部导航：更紧凑
-            HStack(spacing: 12) {
-                Text(store.selected?.title ?? "对话")
-                    .font(.headline.weight(.semibold))
-                    .lineLimit(1)
-                Spacer()
-                Button {
-                    _ = store.newConversation()
-                } label: {
-                    Image(systemName: "square.and.pencil")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(Color.accentColor)
-                        .padding(8)
-                        .background(Color.accentColor.opacity(0.12))
-                        .clipShape(Circle())
-                }
-            }
-            .padding(.horizontal)
-            .padding(.vertical, 10)
-            .background(.ultraThinMaterial)
-
-            // 消息列表
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(spacing: 16) {
@@ -73,7 +53,7 @@ struct ChatView: View {
                     .padding(.horizontal)
             }
 
-            // 输入栏：圆角胶囊、更灵动
+            // 输入栏
             HStack(spacing: 10) {
                 PhotosPicker(selection: $photoItem, matching: .images) {
                     Image(systemName: "photo")
@@ -110,18 +90,21 @@ struct ChatView: View {
                         .padding(.horizontal, 12)
                         .padding(.vertical, 8)
 
-                    // 语音按钮
-                    Button {
-                        toggleRecording()
-                    } label: {
-                        Image(systemName: speech.isRecording ? "waveform" : "mic.fill")
-                            .font(.system(size: 18))
-                            .foregroundStyle(speech.isRecording ? .red : Color.accentColor)
-                            .padding(8)
-                            .background(speech.isRecording ? Color.red.opacity(0.12) : Color.accentColor.opacity(0.12))
-                            .clipShape(Circle())
-                    }
-                    .buttonStyle(.plain)
+                    // 按住说话
+                    Image(systemName: voice.isRecording ? "waveform.circle.fill" : "mic.fill")
+                        .font(.system(size: 18))
+                        .foregroundStyle(voice.isRecording ? .red : Color.accentColor)
+                        .padding(8)
+                        .background(voice.isRecording ? Color.red.opacity(0.12) : Color.accentColor.opacity(0.12))
+                        .clipShape(Circle())
+                        .onLongPressGesture(minimumDuration: .infinity, perform: {}, onPressingChanged: { pressing in
+                            if pressing {
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                Task { await voice.start() }
+                            } else {
+                                Task { await finishVoice() }
+                            }
+                        })
                 }
                 .background(Color(.systemBackground))
                 .clipShape(Capsule())
@@ -140,14 +123,33 @@ struct ChatView: View {
             .background(.ultraThinMaterial)
         }
         .id(conversationId)
+        .navigationTitle(store.selected?.title ?? "对话")
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button {
+                    let id = store.newConversation()
+                    path.removeLast(path.count)
+                    path.append(ChatRoute.chat(id))
+                } label: {
+                    Image(systemName: "square.and.pencil")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(Color.accentColor)
+                        .padding(8)
+                        .background(Color.accentColor.opacity(0.12))
+                        .clipShape(Circle())
+                }
+            }
+        }
         .alert("麦克风/语音识别未授权", isPresented: $showMicError) {
             Button("确定", role: .cancel) {}
         } message: {
             Text("请在系统设置中为 iOSAgent 开启麦克风和语音识别权限。")
         }
-            .onReceive(speech.$transcript) { text in
+        .onReceive(speech.$transcript) { text in
+            if !text.isEmpty {
                 self.input = text
             }
+        }
     }
 
     private var messages: [StoredMessage] {
@@ -162,16 +164,24 @@ struct ChatView: View {
         }
     }
 
-    private func toggleRecording() {
-        if speech.isRecording {
-            speech.stopRecording()
-        } else {
-            Task {
-                do {
-                    try await speech.startRecording()
-                } catch {
-                    showMicError = true
-                }
+    private func finishVoice() async {
+        guard let url = voice.stop() else { return }
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        do {
+            let text = try await AgentClient.shared.transcribe(audioURL: url)
+            guard !text.isEmpty else {
+                throw NSError(domain: "Voice", code: 0, userInfo: [NSLocalizedDescriptionKey: "未能识别到语音内容"])
+            }
+            input = text
+        } catch {
+            // 服务端不可用则回退本地识别
+            do {
+                let text = try await speech.transcribeFile(url: url)
+                input = text
+            } catch {
+                errorText = "语音识别失败：\(error.localizedDescription)"
+                showMicError = true
             }
         }
     }
@@ -181,7 +191,7 @@ struct ChatView: View {
         guard !text.isEmpty else { return }
         errorText = nil
         input = ""
-        speech.stopRecording()
+        voice.stop()
 
         var msgs = messages
         msgs.append(StoredMessage(role: "user", content: text, imageBase64: nil))
@@ -194,7 +204,7 @@ struct ChatView: View {
 
         Task {
             do {
-                let (updated, final) = try await AgentClient.shared.run(
+                let (updated, _) = try await AgentClient.shared.run(
                     messages: msgs,
                     image: image,
                     tools: SettingsStore.shared.anyToolEnabled ? SystemTools.allTools : []
@@ -230,13 +240,6 @@ struct MessageBubble: View {
                     .background(bubbleBackground)
                     .foregroundStyle(message.role == "user" ? .white : .primary)
                     .clipShape(RoundedRectangle(cornerRadius: message.role == "user" ? 22 : 18, style: .continuous))
-                    .contextMenu {
-                        Button {
-                            UIPasteboard.general.string = message.content
-                        } label: {
-                            Label("复制", systemImage: "doc.on.doc")
-                        }
-                    }
 
                 if message.role == "assistant" {
                     HStack(spacing: 4) {
@@ -248,10 +251,35 @@ struct MessageBubble: View {
                     .foregroundStyle(.secondary)
                     .padding(.leading, 4)
                 }
+
+                if let url = message.fileURL {
+                    ShareLink(item: url) {
+                        Label("分享文件", systemImage: "square.and.arrow.up")
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(Color.accentColor)
+                    }
+                    .padding(.leading, 4)
+                }
+
+                if message.role == "tool" {
+                    contextMenu
+                }
             }
             .frame(maxWidth: 300, alignment: message.role == "user" ? .trailing : .leading)
 
             if message.role != "user" { Spacer(minLength: 28) }
+        }
+    }
+
+    private var contextMenu: some View {
+        HStack(spacing: 8) {
+            Button {
+                UIPasteboard.general.string = message.content
+            } label: {
+                Image(systemName: "doc.on.doc")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 

@@ -28,6 +28,8 @@ struct SettingsView: View {
                 .autocapitalization(.none)
             TextField("模型名", text: $settings.modelName)
                 .autocapitalization(.none)
+            TextField("语音模型（默认 whisper-1）", text: $settings.sttModelName)
+                .autocapitalization(.none)
 
             HStack {
                 Spacer()
@@ -76,7 +78,7 @@ struct SettingsView: View {
             HStack {
                 Text("版本")
                 Spacer()
-                Text("3.0")
+                Text("5.0")
                     .foregroundStyle(.secondary)
             }
             HStack {

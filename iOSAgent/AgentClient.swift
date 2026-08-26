@@ -104,7 +104,8 @@ final class AgentClient {
                 let result = await SystemTools.execute(tool: tc.name, call: args)
                 let content = toolResultString(result)
                 out.append(StoredMessage(role: "tool", content: content,
-                                         toolCallId: tc.id, toolName: tc.name))
+                                         toolCallId: tc.id, toolName: tc.name,
+                                         fileURL: result.fileURL))
             }
         }
 
@@ -119,6 +120,50 @@ final class AgentClient {
         let (_, final) = try await run(messages: [StoredMessage(role: "user", content: text)],
                                        image: image, tools: [])
         return final
+    }
+
+    /// 语音转文字：调用 OpenAI 兼容的 /audio/transcriptions
+    func transcribe(audioURL: URL) async throws -> String {
+        let settings = SettingsStore.shared
+        let base = settings.apiBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let key = settings.apiKey
+        let model = settings.sttModelName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !key.isEmpty else { throw AgentError.missingAPIKey }
+        guard let url = URL(string: base + "/audio/transcriptions") else {
+            throw AgentError.invalidResponse
+        }
+
+        let boundary = UUID().uuidString
+        var body = Data()
+        func append(_ string: String) {
+            body.append(string.data(using: .utf8) ?? Data())
+        }
+        append("--\(boundary)\r\n")
+        append("Content-Disposition: form-data; name=\"model\"\r\n\r\n")
+        append("\(model)\r\n")
+        append("--\(boundary)\r\n")
+        append("Content-Disposition: form-data; name=\"file\"; filename=\"recording.m4a\"\r\n")
+        append("Content-Type: audio/m4a\r\n\r\n")
+        body.append(try Data(contentsOf: audioURL))
+        append("\r\n--\(boundary)--\r\n")
+
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
+        req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        req.httpBody = body
+
+        let (data, resp) = try await session.data(for: req)
+        if let http = resp as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+            let msg = String(data: data, encoding: .utf8) ?? "HTTP \(http.statusCode)"
+            throw AgentError.http(http.statusCode, msg)
+        }
+        guard let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let text = obj["text"] as? String else {
+            throw AgentError.invalidResponse
+        }
+        return text
     }
 
     // MARK: - 消息序列化
@@ -209,6 +254,7 @@ final class AgentClient {
         5. 如果用户没有指定标题，根据内容推断一个合适的标题。
         6. 工具执行后，根据结果用一句话向用户确认，不要暴露内部 ID 或 JSON。
         7. 如果某个能力未开启，引导用户到设置页开启，不要重复尝试调用失败工具。
+        8. 当用户要求生成文件、PPT、写报告、整理数据时，使用 create_file（文本/md/csv）或 create_ppt（PPT）。先自己规划内容结构，再调用工具生成；生成后用一句话告诉用户文件已保存，可点击分享按钮导出。
 
         示例：
         用户：5分钟后提醒我喝水
