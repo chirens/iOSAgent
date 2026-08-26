@@ -593,10 +593,11 @@ struct SettingsRootView: View {
                         Color.clear
                             .frame(width: 44)
                             .contentShape(Rectangle())
-                            .gesture(
-                                DragGesture()
+                            .highPriorityGesture(
+                                DragGesture(minimumDistance: 16)
+                                    .onChanged { _ in }
                                     .onEnded { value in
-                                        if value.translation.width > 60 {
+                                        if value.translation.width > 50 {
                                             onBack()
                                         }
                                     }
