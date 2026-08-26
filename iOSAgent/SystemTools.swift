@@ -474,6 +474,17 @@ final class SystemTools {
         let days = int(call, "days") ?? 7
         let store = SettingsStore.shared.healthStore
 
+        // 授权状态预检：给出明确诊断，而非笼统失败
+        if let stepType = HKQuantityType.quantityType(forIdentifier: .stepCount) {
+            let st = store.authorizationStatus(for: stepType)
+            if st == .notDetermined {
+                return ToolResult(success: false, message: "健康数据尚未授权。请在 App“设置 → 系统权限”中开启健康，并用包含 HealthKit 能力的付费开发者描述文件重签 IPA。免费 Apple ID 侧载通常无法开启 HealthKit 能力，会导致授权被系统拒绝。", data: nil)
+            }
+            if st == .sharingDenied {
+                return ToolResult(success: false, message: "健康数据读取被拒绝。请在 iOS 系统“设置 → 隐私与安全性 → 健康”中重新允许 iOSAgent 读取。", data: nil)
+            }
+        }
+
         let end = Date()
         let start = Calendar.current.date(byAdding: .day, value: -days, to: end)!
 
