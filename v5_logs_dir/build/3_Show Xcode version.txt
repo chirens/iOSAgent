@@ -1,6 +1,0 @@
-﻿2026-08-26T02:13:52.1659250Z ##[group]Run xcodebuild -version
-2026-08-26T02:13:52.1659820Z [36;1mxcodebuild -version[0m
-2026-08-26T02:13:52.1709560Z shell: /bin/bash -e {0}
-2026-08-26T02:13:52.1709980Z ##[endgroup]
-2026-08-26T02:13:52.5586470Z Xcode 26.6
-2026-08-26T02:13:52.5598020Z Build version 17F113
