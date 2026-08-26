@@ -129,20 +129,9 @@ struct ChatView: View {
                         .padding(.vertical, 8)
 
                     // 按住说话
-                    Image(systemName: voice.isRecording ? "waveform.circle.fill" : "mic.fill")
-                        .font(.system(size: 18))
-                        .foregroundStyle(voice.isRecording ? .red : Color.accentColor)
-                        .padding(8)
-                        .background(voice.isRecording ? Color.red.opacity(0.12) : Color.accentColor.opacity(0.12))
-                        .clipShape(Circle())
-                        .onLongPressGesture(minimumDuration: .infinity, perform: {}, onPressingChanged: { pressing in
-                            if pressing {
-                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                                Task { await voice.start() }
-                            } else {
-                                Task { await finishVoice() }
-                            }
-                        })
+                    VoiceButton(voice: voice,
+                                onStart: { Task { await voice.start() } },
+                                onFinish: { Task { await finishVoice() } })
                 }
                 .background(Color(.systemBackground))
                 .clipShape(Capsule())
@@ -296,7 +285,7 @@ struct ChatView: View {
         voice.stop()
 
         var msgs = messages
-        var imageToSend: UIImage? = selectedImage
+        let imageToSend: UIImage? = selectedImage
         var fileNote: String?
 
         if let fileURL = selectedFileURL, let fileName = selectedFileName {
@@ -333,6 +322,30 @@ struct ChatView: View {
             }
             isLoading = false
         }
+    }
+}
+
+// 语音按钮独立成子视图，避免输入栏 HStack 表达式过大导致编译器无法在合理时间内类型检查
+struct VoiceButton: View {
+    @ObservedObject var voice: VoiceRecorder
+    let onStart: () -> Void
+    let onFinish: () -> Void
+
+    var body: some View {
+        Image(systemName: voice.isRecording ? "waveform.circle.fill" : "mic.fill")
+            .font(.system(size: 18))
+            .foregroundStyle(voice.isRecording ? .red : Color.accentColor)
+            .padding(8)
+            .background(voice.isRecording ? Color.red.opacity(0.12) : Color.accentColor.opacity(0.12))
+            .clipShape(Circle())
+            .onLongPressGesture(minimumDuration: .infinity, perform: {}, onPressingChanged: { pressing in
+                if pressing {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    onStart()
+                } else {
+                    onFinish()
+                }
+            })
     }
 }
 
