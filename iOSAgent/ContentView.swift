@@ -60,12 +60,10 @@ struct ChatRootView: View {
                             onMenu()
                         } label: {
                             Image(systemName: "line.3.horizontal")
-                                .font(.system(size: 16, weight: .semibold))
+                                .font(.system(size: 19, weight: .semibold))
                                 .foregroundStyle(.primary)
-                                .padding(10)
-                                .background(Color(.systemBackground))
-                                .clipShape(Circle())
-                                .shadow(color: .black.opacity(0.06), radius: 4, x: 0, y: 2)
+                                .frame(width: 34, height: 34)
+                                .contentShape(Rectangle())
                         }
                     }
                     ToolbarItem(placement: .navigationBarTrailing) {
@@ -75,11 +73,10 @@ struct ChatRootView: View {
                             path.append(ChatRoute.chat(id))
                         } label: {
                             Image(systemName: "square.and.pencil")
-                                .font(.system(size: 15, weight: .semibold))
+                                .font(.system(size: 18, weight: .semibold))
                                 .foregroundStyle(Color.accentColor)
-                                .padding(8)
-                                .background(Color.accentColor.opacity(0.12))
-                                .clipShape(Circle())
+                                .frame(width: 34, height: 34)
+                                .contentShape(Rectangle())
                         }
                     }
                 }
@@ -93,6 +90,14 @@ struct ChatRootView: View {
                         FilesHistoryView()
                     }
                 }
+                .gesture(
+                    DragGesture(coordinateSpace: .local)
+                        .onEnded { value in
+                            if path.count == 0, value.startLocation.x < 44, value.translation.width > 60 {
+                                onMenu()
+                            }
+                        }
+                )
         }
     }
 }
@@ -244,7 +249,7 @@ struct ConversationRow: View {
                     .lineLimit(1)
             }
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, 3)
     }
 }
 
@@ -272,7 +277,7 @@ struct MiniReminderRow: View {
             }
             Spacer()
         }
-        .padding(.vertical, 3)
+        .padding(.vertical, 1)
     }
 
     private var dueString: String? {
@@ -313,6 +318,14 @@ struct SideMenuOverlay: View {
 
                     Spacer(minLength: 0)
                 }
+                .gesture(
+                    DragGesture()
+                        .onEnded { value in
+                            if value.translation.width > 60 {
+                                isPresented = false
+                            }
+                        }
+                )
             }
         }
     }
@@ -443,7 +456,7 @@ struct SideMenuButton: View {
                     .lineLimit(1)
                 Spacer(minLength: 0)
             }
-            .padding(.vertical, 4)
+            .padding(.vertical, 2)
         }
         .buttonStyle(.plain)
     }
@@ -547,11 +560,10 @@ struct SettingsRootView: View {
                             onBack()
                         } label: {
                             Image(systemName: "chevron.left")
-                                .font(.system(size: 15, weight: .semibold))
+                                .font(.system(size: 19, weight: .semibold))
                                 .foregroundStyle(Color.accentColor)
-                                .padding(8)
-                                .background(Color.accentColor.opacity(0.12))
-                                .clipShape(Circle())
+                                .frame(width: 34, height: 34)
+                                .contentShape(Rectangle())
                         }
                     }
                 }
