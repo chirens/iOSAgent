@@ -37,4 +37,31 @@ enum PPTXTemplate {
     static let p_ppt_slideLayouts__rels_slideLayout10_xml_rels: String = "<?xml version='1.0' encoding='UTF-8' standalone='yes'?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster\" Target=\"../slideMasters/slideMaster1.xml\"/></Relationships>"
     static let p_ppt_slides_slide1_xml: String = "<?xml version='1.0' encoding='UTF-8' standalone='yes'?><p:sld xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" xmlns:p=\"http://schemas.openxmlformats.org/presentationml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\"><p:cSld><p:spTree><p:nvGrpSpPr><p:cNvPr id=\"1\" name=\"\"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/></p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>"
     static let p_ppt_slides__rels_slide1_xml_rels: String = "<?xml version='1.0' encoding='UTF-8' standalone='yes'?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout\" Target=\"../slideLayouts/slideLayout7.xml\"/></Relationships>"
+    static let slideLayoutXMLs: [String] = [
+        p_ppt_slideLayouts_slideLayout11_xml,
+        p_ppt_slideLayouts_slideLayout1_xml,
+        p_ppt_slideLayouts_slideLayout2_xml,
+        p_ppt_slideLayouts_slideLayout3_xml,
+        p_ppt_slideLayouts_slideLayout4_xml,
+        p_ppt_slideLayouts_slideLayout5_xml,
+        p_ppt_slideLayouts_slideLayout6_xml,
+        p_ppt_slideLayouts_slideLayout7_xml,
+        p_ppt_slideLayouts_slideLayout8_xml,
+        p_ppt_slideLayouts_slideLayout9_xml,
+        p_ppt_slideLayouts_slideLayout10_xml,
+    ]
+
+    static let slideLayoutRels: [String] = [
+        p_ppt_slideLayouts__rels_slideLayout11_xml_rels,
+        p_ppt_slideLayouts__rels_slideLayout1_xml_rels,
+        p_ppt_slideLayouts__rels_slideLayout2_xml_rels,
+        p_ppt_slideLayouts__rels_slideLayout3_xml_rels,
+        p_ppt_slideLayouts__rels_slideLayout4_xml_rels,
+        p_ppt_slideLayouts__rels_slideLayout5_xml_rels,
+        p_ppt_slideLayouts__rels_slideLayout6_xml_rels,
+        p_ppt_slideLayouts__rels_slideLayout7_xml_rels,
+        p_ppt_slideLayouts__rels_slideLayout8_xml_rels,
+        p_ppt_slideLayouts__rels_slideLayout9_xml_rels,
+        p_ppt_slideLayouts__rels_slideLayout10_xml_rels,
+    ]
 }
