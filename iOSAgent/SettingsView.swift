@@ -1,5 +1,13 @@
 import SwiftUI
 
+enum SettingsRoute: Hashable {
+    case api
+    case permissions
+    case customPrompt
+    case legal(LegalType)
+    case about
+}
+
 struct SettingsView: View {
     @EnvironmentObject var settings: SettingsStore
     @State private var showClearCacheAlert = false
@@ -9,19 +17,19 @@ struct SettingsView: View {
         List {
             // 核心设置
             Section {
-                NavigationLink { APISettingsView() } label: {
+                NavigationLink(value: SettingsRoute.api) {
                     SettingRow(icon: "key.fill",
                                colors: [.blue, .cyan],
                                title: "API 设置",
                                subtitle: "Base URL · 模型 · 连接测试")
                 }
-                NavigationLink { PermissionsView() } label: {
+                NavigationLink(value: SettingsRoute.permissions) {
                     SettingRow(icon: "lock.shield.fill",
                                colors: [.orange, .yellow],
                                title: "系统权限",
                                subtitle: "健康 / 提醒 / 日历 / 相册…")
                 }
-                NavigationLink { CustomPromptView() } label: {
+                NavigationLink(value: SettingsRoute.customPrompt) {
                     SettingRow(icon: "text.quote",
                                colors: [.purple, .pink],
                                title: "自定义系统提示",
@@ -48,19 +56,19 @@ struct SettingsView: View {
 
             // 协议与声明
             Section {
-                NavigationLink { LegalView(type: .userAgreement) } label: {
+                NavigationLink(value: SettingsRoute.legal(.userAgreement)) {
                     SettingRow(icon: "doc.text.fill",
                                colors: [.indigo, .purple],
                                title: "用户协议",
                                subtitle: "使用条款与行为规范")
                 }
-                NavigationLink { LegalView(type: .privacyPolicy) } label: {
+                NavigationLink(value: SettingsRoute.legal(.privacyPolicy)) {
                     SettingRow(icon: "hand.raised.fill",
                                colors: [.green, .teal],
                                title: "隐私政策",
                                subtitle: "数据收集与使用说明")
                 }
-                NavigationLink { LegalView(type: .disclaimer) } label: {
+                NavigationLink(value: SettingsRoute.legal(.disclaimer)) {
                     SettingRow(icon: "exclamationmark.shield.fill",
                                colors: [.gray, .secondary],
                                title: "免责声明",
@@ -72,7 +80,7 @@ struct SettingsView: View {
 
             // 关于
             Section {
-                NavigationLink { AboutView() } label: {
+                NavigationLink(value: SettingsRoute.about) {
                     SettingRow(icon: "info.circle.fill",
                                colors: [.gray, .gray],
                                title: "关于 同步",

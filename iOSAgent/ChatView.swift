@@ -120,6 +120,23 @@ struct ChatView: View {
                 .padding(.top, 4)
             }
 
+            // @技能 提示：输入以 @ 开头时列出可用技能
+            if input.hasPrefix("@") {
+                HStack(spacing: 6) {
+                    Text("指定技能：")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    ForEach(SkillRouter.shared.allSkills) { skill in
+                        Text("@\(skill.name)")
+                            .font(.caption2.weight(.medium))
+                            .foregroundStyle(Color.accentColor)
+                    }
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal)
+                .padding(.top, 4)
+            }
+
             // 输入栏
             HStack(spacing: 10) {
                 Menu {
@@ -148,7 +165,7 @@ struct ChatView: View {
                 }
 
                 HStack(spacing: 8) {
-                TextField("说点什么…", text: $input, axis: .vertical)
+                TextField("说点什么…（输入 @ 可指定技能）", text: $input, axis: .vertical)
                     .lineLimit(1...5)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
@@ -304,14 +321,25 @@ struct ChatView: View {
     }
 
     private func send() {
-        let text = input.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
-        activeSkills = SkillRouter.shared.match(input: text)
+        let raw = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !raw.isEmpty else { return }
+
+        let explicit = SkillRouter.shared.matchExplicit(input: raw)
+        let text: String
+        if let skills = explicit {
+            text = SkillRouter.shared.stripSkillPrefix(raw)
+            activeSkills = skills
+        } else {
+            text = raw
+            activeSkills = SkillRouter.shared.match(input: raw)
+        }
         errorText = nil
         input = ""
         awaitingVoice = false
         inputID = UUID()
         voice.stop()
+
+        guard !text.isEmpty else { return }
 
         var msgs = messages
         let imageToSend: UIImage? = selectedImage
