@@ -1,0 +1,75 @@
+﻿2026-08-26T02:13:49.7901060Z Node 20 is being deprecated. This workflow is running with Node 24 by default. If you need to temporarily use Node 20, you can set the ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true environment variable. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+2026-08-26T02:13:49.7908350Z ##[group]Run actions/checkout@v4
+2026-08-26T02:13:49.7908870Z with:
+2026-08-26T02:13:49.7909210Z   repository: chirens/iOSAgent
+2026-08-26T02:13:49.7912060Z   token: ***
+2026-08-26T02:13:49.7912380Z   ssh-strict: true
+2026-08-26T02:13:49.7912710Z   ssh-user: git
+2026-08-26T02:13:49.7913040Z   persist-credentials: true
+2026-08-26T02:13:49.7913400Z   clean: true
+2026-08-26T02:13:49.7913730Z   sparse-checkout-cone-mode: true
+2026-08-26T02:13:49.7914110Z   fetch-depth: 1
+2026-08-26T02:13:49.7914430Z   fetch-tags: false
+2026-08-26T02:13:49.7914760Z   show-progress: true
+2026-08-26T02:13:49.7915100Z   lfs: false
+2026-08-26T02:13:49.7915400Z   submodules: false
+2026-08-26T02:13:49.7915800Z   set-safe-directory: true
+2026-08-26T02:13:49.7916180Z   allow-unsafe-pr-checkout: false
+2026-08-26T02:13:49.7917000Z ##[endgroup]
+2026-08-26T02:13:50.3857390Z Syncing repository: chirens/iOSAgent
+2026-08-26T02:13:50.3859510Z ##[group]Getting Git version info
+2026-08-26T02:13:50.3860200Z Working directory is '/Users/runner/work/iOSAgent/iOSAgent'
+2026-08-26T02:13:50.3879080Z [command]/opt/homebrew/bin/git version
+2026-08-26T02:13:50.5101580Z git version 2.55.0
+2026-08-26T02:13:50.5309120Z ##[endgroup]
+2026-08-26T02:13:50.5315780Z Copying '/Users/runner/.gitconfig' to '/Users/runner/work/_temp/118157ed-1590-4c46-aef7-427e7763054c/.gitconfig'
+2026-08-26T02:13:50.5316910Z Temporarily overriding HOME='/Users/runner/work/_temp/118157ed-1590-4c46-aef7-427e7763054c' before making global git config changes
+2026-08-26T02:13:50.5318100Z Adding repository directory to the temporary git global config as a safe directory
+2026-08-26T02:13:50.5319080Z [command]/opt/homebrew/bin/git config --global --add safe.directory /Users/runner/work/iOSAgent/iOSAgent
+2026-08-26T02:13:50.5444060Z Deleting the contents of '/Users/runner/work/iOSAgent/iOSAgent'
+2026-08-26T02:13:50.5504100Z ##[group]Initializing the repository
+2026-08-26T02:13:50.5505170Z [command]/opt/homebrew/bin/git init /Users/runner/work/iOSAgent/iOSAgent
+2026-08-26T02:13:50.5771300Z hint: Using 'master' as the name for the initial branch. This default branch name
+2026-08-26T02:13:50.5773960Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+2026-08-26T02:13:50.5775930Z hint: to use in all of your new repositories, which will suppress this warning,
+2026-08-26T02:13:50.5777460Z hint: call:
+2026-08-26T02:13:50.5778300Z hint:
+2026-08-26T02:13:50.5779320Z hint: 	git config --global init.defaultBranch <name>
+2026-08-26T02:13:50.5780520Z hint:
+2026-08-26T02:13:50.5781680Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+2026-08-26T02:13:50.5783560Z hint: 'development'. The just-created branch can be renamed via this command:
+2026-08-26T02:13:50.5785100Z hint:
+2026-08-26T02:13:50.5786300Z hint: 	git branch -m <name>
+2026-08-26T02:13:50.5787480Z hint:
+2026-08-26T02:13:50.5788910Z hint: Disable this message with "git config set advice.defaultBranchName false"
+2026-08-26T02:13:50.5791130Z Initialized empty Git repository in /Users/runner/work/iOSAgent/iOSAgent/.git/
+2026-08-26T02:13:50.5794880Z [command]/opt/homebrew/bin/git remote add origin https://github.com/chirens/iOSAgent
+2026-08-26T02:13:50.5886280Z ##[endgroup]
+2026-08-26T02:13:50.5887160Z ##[group]Disabling automatic garbage collection
+2026-08-26T02:13:50.5889930Z [command]/opt/homebrew/bin/git config --local gc.auto 0
+2026-08-26T02:13:50.6006940Z ##[endgroup]
+2026-08-26T02:13:50.6009330Z ##[group]Setting up auth
+2026-08-26T02:13:50.6012150Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-08-26T02:13:50.6104430Z [command]/opt/homebrew/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-08-26T02:13:50.7866770Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-08-26T02:13:50.7970590Z [command]/opt/homebrew/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-08-26T02:13:50.9328440Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-08-26T02:13:50.9634380Z [command]/opt/homebrew/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-08-26T02:13:51.1097250Z [command]/opt/homebrew/bin/git config --local http.https://github.com/.extraheader AUTHORIZATION: basic ***
+2026-08-26T02:13:51.1246300Z ##[endgroup]
+2026-08-26T02:13:51.1247960Z ##[group]Fetching the repository
+2026-08-26T02:13:51.1254860Z [command]/opt/homebrew/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +81a2fb77a368cd8232ea157e77535cd085b1c5b2:refs/remotes/origin/main
+2026-08-26T02:13:52.0556560Z From https://github.com/chirens/iOSAgent
+2026-08-26T02:13:52.0558730Z  * [new ref]         81a2fb77a368cd8232ea157e77535cd085b1c5b2 -> origin/main
+2026-08-26T02:13:52.0561770Z ##[endgroup]
+2026-08-26T02:13:52.0562890Z ##[group]Determining the checkout info
+2026-08-26T02:13:52.0565000Z ##[endgroup]
+2026-08-26T02:13:52.0572880Z [command]/opt/homebrew/bin/git sparse-checkout disable
+2026-08-26T02:13:52.0668870Z [command]/opt/homebrew/bin/git config --local --unset-all extensions.worktreeConfig
+2026-08-26T02:13:52.0754210Z ##[group]Checking out the ref
+2026-08-26T02:13:52.0755370Z [command]/opt/homebrew/bin/git checkout --progress --force -B main refs/remotes/origin/main
+2026-08-26T02:13:52.0979960Z Switched to a new branch 'main'
+2026-08-26T02:13:52.0982090Z branch 'main' set up to track 'origin/main'.
+2026-08-26T02:13:52.0985450Z ##[endgroup]
+2026-08-26T02:13:52.1102290Z [command]/opt/homebrew/bin/git log -1 --format=%H
+2026-08-26T02:13:52.1187290Z 81a2fb77a368cd8232ea157e77535cd085b1c5b2
