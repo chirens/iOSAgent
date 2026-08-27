@@ -403,7 +403,7 @@ struct SideMenuOverlay: View {
             }
 
             Section {
-                SideMenuButton(icon: "folder.fill", color: .orange, title: "生成文件") {
+                SideMenuButton(icon: "folder.fill", color: .orange, title: "文件") {
                     path.append(ChatRoute.filesHistory)
                     isPresented = false
                 }
@@ -423,16 +423,16 @@ struct SideMenuOverlay: View {
                 onSettings()
             } label: {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
                         .fill(Color.gray.opacity(0.15))
-                        .frame(width: 42, height: 42)
+                        .frame(width: 34, height: 34)
                     Image(systemName: "gearshape.fill")
-                        .font(.system(size: 19, weight: .semibold))
+                        .font(.system(size: 16, weight: .semibold))
                         .foregroundStyle(.gray)
                 }
                 .frame(maxWidth: .infinity, alignment: .trailing)
                 .padding(.horizontal, 18)
-                .padding(.vertical, 12)
+                .padding(.vertical, 6)
             }
             .buttonStyle(.plain)
         }
@@ -472,12 +472,13 @@ struct SideMenuButton: View {
 
 struct FilesHistoryView: View {
     @State private var files: [URL] = []
+    @State private var previewURL: URL?
 
     var body: some View {
         List {
             if files.isEmpty {
                 Section {
-                    Text("还没有生成文件")
+                    Text("还没有文件")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, alignment: .center)
@@ -487,21 +488,29 @@ struct FilesHistoryView: View {
                 Section {
                     ForEach(files, id: \.self) { url in
                         HStack(spacing: 12) {
-                            Image(systemName: fileIcon(for: url))
-                                .font(.system(size: 18, weight: .semibold))
-                                .foregroundStyle(Color.accentColor)
-                                .frame(width: 36, height: 36)
-                                .background(Color.accentColor.opacity(0.12))
-                                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(url.lastPathComponent)
-                                    .font(.subheadline.weight(.medium))
-                                    .lineLimit(1)
-                                Text(modifiedString(for: url))
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
+                            Button {
+                                previewURL = url
+                            } label: {
+                                HStack(spacing: 12) {
+                                    Image(systemName: fileIcon(for: url))
+                                        .font(.system(size: 18, weight: .semibold))
+                                        .foregroundStyle(Color.accentColor)
+                                        .frame(width: 36, height: 36)
+                                        .background(Color.accentColor.opacity(0.12))
+                                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(url.lastPathComponent)
+                                            .font(.subheadline.weight(.medium))
+                                            .lineLimit(1)
+                                        Text(modifiedString(for: url))
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    Spacer(minLength: 0)
+                                }
+                                .contentShape(Rectangle())
                             }
-                            Spacer(minLength: 0)
+                            .buttonStyle(.plain)
                             ShareLink(item: url) {
                                 Image(systemName: "square.and.arrow.up")
                                     .font(.caption.weight(.semibold))
@@ -520,14 +529,18 @@ struct FilesHistoryView: View {
         .listStyle(.insetGrouped)
         .scrollContentBackground(.visible)
         .background(Color(.systemGroupedBackground))
-        .navigationTitle("生成文件")
+        .navigationTitle("文件")
         .onAppear { scanFiles() }
+        .sheet(item: $previewURL) { FilePreviewView(url: $0) }
     }
 
     private func scanFiles() {
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let allowed = ["txt", "md", "markdown", "csv", "json", "html", "htm", "rtf", "log", "xml", "yaml", "yml",
+                       "pdf", "pptx", "doc", "docx", "xls", "xlsx",
+                       "png", "jpg", "jpeg", "heic", "gif", "webp", "bmp", "tiff"]
         guard let urls = try? FileManager.default.contentsOfDirectory(at: docs, includingPropertiesForKeys: [.contentModificationDateKey], options: .skipsHiddenFiles) else { return }
-        files = urls.filter { ["txt", "pptx"].contains($0.pathExtension.lowercased()) }
+        files = urls.filter { allowed.contains($0.pathExtension.lowercased()) }
             .sorted { a, b in
                 let da = (try? a.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? .distantPast
                 let db = (try? b.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? .distantPast
@@ -538,7 +551,12 @@ struct FilesHistoryView: View {
     private func fileIcon(for url: URL) -> String {
         switch url.pathExtension.lowercased() {
         case "pptx": return "play.rectangle.fill"
-        case "txt": return "doc.text.fill"
+        case "pdf": return "doc.fill"
+        case "doc", "docx": return "doc.text.fill"
+        case "xls", "xlsx", "csv": return "tablecells.fill"
+        case "txt", "md", "log", "rtf": return "doc.plaintext.fill"
+        case "json", "html", "xml", "yaml", "yml": return "curlybraces"
+        case "png", "jpg", "jpeg", "heic", "gif", "webp": return "photo.fill"
         default: return "doc.fill"
         }
     }

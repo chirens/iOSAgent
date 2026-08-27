@@ -24,6 +24,7 @@
 		1A0000000000000000000210 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000116 /* Assets.xcassets */; };
 		1A0000000000000000000213 /* PPTXTemplate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000211 /* PPTXTemplate.swift */; };
 		1A0000000000000000000214 /* DocumentGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000212 /* DocumentGenerator.swift */; };
+		1A0000000000000000000302 /* FilePreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000301 /* FilePreviewView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -46,6 +47,7 @@
 		1A0000000000000000000120 /* iOSAgent.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = iOSAgent.entitlements; sourceTree = "<group>"; };
 		1A0000000000000000000211 /* PPTXTemplate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PPTXTemplate.swift; sourceTree = "<group>"; };
 		1A0000000000000000000212 /* DocumentGenerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentGenerator.swift; sourceTree = "<group>"; };
+		1A0000000000000000000301 /* FilePreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilePreviewView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -86,6 +88,7 @@
 				1A0000000000000000000115 /* RemindersView.swift */,
 				1A0000000000000000000211 /* PPTXTemplate.swift */,
 				1A0000000000000000000212 /* DocumentGenerator.swift */,
+				1A0000000000000000000301 /* FilePreviewView.swift */,
 				1A0000000000000000000116 /* Assets.xcassets */,
 				1A0000000000000000000120 /* iOSAgent.entitlements */,
 			);
@@ -185,6 +188,7 @@
 				1A000000000000000000020F /* RemindersView.swift in Sources */,
 				1A0000000000000000000213 /* PPTXTemplate.swift in Sources */,
 				1A0000000000000000000214 /* DocumentGenerator.swift in Sources */,
+				1A0000000000000000000302 /* FilePreviewView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -293,7 +297,7 @@
 				"$(inherited)",
 				"@executable_path/Frameworks",
 			);
-			MARKETING_VERSION = 7.8;
+			MARKETING_VERSION = 7.9;
 			PRODUCT_BUNDLE_IDENTIFIER = com.chen.iOSAgent;
 			PRODUCT_NAME = "$(TARGET_NAME)";
 			SWIFT_EMIT_LOC_STRINGS = YES;
@@ -333,7 +337,7 @@
 				"$(inherited)",
 				"@executable_path/Frameworks",
 			);
-			MARKETING_VERSION = 7.8;
+			MARKETING_VERSION = 7.9;
 			PRODUCT_BUNDLE_IDENTIFIER = com.chen.iOSAgent;
 			PRODUCT_NAME = "$(TARGET_NAME)";
 			SWIFT_EMIT_LOC_STRINGS = YES;
