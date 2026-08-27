@@ -29,9 +29,10 @@ final class AgentClient {
         -> (messages: [StoredMessage], finalText: String) {
 
         let settings = SettingsStore.shared
-        let base = settings.apiBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
-        let key = settings.apiKey
-        let model = settings.modelName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let profile = settings.activeProfile
+        let base = profile.baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        let key = profile.apiKey
+        let model = profile.modelName.trimmingCharacters(in: .whitespacesAndNewlines)
 
         guard !key.isEmpty else { throw AgentError.missingAPIKey }
         guard let url = URL(string: base.trimmingCharacters(in: ["/"]) + "/chat/completions") else {
@@ -134,13 +135,43 @@ final class AgentClient {
         return final
     }
 
+    /// 直接测试一组草稿配置（不改动当前激活配置/已保存列表）
+    func testConnection(baseURL: String, apiKey: String, model: String) async throws -> String {
+        let base = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+            .trimmingCharacters(in: ["/"])
+        guard !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw AgentError.missingAPIKey
+        }
+        guard let url = URL(string: base + "/chat/completions") else {
+            throw AgentError.invalidResponse
+        }
+        let body: [String: Any] = [
+            "model": model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "gpt-4o-mini" : model,
+            "messages": [["role": "user", "content": "hi"]],
+            "max_tokens": 8
+        ]
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (data, resp) = try await session.data(for: req)
+        if let http = resp as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+            let msg = String(data: data, encoding: .utf8) ?? "HTTP \(http.statusCode)"
+            throw AgentError.http(http.statusCode, msg)
+        }
+        return "连接成功 / OK"
+    }
+
     /// 语音转文字：调用 OpenAI 兼容的 /audio/transcriptions
     func transcribe(audioURL: URL) async throws -> String {
         let settings = SettingsStore.shared
-        let base = settings.apiBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        let profile = settings.activeProfile
+        let base = profile.baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
             .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        let key = settings.apiKey
-        let model = settings.sttModelName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let key = profile.apiKey
+        let model = profile.sttModelName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !key.isEmpty else { throw AgentError.missingAPIKey }
         guard let url = URL(string: base + "/audio/transcriptions") else {
             throw AgentError.invalidResponse

@@ -24,6 +24,23 @@ enum AuthStatus: String, Codable, CaseIterable {
     case unavailable = "不可用"
 }
 
+/// 一个云端 API 配置（可保存多个，聊天中随时切换）
+struct APIProfile: Identifiable, Codable, Hashable {
+    var id: String
+    var name: String
+    var baseURL: String
+    var apiKey: String
+    var modelName: String
+    var sttModelName: String
+
+    static var `default`: APIProfile {
+        APIProfile(id: "default", name: "默认配置",
+                   baseURL: "https://api.deepseek.com",
+                   apiKey: "", modelName: "deepseek-chat",
+                   sttModelName: "whisper-1")
+    }
+}
+
 /// 全局设置与权限状态
 @MainActor
 class SettingsStore: ObservableObject {
@@ -37,6 +54,10 @@ class SettingsStore: ObservableObject {
     @AppStorage("hasSeenWelcome") var hasSeenWelcome: Bool = false
 
     @Published var capabilities: [String: CapabilitySetting] = [:]
+
+    // MARK: - 多 API 配置
+    @Published var profiles: [APIProfile] = []
+    @Published var activeProfileID: String = ""
 
     let eventStore = EKEventStore()
     let healthStore = HKHealthStore()
@@ -57,7 +78,67 @@ class SettingsStore: ObservableObject {
 
     init() {
         loadCapabilities()
+        loadProfiles()
         refreshAuthStatuses()
+    }
+
+    // MARK: - API 配置持久化
+
+    func loadProfiles() {
+        if let data = UserDefaults.standard.data(forKey: "apiProfiles"),
+           let decoded = try? JSONDecoder().decode([APIProfile].self, from: data) {
+            profiles = decoded
+        } else {
+            // 首次启动：用旧的单配置字段播种一个默认 profile
+            let legacy = APIProfile(
+                id: UUID().uuidString,
+                name: "我的配置",
+                baseURL: apiBaseURL.trimmingCharacters(in: .whitespacesAndNewlines),
+                apiKey: apiKey,
+                modelName: modelName.trimmingCharacters(in: .whitespacesAndNewlines),
+                sttModelName: sttModelName.trimmingCharacters(in: .whitespacesAndNewlines)
+            )
+            profiles = [legacy]
+        }
+        activeProfileID = UserDefaults.standard.string(forKey: "activeProfileID") ?? profiles.first?.id ?? ""
+    }
+
+    private func persistProfiles() {
+        if let data = try? JSONEncoder().encode(profiles) {
+            UserDefaults.standard.set(data, forKey: "apiProfiles")
+        }
+        UserDefaults.standard.set(activeProfileID, forKey: "activeProfileID")
+    }
+
+    /// 当前生效的配置（聊天/语音转写都读它）
+    var activeProfile: APIProfile {
+        profiles.first { $0.id == activeProfileID } ?? profiles.first ?? APIProfile.default
+    }
+
+    /// 新增或更新一个配置；若当前没有激活项则自动激活
+    func saveProfile(_ p: APIProfile) {
+        var list = profiles
+        if let idx = list.firstIndex(where: { $0.id == p.id }) {
+            list[idx] = p
+        } else {
+            list.append(p)
+        }
+        profiles = list
+        if activeProfileID.isEmpty { activeProfileID = p.id }
+        persistProfiles()
+    }
+
+    func deleteProfile(_ id: String) {
+        profiles = profiles.filter { $0.id != id }
+        if activeProfileID == id {
+            activeProfileID = profiles.first?.id ?? ""
+        }
+        persistProfiles()
+    }
+
+    func setActiveProfile(_ id: String) {
+        activeProfileID = id
+        persistProfiles()
     }
 
     func loadCapabilities() {
