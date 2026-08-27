@@ -2,6 +2,13 @@ import SwiftUI
 import PDFKit
 import UIKit
 
+/// 用于 sheet(item:) 的 Identifiable 包装：本工具链的 URL 不遵循 Identifiable，
+/// 直接以 URL? 作为 sheet 的 item 会触发编译错误。
+struct PreviewItem: Identifiable {
+    let id = UUID()
+    let url: URL
+}
+
 /// 极简 zip 读取器：仅支持 stored（未压缩）条目。
 /// 本应用生成的 .pptx 即采用 stored 方式，因此可可靠解析其幻灯片文本。
 /// 对采用 deflate 压缩的第三方文档（如 .docx），将无法读取，预览页会安全回退到“用其他 App 打开”。

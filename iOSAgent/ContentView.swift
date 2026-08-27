@@ -472,7 +472,7 @@ struct SideMenuButton: View {
 
 struct FilesHistoryView: View {
     @State private var files: [URL] = []
-    @State private var previewURL: URL?
+    @State private var previewURL: PreviewItem?
 
     var body: some View {
         List {
@@ -489,7 +489,7 @@ struct FilesHistoryView: View {
                     ForEach(files, id: \.self) { url in
                         HStack(spacing: 12) {
                             Button {
-                                previewURL = url
+                                previewURL = PreviewItem(url: url)
                             } label: {
                                 HStack(spacing: 12) {
                                     Image(systemName: fileIcon(for: url))
@@ -531,7 +531,7 @@ struct FilesHistoryView: View {
         .background(Color(.systemGroupedBackground))
         .navigationTitle("文件")
         .onAppear { scanFiles() }
-        .sheet(item: $previewURL) { FilePreviewView(url: $0) }
+        .sheet(item: $previewURL) { FilePreviewView(url: $0.url) }
     }
 
     private func scanFiles() {
