@@ -27,13 +27,7 @@ final class SpeechRecognizer: NSObject, ObservableObject {
             }
         }
         self.authorizationStatus = speechStatus
-
-        let audioStatus = AVCaptureDevice.authorizationStatus(for: .audio)
-        if audioStatus == .notDetermined {
-            _ = await AVCaptureDevice.requestAccess(for: .audio)
-        }
-
-        return speechStatus == .authorized && AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
+        return speechStatus == .authorized
     }
 
     func startRecording() async throws {

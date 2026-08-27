@@ -3,10 +3,18 @@ import PhotosUI
 import UniformTypeIdentifiers
 import UIKit
 
+enum PlusMenuState: Equatable {
+    case closed
+    case root
+    case skills
+    case models
+}
+
 struct ChatView: View {
     let conversationId: UUID
     @Binding var path: NavigationPath
     @EnvironmentObject var store: ChatStore
+    @EnvironmentObject var settings: SettingsStore
     @StateObject private var voice = VoiceRecorder()
     @StateObject private var speech = SpeechRecognizer()
     @State private var input = ""
@@ -30,6 +38,10 @@ struct ChatView: View {
 
     // v7.5 Skill 框架：当前消息命中的技能
     @State private var activeSkills: [Skill] = []
+
+    // v7.8 + 号紧凑菜单：图片/文件/技能/模型
+    @State private var plusMenu: PlusMenuState = .closed
+    @State private var pinnedSkillID: String?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -102,17 +114,23 @@ struct ChatView: View {
                 .padding(.top, 8)
             }
 
-            // 已激活技能提示
+            // 已激活技能提示（点按清除）
             if !activeSkills.isEmpty {
                 HStack(spacing: 6) {
                     ForEach(activeSkills) { skill in
-                        Label(skill.name, systemImage: skill.icon)
-                            .font(.caption2.weight(.medium))
-                            .foregroundStyle(Color.accentColor)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(Color.accentColor.opacity(0.12))
-                            .clipShape(Capsule())
+                        Button {
+                            pinnedSkillID = nil
+                            activeSkills = []
+                        } label: {
+                            Label(skill.name, systemImage: skill.icon)
+                                .font(.caption2.weight(.medium))
+                                .foregroundStyle(Color.accentColor)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(Color.accentColor.opacity(0.12))
+                                .clipShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
                     }
                     Spacer(minLength: 0)
                 }
@@ -120,32 +138,52 @@ struct ChatView: View {
                 .padding(.top, 4)
             }
 
-            // @技能 提示：输入以 @ 开头时列出可用技能
+            // @技能 提示：输入以 @ 开头时可点选插入技能名
             if input.hasPrefix("@") {
-                HStack(spacing: 6) {
-                    Text("指定技能：")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                    ForEach(SkillRouter.shared.allSkills) { skill in
-                        Text("@\(skill.name)")
-                            .font(.caption2.weight(.medium))
-                            .foregroundStyle(Color.accentColor)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        Text("指定技能：")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                        ForEach(SkillRouter.shared.allSkills) { skill in
+                            Button {
+                                input = "@\(skill.name) "
+                            } label: {
+                                Text("@\(skill.name)")
+                                    .font(.caption2.weight(.medium))
+                                    .foregroundStyle(Color.accentColor)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(Color.accentColor.opacity(0.12))
+                                    .clipShape(Capsule())
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        Spacer(minLength: 0)
                     }
-                    Spacer(minLength: 0)
+                    .padding(.horizontal)
                 }
-                .padding(.horizontal)
                 .padding(.top, 4)
+            }
+
+            // + 号紧凑菜单面板（位于输入栏上方）
+            if plusMenu != .closed {
+                plusMenuPanel
+                    .padding(.horizontal)
+                    .transition(.scale(scale: 0.96, anchor: .bottomLeading).combined(with: .opacity))
             }
 
             // 输入栏
             HStack(spacing: 10) {
-                Menu {
-                    Button("图片") { showPhotoPicker = true }
-                    Button("文件") { showFilePicker = true }
+                Button {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                        plusMenu = plusMenu == .closed ? .root : .closed
+                    }
                 } label: {
-                    Image(systemName: "plus.circle")
-                        .font(.system(size: 20))
+                    Image(systemName: "plus.circle.fill")
+                        .font(.system(size: 22))
                         .foregroundStyle(Color.accentColor)
+                        .rotationEffect(.degrees(plusMenu != .closed ? 45 : 0))
                 }
                 .buttonStyle(.plain)
 
@@ -262,6 +300,150 @@ struct ChatView: View {
         }
     }
 
+    // MARK: - + 号紧凑菜单面板
+
+    private var plusMenuPanel: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            switch plusMenu {
+            case .root:
+                plusRow(icon: "photo.fill", title: "图片", chevron: false) {
+                    showPhotoPicker = true
+                    closePlus()
+                }
+                Divider()
+                plusRow(icon: "doc.fill", title: "文件", chevron: false) {
+                    showFilePicker = true
+                    closePlus()
+                }
+                Divider()
+                plusRow(icon: "sparkles", title: "技能", chevron: true) {
+                    plusMenu = .skills
+                }
+                Divider()
+                plusRow(icon: "cpu", title: "模型", chevron: true) {
+                    plusMenu = .models
+                }
+            case .skills:
+                plusBackRow
+                Divider()
+                ForEach(SkillRouter.shared.allSkills) { skill in
+                    Button {
+                        pinnedSkillID = skill.id
+                        activeSkills = [skill]
+                        closePlus()
+                    } label: {
+                        HStack(spacing: 10) {
+                            Image(systemName: skill.icon)
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(Color.accentColor)
+                                .frame(width: 26)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(skill.name).font(.subheadline.weight(.medium))
+                                Text(skill.description).font(.caption2).foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                        }
+                        .contentShape(Rectangle())
+                        .padding(.vertical, 7)
+                    }
+                    .buttonStyle(.plain)
+                    if skill.id != SkillRouter.shared.allSkills.last?.id { Divider() }
+                }
+            case .models:
+                plusBackRow
+                Divider()
+                if settings.profiles.isEmpty {
+                    Text("还没有保存的配置，请到 设置 → API 设置 添加")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .padding(.vertical, 8)
+                }
+                ForEach(settings.profiles) { p in
+                    Button {
+                        settings.setActiveProfile(p.id)
+                    } label: {
+                        HStack(spacing: 10) {
+                            Image(systemName: "server.rack")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(.secondary)
+                                .frame(width: 26)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(p.name.isEmpty ? "未命名" : p.name).font(.subheadline.weight(.medium))
+                                Text("\(p.modelName) · \(shortURL(p.baseURL))").font(.caption2).foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            if settings.activeProfile.id == p.id {
+                                Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                            }
+                        }
+                        .contentShape(Rectangle())
+                        .padding(.vertical, 7)
+                    }
+                    .buttonStyle(.plain)
+                    if p.id != settings.profiles.last?.id { Divider() }
+                }
+            case .closed:
+                EmptyView()
+            }
+        }
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color(.secondarySystemBackground))
+                .shadow(color: .black.opacity(0.12), radius: 12, x: 0, y: 4)
+        )
+    }
+
+    private var plusBackRow: some View {
+        Button {
+            plusMenu = .root
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "chevron.left")
+                Text("返回")
+                Spacer()
+            }
+            .font(.subheadline)
+            .foregroundStyle(Color.accentColor)
+            .contentShape(Rectangle())
+            .padding(.vertical, 7)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func plusRow(icon: String, title: String, chevron: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                Image(systemName: icon)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(Color.accentColor)
+                    .frame(width: 26)
+                Text(title)
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.primary)
+                Spacer()
+                if chevron {
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                }
+            }
+            .contentShape(Rectangle())
+            .padding(.vertical, 7)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func closePlus() {
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+            plusMenu = .closed
+        }
+    }
+
+    private func shortURL(_ s: String) -> String {
+        s.trimmingCharacters(in: ["/"]).replacingOccurrences(of: "https://", with: "").replacingOccurrences(of: "http://", with: "")
+    }
+
     private var fileIcon: String {
         guard let ext = selectedFileName?.components(separatedBy: ".").last?.lowercased() else { return "doc.fill" }
         switch ext {
@@ -307,14 +489,18 @@ struct ChatView: View {
             if awaitingVoice { input = text }
             awaitingVoice = false
         } catch {
-            // 服务端不可用则回退本地识别
+            // 云端转写失败 → 回退本机语音识别
             do {
                 let text = try await speech.transcribeFile(url: url)
                 if awaitingVoice { input = text }
                 awaitingVoice = false
             } catch {
-                errorText = "语音识别失败：\(error.localizedDescription)"
-                showMicError = true
+                if speech.authorizationStatus != .authorized {
+                    showMicError = true
+                    errorText = "语音识别需要授权：请在系统设置中为「同步」开启“语音识别”权限。另外，当前云端 API（如 DeepSeek）通常不支持音频转写，建议改用支持 /audio/transcriptions 的接口（如 OpenAI）以获得更好效果。"
+                } else {
+                    errorText = "语音识别失败：\(error.localizedDescription)"
+                }
                 awaitingVoice = false
             }
         }
@@ -326,13 +512,20 @@ struct ChatView: View {
 
         let explicit = SkillRouter.shared.matchExplicit(input: raw)
         let text: String
-        if let skills = explicit {
+        var skills: [Skill]
+        if let e = explicit {
             text = SkillRouter.shared.stripSkillPrefix(raw)
-            activeSkills = skills
+            skills = e
+        } else if let pid = pinnedSkillID,
+                  let pinned = SkillRouter.shared.allSkills.first(where: { $0.id == pid }) {
+            text = raw
+            skills = [pinned]
         } else {
             text = raw
-            activeSkills = SkillRouter.shared.match(input: raw)
+            skills = SkillRouter.shared.match(input: raw)
         }
+        activeSkills = skills
+        pinnedSkillID = nil
         errorText = nil
         input = ""
         awaitingVoice = false

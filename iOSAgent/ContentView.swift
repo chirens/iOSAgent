@@ -422,22 +422,17 @@ struct SideMenuOverlay: View {
                 isPresented = false
                 onSettings()
             } label: {
-                HStack(spacing: 14) {
-                    Text("设置")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.primary)
-                    Spacer()
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .fill(Color.gray.opacity(0.15))
-                            .frame(width: 38, height: 38)
-                        Image(systemName: "gearshape.fill")
-                            .font(.system(size: 17, weight: .semibold))
-                            .foregroundStyle(.gray)
-                    }
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(Color.gray.opacity(0.15))
+                        .frame(width: 42, height: 42)
+                    Image(systemName: "gearshape.fill")
+                        .font(.system(size: 19, weight: .semibold))
+                        .foregroundStyle(.gray)
                 }
+                .frame(maxWidth: .infinity, alignment: .trailing)
                 .padding(.horizontal, 18)
-                .padding(.vertical, 14)
+                .padding(.vertical, 12)
             }
             .buttonStyle(.plain)
         }

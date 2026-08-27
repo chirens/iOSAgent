@@ -171,20 +171,28 @@ struct SettingRow: View {
 
 struct APISettingsView: View {
     @EnvironmentObject var settings: SettingsStore
+    @State private var draftName = ""
+    @State private var draftBase = ""
+    @State private var draftKey = ""
+    @State private var draftModel = ""
+    @State private var draftSTT = ""
     @State private var testResult: String?
     @State private var isTesting = false
+    @State private var saved = false
 
     var body: some View {
         Form {
-            Section("API 配置") {
-                TextField("Base URL", text: $settings.apiBaseURL)
+            Section("当前编辑的配置") {
+                TextField("配置名称（如 DeepSeek / OpenAI）", text: $draftName)
+                    .autocapitalization(.none)
+                TextField("Base URL", text: $draftBase)
                     .autocapitalization(.none)
                     .keyboardType(.URL)
-                SecureField("API Key", text: $settings.apiKey)
+                SecureField("API Key", text: $draftKey)
                     .autocapitalization(.none)
-                TextField("模型名", text: $settings.modelName)
+                TextField("模型名", text: $draftModel)
                     .autocapitalization(.none)
-                TextField("语音模型（默认 whisper-1）", text: $settings.sttModelName)
+                TextField("语音模型（默认 whisper-1）", text: $draftSTT)
                     .autocapitalization(.none)
             }
 
@@ -197,14 +205,89 @@ struct APISettingsView: View {
                         .foregroundStyle(testResult.contains("成功") || testResult.contains("OK") ? .green : .red)
                 }
                 Button("测试连接") { testConnection() }
-                    .disabled(isTesting || settings.apiKey.isEmpty)
+                    .disabled(isTesting || draftKey.isEmpty || draftBase.isEmpty)
+                if !draftBase.isEmpty && !draftKey.isEmpty {
+                    Button {
+                        saveProfile()
+                    } label: {
+                        Label("保存到本地", systemImage: "square.and.arrow.down")
+                    }
+                }
             } footer: {
-                Text("兼容 OpenAI / DeepSeek 等任意 OpenAI 格式接口。")
+                Text("兼容 OpenAI / DeepSeek 等任意 OpenAI 格式接口。注意：DeepSeek 不支持音频转写，语音输入请使用支持 /audio/transcriptions 的接口（如 OpenAI）。")
+            }
+
+            if !settings.profiles.isEmpty {
+                Section {
+                    ForEach(settings.profiles) { p in
+                        Button {
+                            settings.setActiveProfile(p.id)
+                            loadProfile(p)
+                        } label: {
+                            HStack(spacing: 10) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(p.name.isEmpty ? "未命名" : p.name)
+                                        .font(.subheadline.weight(.semibold))
+                                    Text("\(p.modelName) · \(shortURL(p.baseURL))")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                if settings.activeProfile.id == p.id {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .foregroundStyle(.green)
+                                }
+                            }
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .onDelete { offsets in
+                        offsets.map { settings.profiles[$0].id }.forEach { settings.deleteProfile($0) }
+                    }
+                } header: {
+                    Text("已保存的配置（点选使用，左滑删除）")
+                }
             }
         }
         .navigationTitle("API 设置")
         .scrollContentBackground(.visible)
         .background(Color(.systemGroupedBackground))
+        .onAppear { loadProfile(settings.activeProfile) }
+    }
+
+    private func shortURL(_ s: String) -> String {
+        s.trimmingCharacters(in: ["/"]).replacingOccurrences(of: "https://", with: "").replacingOccurrences(of: "http://", with: "")
+    }
+
+    private func loadProfile(_ p: APIProfile) {
+        draftName = p.name
+        draftBase = p.baseURL
+        draftKey = p.apiKey
+        draftModel = p.modelName
+        draftSTT = p.sttModelName
+        testResult = nil
+        saved = false
+    }
+
+    private func saveProfile() {
+        let name = draftName.trimmingCharacters(in: .whitespaces)
+        // 若正在编辑的就是当前激活项，则就地更新，避免重复
+        let id: String
+        if let active = settings.profiles.first(where: { $0.id == settings.activeProfile.id }),
+           active.baseURL.trimmingCharacters(in: .whitespaces) == draftBase.trimmingCharacters(in: .whitespaces),
+           active.apiKey.trimmingCharacters(in: .whitespaces) == draftKey.trimmingCharacters(in: .whitespaces) {
+            id = active.id
+        } else {
+            id = UUID().uuidString
+        }
+        let p = APIProfile(id: id, name: name, baseURL: draftBase.trimmingCharacters(in: .whitespaces),
+                           apiKey: draftKey, modelName: draftModel.trimmingCharacters(in: .whitespaces),
+                           sttModelName: draftSTT.trimmingCharacters(in: .whitespaces))
+        settings.saveProfile(p)
+        settings.setActiveProfile(p.id)
+        testResult = "已保存到本地"
+        saved = true
     }
 
     private func testConnection() {
@@ -212,7 +295,7 @@ struct APISettingsView: View {
         testResult = nil
         Task {
             do {
-                _ = try await AgentClient.shared.ask("hello")
+                _ = try await AgentClient.shared.testConnection(baseURL: draftBase, apiKey: draftKey, model: draftModel)
                 testResult = "连接成功 / OK"
             } catch {
                 testResult = error.localizedDescription
