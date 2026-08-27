@@ -602,6 +602,7 @@ struct VoiceButton: View {
 
 struct MessageBubble: View {
     let message: StoredMessage
+    @State private var previewURL: URL?
 
     var body: some View {
         HStack {
@@ -639,8 +640,10 @@ struct MessageBubble: View {
                 }
 
                 if let url = message.fileURL {
-                    ShareLink(item: url) {
-                        Label("分享文件", systemImage: "square.and.arrow.up")
+                    Button {
+                        previewURL = url
+                    } label: {
+                        Label("打开文件", systemImage: "doc.text.viewfinder")
                             .font(.caption.weight(.medium))
                             .foregroundStyle(Color.accentColor)
                     }
@@ -655,6 +658,7 @@ struct MessageBubble: View {
 
             if message.role != "user" { Spacer(minLength: 28) }
         }
+        .sheet(item: $previewURL) { FilePreviewView(url: $0) }
     }
 
     private var contextMenu: some View {
