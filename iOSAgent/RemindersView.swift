@@ -9,54 +9,75 @@ struct RemindersView: View {
     @State private var errorText: String?
 
     var body: some View {
-        NavigationStack {
-            List {
+        ScrollView {
+            VStack(alignment: .leading, spacing: AppSpacing.xl) {
+                Text("提醒 / 待办")
+                    .font(.appTitle1())
+                    .foregroundStyle(.appPrimaryText)
+
                 if !settings.isEnabled("reminders") {
-                    Section {
-                        Text("请在设置中开启“提醒事项”能力")
-                            .foregroundStyle(.secondary)
-                    }
+                    statusCard("请在设置中开启“提醒事项”能力")
                 } else if let error = errorText {
-                    Section {
-                        Text(error)
-                            .foregroundStyle(.red)
-                    }
+                    statusCard(error, color: .appError)
                 } else if reminders.isEmpty && !isLoading {
-                    Section {
-                        Text("没有待完成的提醒")
-                            .foregroundStyle(.secondary)
-                    }
+                    statusCard("没有待完成的提醒")
                 } else {
-                    let grouped = Dictionary(grouping: reminders, by: { $0.calendar?.title ?? "未分类" })
-                    let keys = grouped.keys.sorted()
-                    ForEach(keys, id: \.self) { key in
-                        DisclosureGroup {
-                            ForEach(grouped[key] ?? [], id: \.calendarItemIdentifier) { reminder in
-                                ReminderRow(reminder: reminder) {
-                                    complete(reminder)
-                                }
-                            }
-                        } label: {
-                            HStack {
-                                Text(key)
-                                Spacer()
-                                Text("\(grouped[key]?.count ?? 0)")
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
+                    remindersContent
+                }
+            }
+            .padding(.horizontal, AppSpacing.xxl)
+            .padding(.top, AppSpacing.xl)
+            .padding(.bottom, AppSpacing.xxl)
+        }
+        .background(Color.appBackground)
+        .refreshable { await load() }
+        .task { await load() }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+            Task { await load() }
+        }
+        .navigationTitle("提醒 / 待办")
+    }
+
+    private func statusCard(_ text: String, color: Color = .appSecondaryText) -> some View {
+        Text(text)
+            .font(.appSubheadline())
+            .foregroundStyle(color)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(AppSpacing.lg)
+            .background(Color.appSurface)
+            .clipShape(RoundedRectangle(cornerRadius: AppRadius.lg, style: .continuous))
+            .appCardShadow()
+    }
+
+    private var remindersContent: some View {
+        VStack(spacing: AppSpacing.xl) {
+            let grouped = Dictionary(grouping: reminders, by: { $0.calendar?.title ?? "未分类" })
+            let keys = grouped.keys.sorted()
+            ForEach(keys, id: \.self) { key in
+                VStack(alignment: .leading, spacing: AppSpacing.md) {
+                    HStack {
+                        Text(key)
+                            .font(.appCaption().weight(.semibold))
+                            .foregroundStyle(.appSecondaryText)
+                        Spacer()
+                        Text("\(grouped[key]?.count ?? 0)")
+                            .font(.appSubheadline())
+                            .foregroundStyle(.appSecondaryText)
+                    }
+                    .padding(.horizontal, AppSpacing.lg)
+
+                    VStack(spacing: 0) {
+                        ForEach(grouped[key] ?? [], id: \.calendarItemIdentifier) { reminder in
+                            ReminderRow(reminder: reminder) { complete(reminder) }
+                            if reminder.calendarItemIdentifier != grouped[key]?.last?.calendarItemIdentifier {
+                                Divider().padding(.leading, 52)
                             }
                         }
                     }
+                    .background(Color.appSurface)
+                    .clipShape(RoundedRectangle(cornerRadius: AppRadius.lg, style: .continuous))
+                    .appCardShadow()
                 }
-            }
-            .navigationTitle("提醒 / 待办")
-            .refreshable {
-                await load()
-            }
-            .task {
-                await load()
-            }
-            .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
-                Task { await load() }
             }
         }
     }
@@ -101,33 +122,36 @@ struct ReminderRow: View {
     let onComplete: () -> Void
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: AppSpacing.md) {
             Button(action: onComplete) {
                 Image(systemName: reminder.isCompleted ? "checkmark.circle.fill" : "circle")
-                    .font(.title3)
-                    .foregroundStyle(.blue)
+                    .font(.system(size: 20, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.brandAccent)
             }
             .buttonStyle(.plain)
 
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: AppSpacing.xs) {
                 Text(reminder.title ?? "无标题")
-                    .font(.body)
+                    .font(.appBody().weight(.semibold))
+                    .foregroundStyle(.appPrimaryText)
                     .strikethrough(reminder.isCompleted)
                 if let dueText = dueString {
                     Text(dueText)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .font(.appCaption())
+                        .foregroundStyle(.appSecondaryText)
                 }
                 if let notes = reminder.notes, !notes.isEmpty {
                     Text(notes)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .font(.appCaption())
+                        .foregroundStyle(.appSecondaryText)
                         .lineLimit(1)
                 }
             }
-            Spacer()
+            Spacer(minLength: 0)
         }
-        .padding(.vertical, 4)
+        .padding(.horizontal, AppSpacing.lg)
+        .padding(.vertical, AppSpacing.md)
+        .contentShape(Rectangle())
     }
 
     private var dueString: String? {

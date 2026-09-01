@@ -105,7 +105,7 @@ struct FilePreviewView: View {
                     .scaledToFit()
                     .padding()
             }
-            .background(Color(.systemGroupedBackground))
+            .background(Color.appBackground)
         } else if ext == "pdf" {
             PDFKitPreview(url: url)
         } else if ext == "pptx" {
@@ -113,19 +113,19 @@ struct FilePreviewView: View {
         } else if textExts.contains(ext) {
             ScrollView {
                 Text(plainText.isEmpty ? "(空文件)" : plainText)
-                    .font(.system(.body, design: .monospaced))
+                    .font(.appBody().monospaced())
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding()
             }
-            .background(Color(.systemGroupedBackground))
+            .background(Color.appBackground)
         } else if ext == "docx", !docxText.isEmpty {
             ScrollView {
                 Text(docxText)
-                    .font(.body)
+                    .font(.appBody())
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding()
             }
-            .background(Color(.systemGroupedBackground))
+            .background(Color.appBackground)
         } else {
             unsupportedContent
         }
@@ -137,57 +137,57 @@ struct FilePreviewView: View {
                 ForEach(Array(pptSlides.enumerated()), id: \.offset) { idx, slide in
                     VStack(alignment: .leading, spacing: 8) {
                         Text("\(idx + 1). \(slide.title)")
-                            .font(.headline)
-                            .foregroundStyle(Color.accentColor)
+                            .font(.appTitle3().weight(.bold))
+                            .foregroundStyle(.brandAccent)
                         if slide.bullets.isEmpty {
                             Text("（无要点）")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
+                                .font(.appSubheadline())
+                                .foregroundStyle(.appSecondaryText)
                         } else {
                             ForEach(slide.bullets, id: \.self) { b in
                                 HStack(alignment: .top, spacing: 6) {
                                     Text("•")
                                     Text(b)
-                                        .font(.subheadline)
+                                        .font(.appSubheadline())
                                 }
                             }
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(14)
-                    .background(Color(.secondarySystemBackground))
+                    .background(Color.appSurface)
                     .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                 }
             }
             .padding()
         }
-        .background(Color(.systemGroupedBackground))
+        .background(Color.appBackground)
     }
 
     private var unsupportedContent: some View {
         VStack(spacing: 16) {
             Spacer()
             Image(systemName: "doc.fill")
-                .font(.system(size: 48))
-                .foregroundStyle(.secondary)
+                .font(.system(size: 48, weight: .semibold, design: .rounded))
+                .foregroundStyle(.appSecondaryText)
             Text("该格式暂不支持应用内预览")
-                .font(.headline)
+                .font(.appTitle3().weight(.bold))
             Text("点击下方按钮用其他 App 打开")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .font(.appSubheadline())
+                .foregroundStyle(.appSecondaryText)
             ShareLink(item: url) {
                 Label("用其他 App 打开", systemImage: "square.and.arrow.up")
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 18)
                     .padding(.vertical, 10)
-                    .background(Color.accentColor)
+                    .background(Color.brandAccent)
                     .clipShape(Capsule())
             }
             Spacer()
         }
         .frame(maxWidth: .infinity)
-        .background(Color(.systemGroupedBackground))
+        .background(Color.appBackground)
     }
 
     // MARK: - 加载
