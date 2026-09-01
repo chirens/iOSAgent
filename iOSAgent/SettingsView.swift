@@ -1,5 +1,10 @@
 import SwiftUI
 
+extension Color {
+    /// 品牌强调色：克制的有意蓝色，呼应 App 蓝色圆环图标，替换满屏默认蓝
+    static let brandAccent = Color(red: 0.10, green: 0.42, blue: 0.96)
+}
+
 enum SettingsRoute: Hashable {
     case api
     case permissions
@@ -146,7 +151,7 @@ struct SettingRow: View {
     let subtitle: String
 
     var body: some View {
-        HStack(spacing: 14) {
+        HStack(spacing: 12) {
             ZStack {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .fill((colors.first ?? .secondary).opacity(0.14))
@@ -202,28 +207,39 @@ struct APISettingsView: View {
 
             Section {
                 if isTesting {
-                    HStack { ProgressView(); Spacer() }
+                    HStack(spacing: 8) {
+                        ProgressView()
+                        Text("正在测试连接…")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                        Spacer(minLength: 0)
+                    }
                 } else if let testResult {
-                    Text(testResult)
-                        .font(.caption)
-                        .foregroundStyle(testResult.contains("成功") || testResult.contains("OK") ? .green : .red)
-                }
-                Button("测试连接") { testConnection() }
-                    .buttonStyle(.bordered)
-                    .disabled(isTesting || draftKey.isEmpty || draftBase.isEmpty)
-                if !draftBase.isEmpty && !draftKey.isEmpty {
-                    HStack {
-                        Spacer()
-                        Button {
-                            saveProfile()
-                        } label: {
-                            Label("保存", systemImage: "checkmark")
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .buttonBorderShape(.capsule)
-                        .controlSize(.small)
+                    HStack(spacing: 8) {
+                        Image(systemName: testResult.contains("OK") || testResult.contains("成功") ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
+                            .foregroundStyle(testResult.contains("OK") || testResult.contains("成功") ? .green : .red)
+                        Text(testResult)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                        Spacer(minLength: 0)
                     }
                 }
+
+                HStack(spacing: 12) {
+                    Button { testConnection() } label: { Text("测试连接") }
+                        .buttonStyle(.bordered)
+                        .frame(maxWidth: .infinity)
+                        .disabled(isTesting || draftKey.isEmpty || draftBase.isEmpty)
+                    Button {
+                        saveProfile()
+                    } label: {
+                        Label("保存", systemImage: "checkmark")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .frame(maxWidth: .infinity)
+                    .disabled(isTesting || draftKey.isEmpty || draftBase.isEmpty)
+                }
+                .controlSize(.regular)
             } footer: {
                 Text("兼容 OpenAI / DeepSeek 等任意 OpenAI 格式接口。注意：DeepSeek 不支持音频转写，语音输入请使用支持 /audio/transcriptions 的接口（如 OpenAI）。")
             }
