@@ -77,42 +77,12 @@ struct ChatView: View {
             if let error = errorText {
                 Text(error)
                 .font(.appCaption())
-                .foregroundStyle(.appError)
+                .foregroundStyle(Color.appError)
                 .padding(.horizontal)
             }
 
             // 已选附件
-            if selectedImage != nil || selectedFileURL != nil {
-                HStack(spacing: 10) {
-                    if let selectedImage {
-                        Image(uiImage: selectedImage)
-                            .resizable()
-                            .scaledToFill()
-                            .frame(width: 44, height: 44)
-                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    } else if let name = selectedFileName {
-                        HStack(spacing: 6) {
-                            Image(systemName: fileIcon)
-                                .foregroundStyle(.appSecondaryText)
-                        Text(name)
-                            .font(.appCaption())
-                            .lineLimit(1)
-                    }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 8)
-                    .background(Color.appInputFill)
-                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    }
-                    Button { clearAttachment() } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.callout)
-                            .foregroundStyle(.white)
-                    }
-                    Spacer(minLength: 0)
-                }
-                .padding(.horizontal)
-                .padding(.top, 8)
-            }
+            attachmentRow
 
             // 已激活技能提示（点按清除）
             if !activeSkills.isEmpty {
@@ -124,7 +94,7 @@ struct ChatView: View {
                         } label: {
                             Label(skill.name, systemImage: skill.icon)
                                 .font(.caption2.weight(.medium))
-                                .foregroundStyle(.brandAccent)
+                                .foregroundStyle(Color.brandAccent)
                                 .padding(.horizontal, 8)
                                 .padding(.vertical, 4)
                                 .background(Color.brandAccent.opacity(0.12))
@@ -144,14 +114,14 @@ struct ChatView: View {
                     HStack(spacing: 6) {
                         Text("指定技能：")
                             .font(.appCaption2())
-                            .foregroundStyle(.appSecondaryText)
+                            .foregroundStyle(Color.appSecondaryText)
                         ForEach(SkillRouter.shared.allSkills) { skill in
                             Button {
                                 input = "@\(skill.name) "
                             } label: {
                                 Text("@\(skill.name)")
                                     .font(.caption2.weight(.medium))
-                                    .foregroundStyle(.brandAccent)
+                                    .foregroundStyle(Color.brandAccent)
                                     .padding(.horizontal, 8)
                                     .padding(.vertical, 4)
                                     .background(Color.brandAccent.opacity(0.12))
@@ -225,7 +195,7 @@ struct ChatView: View {
                 Button(action: send) {
                     Image(systemName: "arrow.up.circle.fill")
                         .font(.system(size: 34, weight: .semibold, design: .rounded))
-                        .foregroundStyle(input.isEmpty ? .appSecondaryText : Color.brandAccent)
+                        .foregroundStyle(input.isEmpty ? Color.appSecondaryText : Color.brandAccent)
                 }
                 .disabled(input.isEmpty || isLoading)
                 .buttonStyle(.plain)
@@ -248,7 +218,7 @@ struct ChatView: View {
                 } label: {
                     Image(systemName: "square.and.pencil")
                         .font(.system(size: 18, weight: .semibold))
-                        .foregroundStyle(.brandAccent)
+                        .foregroundStyle(Color.brandAccent)
                         .frame(width: 34, height: 34)
                         .contentShape(Rectangle())
                 }
@@ -336,11 +306,11 @@ struct ChatView: View {
                         HStack(spacing: 10) {
                             Image(systemName: skill.icon)
                                 .font(.system(size: 14, weight: .semibold))
-                                .foregroundStyle(.brandAccent)
+                                .foregroundStyle(Color.brandAccent)
                                 .frame(width: 26)
                             VStack(alignment: .leading, spacing: 1) {
                                 Text(skill.name).font(.subheadline.weight(.medium))
-                                Text(skill.description).font(.appCaption2()).foregroundStyle(.appSecondaryText)
+                                Text(skill.description).font(.appCaption2()).foregroundStyle(Color.appSecondaryText)
                             }
                             Spacer()
                         }
@@ -356,7 +326,7 @@ struct ChatView: View {
                 if settings.profiles.isEmpty {
                     Text("还没有保存的配置，请到 设置 → API 设置 添加")
                         .font(.appCaption())
-                        .foregroundStyle(.appSecondaryText)
+                        .foregroundStyle(Color.appSecondaryText)
                         .padding(.vertical, 8)
                 }
                 ForEach(settings.profiles) { p in
@@ -366,11 +336,11 @@ struct ChatView: View {
                         HStack(spacing: 10) {
                             Image(systemName: "server.rack")
                                 .font(.system(size: 14, weight: .semibold))
-                                .foregroundStyle(.appSecondaryText)
+                                .foregroundStyle(Color.appSecondaryText)
                                 .frame(width: 26)
                             VStack(alignment: .leading, spacing: 1) {
                                 Text(p.name.isEmpty ? "未命名" : p.name).font(.subheadline.weight(.medium))
-                                Text("\(p.modelName) · \(shortURL(p.baseURL))").font(.appCaption2()).foregroundStyle(.appSecondaryText)
+                                Text("\(p.modelName) · \(shortURL(p.baseURL))").font(.appCaption2()).foregroundStyle(Color.appSecondaryText)
                             }
                             Spacer()
                             if settings.activeProfile.id == p.id {
@@ -405,7 +375,7 @@ struct ChatView: View {
                 Spacer()
             }
                 .font(.appSubheadline())
-                .foregroundStyle(.brandAccent)
+                .foregroundStyle(Color.brandAccent)
             .contentShape(Rectangle())
             .padding(.vertical, 7)
         }
@@ -417,11 +387,11 @@ struct ChatView: View {
             HStack(spacing: 10) {
                 Image(systemName: icon)
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.brandAccent)
+                    .foregroundStyle(Color.brandAccent)
                     .frame(width: 26)
                 Text(title)
                     .font(.subheadline.weight(.medium))
-                    .foregroundStyle(.appPrimaryText)
+                    .foregroundStyle(Color.appPrimaryText)
                 Spacer()
                 if chevron {
                     Image(systemName: "chevron.right")
@@ -586,7 +556,7 @@ struct VoiceButton: View {
     var body: some View {
         Image(systemName: voice.isRecording ? "waveform.circle.fill" : "mic.fill")
             .font(.system(size: 18, weight: .semibold, design: .rounded))
-            .foregroundStyle(voice.isRecording ? .appError : Color.brandAccent)
+            .foregroundStyle(voice.isRecording ? Color.appError : Color.brandAccent)
             .padding(8)
             .background(voice.isRecording ? Color.appError.opacity(0.12) : Color.brandAccent.opacity(0.12))
             .clipShape(Circle())
@@ -613,13 +583,13 @@ struct MessageBubble: View {
                 if let toolName = message.toolName {
                     Label(toolName, systemImage: "hammer.fill")
                         .font(.appCaption2().weight(.medium))
-                        .foregroundStyle(.appSecondaryText)
+                        .foregroundStyle(Color.appSecondaryText)
                         .padding(.horizontal, 14)
                 }
 
                 Text(message.content)
                     .font(.appBody())
-                    .foregroundStyle(message.role == "user" ? .white : .appPrimaryText)
+                    .foregroundStyle(message.role == "user" ? .white : Color.appPrimaryText)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 12)
                     .background(
@@ -636,7 +606,7 @@ struct MessageBubble: View {
                         Text("同步")
                             .font(.appCaption2().weight(.medium))
                     }
-                    .foregroundStyle(.appSecondaryText)
+                    .foregroundStyle(Color.appSecondaryText)
                     .padding(.leading, 4)
                 }
 
@@ -649,7 +619,7 @@ struct MessageBubble: View {
                             Text("打开文件")
                         }
                         .font(.appCaption().weight(.medium))
-                        .foregroundStyle(.brandAccent)
+                        .foregroundStyle(Color.brandAccent)
                     }
                     .padding(.leading, 4)
                 }
@@ -672,7 +642,7 @@ struct MessageBubble: View {
             } label: {
                 Image(systemName: "doc.on.doc")
                     .font(.appCaption())
-                    .foregroundStyle(.appSecondaryText)
+                    .foregroundStyle(Color.appSecondaryText)
             }
         }
     }
@@ -685,6 +655,42 @@ struct MessageBubble: View {
             return Color.appSurface
         default:
             return Color.appInputFill
+        }
+    }
+
+    private var attachmentRow: some View {
+        Group {
+            if selectedImage != nil || selectedFileURL != nil {
+                HStack(spacing: 10) {
+                    if let selectedImage {
+                        Image(uiImage: selectedImage)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: 44, height: 44)
+                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    } else if let name = selectedFileName {
+                        HStack(spacing: 6) {
+                            Image(systemName: fileIcon)
+                                .foregroundStyle(Color.appSecondaryText)
+                            Text(name)
+                                .font(.appCaption())
+                                .lineLimit(1)
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 8)
+                        .background(Color.appInputFill)
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    }
+                    Button { clearAttachment() } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.callout)
+                            .foregroundStyle(.white)
+                    }
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal)
+                .padding(.top, 8)
+            }
         }
     }
 }

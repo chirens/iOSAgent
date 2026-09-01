@@ -62,7 +62,7 @@ struct ChatRootView: View {
                         } label: {
                             Image(systemName: "line.3.horizontal")
                                 .font(.system(size: 19, weight: .semibold, design: .rounded))
-                                .foregroundStyle(.appPrimaryText)
+                                .foregroundStyle(Color.appPrimaryText)
                                 .frame(width: 34, height: 34)
                                 .contentShape(Rectangle())
                         }
@@ -146,14 +146,14 @@ struct ChatRootList: View {
                 HStack(spacing: AppSpacing.md) {
                     Image(systemName: "plus.circle.fill")
                         .font(.system(size: 22, weight: .semibold, design: .rounded))
-                        .foregroundStyle(.brandAccent)
+                        .foregroundStyle(Color.brandAccent)
                     Text("新建对话")
                         .font(.appSubheadline().weight(.semibold))
-                        .foregroundStyle(.appPrimaryText)
+                        .foregroundStyle(Color.appPrimaryText)
                     Spacer()
                     Image(systemName: "chevron.right")
                         .font(.system(size: 12, weight: .semibold, design: .rounded))
-                        .foregroundStyle(.appSecondaryText)
+                        .foregroundStyle(Color.appSecondaryText)
                 }
                 .padding(.horizontal, AppSpacing.lg)
                 .padding(.vertical, AppSpacing.md)
@@ -170,7 +170,7 @@ struct ChatRootList: View {
         VStack(alignment: .leading, spacing: AppSpacing.md) {
             Text("历史对话")
                 .font(.appCaption().weight(.semibold))
-                .foregroundStyle(.appSecondaryText)
+                .foregroundStyle(Color.appSecondaryText)
                 .padding(.leading, AppSpacing.lg)
 
             VStack(spacing: 0) {
@@ -209,12 +209,12 @@ struct ChatRootList: View {
                 HStack {
                     Text("提醒 / 待办")
                         .font(.appCaption().weight(.semibold))
-                        .foregroundStyle(.appSecondaryText)
+                        .foregroundStyle(Color.appSecondaryText)
                     Spacer()
                     if !reminders.isEmpty {
                         Text("\(reminders.count)")
                             .font(.appSubheadline())
-                            .foregroundStyle(.appSecondaryText)
+                            .foregroundStyle(Color.appSecondaryText)
                     }
                     if loadingReminders {
                         ProgressView()
@@ -222,7 +222,7 @@ struct ChatRootList: View {
                     }
                     Image(systemName: "chevron.down")
                         .font(.system(size: 12, weight: .semibold, design: .rounded))
-                        .foregroundStyle(.appSecondaryText)
+                        .foregroundStyle(Color.appSecondaryText)
                         .rotationEffect(.degrees(reminderExpanded ? 0 : -90))
                 }
                 .padding(.leading, AppSpacing.lg)
@@ -235,13 +235,13 @@ struct ChatRootList: View {
                     if !settings.isEnabled("reminders") {
                         Text("在设置中开启“提醒事项”以查看待办")
                             .font(.appSubheadline())
-                            .foregroundStyle(.appSecondaryText)
+                            .foregroundStyle(Color.appSecondaryText)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(AppSpacing.lg)
                     } else if reminders.isEmpty && !loadingReminders {
                         Text("没有待完成的提醒")
                             .font(.appSubheadline())
-                            .foregroundStyle(.appSecondaryText)
+                            .foregroundStyle(Color.appSecondaryText)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(AppSpacing.lg)
                     } else {
@@ -257,7 +257,7 @@ struct ChatRootList: View {
                             } label: {
                                 Text("查看全部 \(reminders.count) 条")
                                     .font(.appSubheadline().weight(.medium))
-                                    .foregroundStyle(.brandAccent)
+                                    .foregroundStyle(Color.brandAccent)
                                     .frame(maxWidth: .infinity, alignment: .leading)
                                     .padding(AppSpacing.lg)
                             }
@@ -309,12 +309,12 @@ struct ConversationRow: View {
         VStack(alignment: .leading, spacing: AppSpacing.xs) {
             Text(conversation.title)
                 .font(.appSubheadline().weight(.semibold))
-                .foregroundStyle(.appPrimaryText)
+                .foregroundStyle(Color.appPrimaryText)
                 .lineLimit(1)
             if let last = conversation.messages.last {
                 Text(last.content)
                     .font(.appCaption())
-                    .foregroundStyle(.appSecondaryText)
+                    .foregroundStyle(Color.appSecondaryText)
                     .lineLimit(1)
             }
         }
@@ -334,18 +334,18 @@ struct MiniReminderRow: View {
             Button(action: onComplete) {
                 Image(systemName: reminder.isCompleted ? "checkmark.circle.fill" : "circle")
                     .font(.system(size: 20, weight: .semibold, design: .rounded))
-                    .foregroundStyle(.brandAccent)
+                    .foregroundStyle(Color.brandAccent)
             }
             .buttonStyle(.plain)
 
             VStack(alignment: .leading, spacing: AppSpacing.xs) {
                 Text(reminder.title ?? "无标题")
                     .font(.appSubheadline().weight(.semibold))
-                    .foregroundStyle(.appPrimaryText)
+                    .foregroundStyle(Color.appPrimaryText)
                 if let dueText = dueString {
                     Text(dueText)
                         .font(.appCaption())
-                        .foregroundStyle(.appSecondaryText)
+                        .foregroundStyle(Color.appSecondaryText)
                 }
             }
             Spacer(minLength: 0)
@@ -418,10 +418,10 @@ struct SideMenuOverlay: View {
             VStack(alignment: .leading, spacing: AppSpacing.xs) {
                 Text("同步")
                     .font(.appTitle3().weight(.bold))
-                    .foregroundStyle(.appPrimaryText)
+                    .foregroundStyle(Color.appPrimaryText)
                 Text("本地 AI Agent · 可操作 iPhone")
                     .font(.appCaption())
-                    .foregroundStyle(.appSecondaryText)
+                    .foregroundStyle(Color.appSecondaryText)
             }
             Spacer(minLength: 0)
         }
@@ -453,7 +453,7 @@ struct SideMenuOverlay: View {
                     } else {
                         Text("暂无历史对话")
                             .font(.appCaption())
-                            .foregroundStyle(.appSecondaryText)
+                            .foregroundStyle(Color.appSecondaryText)
                             .padding(.horizontal, AppSpacing.lg)
                             .padding(.vertical, AppSpacing.sm)
                     }
@@ -495,7 +495,7 @@ struct SideMenuOverlay: View {
                             .frame(width: 34, height: 34)
                         Image(systemName: "gearshape.fill")
                             .font(.system(size: 16, weight: .semibold, design: .rounded))
-                            .foregroundStyle(.appSecondaryText)
+                            .foregroundStyle(Color.appSecondaryText)
                     }
                 }
                 .padding(.horizontal, AppSpacing.xl)
@@ -515,7 +515,7 @@ struct SideMenuSection<Content: View>: View {
         VStack(alignment: .leading, spacing: AppSpacing.md) {
             Text(title)
                 .font(.appCaption().weight(.semibold))
-                .foregroundStyle(.appSecondaryText)
+                .foregroundStyle(Color.appSecondaryText)
                 .padding(.leading, AppSpacing.lg)
 
             VStack(spacing: 0) {
@@ -544,11 +544,11 @@ struct SideMenuButton: View {
                         .frame(width: 34, height: 34)
                     Image(systemName: icon)
                         .font(.system(size: 15, weight: .semibold, design: .rounded))
-                        .foregroundStyle(.appPrimaryText.opacity(0.8))
+                        .foregroundStyle(Color.appPrimaryText.opacity(0.8))
                 }
                 Text(title)
                     .font(.appSubheadline().weight(.semibold))
-                    .foregroundStyle(.appPrimaryText)
+                    .foregroundStyle(Color.appPrimaryText)
                     .lineLimit(1)
                 Spacer(minLength: 0)
             }
@@ -571,12 +571,12 @@ struct FilesHistoryView: View {
             VStack(alignment: .leading, spacing: AppSpacing.xl) {
                 Text("文件")
                     .font(.appTitle1())
-                    .foregroundStyle(.appPrimaryText)
+                    .foregroundStyle(Color.appPrimaryText)
 
                 if files.isEmpty {
                     Text("还没有文件")
                         .font(.appSubheadline())
-                        .foregroundStyle(.appSecondaryText)
+                        .foregroundStyle(Color.appSecondaryText)
                         .frame(maxWidth: .infinity, alignment: .center)
                         .padding(AppSpacing.xxl)
                         .background(Color.appSurface)
@@ -592,18 +592,18 @@ struct FilesHistoryView: View {
                                     HStack(spacing: AppSpacing.md) {
                                         Image(systemName: fileIcon(for: url))
                                             .font(.system(size: 18, weight: .semibold, design: .rounded))
-                                            .foregroundStyle(.brandAccent)
+                                            .foregroundStyle(Color.brandAccent)
                                             .frame(width: 36, height: 36)
                                             .background(Color.brandAccent.opacity(0.12))
                                             .clipShape(RoundedRectangle(cornerRadius: AppRadius.sm, style: .continuous))
                                         VStack(alignment: .leading, spacing: AppSpacing.xs) {
                                             Text(url.lastPathComponent)
                                                 .font(.appSubheadline().weight(.semibold))
-                                                .foregroundStyle(.appPrimaryText)
+                                                .foregroundStyle(Color.appPrimaryText)
                                                 .lineLimit(1)
                                             Text(modifiedString(for: url))
                                                 .font(.appCaption())
-                                                .foregroundStyle(.appSecondaryText)
+                                                .foregroundStyle(Color.appSecondaryText)
                                         }
                                         Spacer(minLength: 0)
                                     }

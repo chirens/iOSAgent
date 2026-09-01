@@ -18,7 +18,7 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: AppSpacing.xl) {
                 Text("设置")
                     .font(.appTitle1())
-                    .foregroundStyle(.appPrimaryText)
+                    .foregroundStyle(Color.appPrimaryText)
                     .padding(.horizontal, AppSpacing.xxl)
 
                 VStack(spacing: AppSpacing.xl) {
@@ -106,7 +106,7 @@ struct SettingsSection<Content: View>: View {
         VStack(alignment: .leading, spacing: AppSpacing.md) {
             Text(title)
                 .font(.appCaption())
-                .foregroundStyle(.appSecondaryText)
+                .foregroundStyle(Color.appSecondaryText)
                 .padding(.leading, AppSpacing.lg)
 
             VStack(spacing: 0) {
@@ -149,16 +149,16 @@ struct SettingsLinkRow: View {
                     .frame(width: 36, height: 36)
                 Image(systemName: icon)
                     .font(.system(size: 16, weight: .semibold, design: .rounded))
-                    .foregroundStyle(.appPrimaryText.opacity(0.8))
+                    .foregroundStyle(Color.appPrimaryText.opacity(0.8))
             }
 
             VStack(alignment: .leading, spacing: AppSpacing.xs) {
                 Text(title)
                     .font(.appSubheadline().weight(.semibold))
-                    .foregroundStyle(.appPrimaryText)
+                    .foregroundStyle(Color.appPrimaryText)
                 Text(subtitle)
                     .font(.appCaption())
-                    .foregroundStyle(.appSecondaryText)
+                    .foregroundStyle(Color.appSecondaryText)
             }
 
             Spacer(minLength: 0)
@@ -166,7 +166,7 @@ struct SettingsLinkRow: View {
             if showChevron {
                 Image(systemName: "chevron.right")
                     .font(.system(size: 12, weight: .semibold, design: .rounded))
-                    .foregroundStyle(.appSecondaryText)
+                    .foregroundStyle(Color.appSecondaryText)
             }
         }
     }
@@ -190,7 +190,7 @@ struct APISettingsView: View {
             VStack(alignment: .leading, spacing: AppSpacing.xl) {
                 Text("API 设置")
                     .font(.appTitle1())
-                    .foregroundStyle(.appPrimaryText)
+                    .foregroundStyle(Color.appPrimaryText)
 
                 VStack(spacing: AppSpacing.xl) {
                     inputCard
@@ -200,7 +200,7 @@ struct APISettingsView: View {
 
                 Text("兼容 OpenAI / DeepSeek 等任意 OpenAI 格式接口。注意：DeepSeek 不支持音频转写，语音输入请使用支持 /audio/transcriptions 的接口（如 OpenAI）。")
                     .font(.appCaption())
-                    .foregroundStyle(.appSecondaryText)
+                    .foregroundStyle(Color.appSecondaryText)
                     .padding(.horizontal, AppSpacing.lg)
             }
             .padding(.horizontal, AppSpacing.xxl)
@@ -215,11 +215,11 @@ struct APISettingsView: View {
         VStack(alignment: .leading, spacing: AppSpacing.md) {
             SectionHeader("当前编辑的配置")
             VStack(spacing: AppSpacing.sm) {
-                AppTextField("配置名称（如 DeepSeek / OpenAI）", text: $draftName)
-                AppTextField("Base URL", text: $draftBase, keyboard: .URL)
-                AppSecureField("API Key", text: $draftKey)
-                AppTextField("模型名", text: $draftModel)
-                AppTextField("语音模型（默认 whisper-1）", text: $draftSTT)
+                AppTextField(placeholder: "配置名称（如 DeepSeek / OpenAI）", text: $draftName)
+                AppTextField(placeholder: "Base URL", text: $draftBase, keyboard: .URL)
+                AppSecureField(placeholder: "API Key", text: $draftKey)
+                AppTextField(placeholder: "模型名", text: $draftModel)
+                AppTextField(placeholder: "语音模型（默认 whisper-1）", text: $draftSTT)
             }
         }
         .padding(AppSpacing.lg)
@@ -237,17 +237,17 @@ struct APISettingsView: View {
                     ProgressView()
                     Text("正在测试连接…")
                         .font(.appSubheadline())
-                        .foregroundStyle(.appSecondaryText)
+                        .foregroundStyle(Color.appSecondaryText)
                     Spacer(minLength: 0)
                 }
                 .padding(.horizontal, AppSpacing.lg)
             } else if let testResult {
                 HStack(spacing: AppSpacing.sm) {
                     Image(systemName: testResult.contains("OK") || testResult.contains("成功") ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
-                        .foregroundStyle(testResult.contains("OK") || testResult.contains("成功") ? .appSuccess : .appError)
+                        .foregroundStyle(testResult.contains("OK") || testResult.contains("成功") ? Color.appSuccess : Color.appError)
                     Text(testResult)
                         .font(.appSubheadline())
-                        .foregroundStyle(.appSecondaryText)
+                        .foregroundStyle(Color.appSecondaryText)
                     Spacer(minLength: 0)
                 }
                 .padding(.horizontal, AppSpacing.lg)
@@ -257,7 +257,7 @@ struct APISettingsView: View {
                 Button { testConnection() } label: {
                     Text("测试连接")
                         .font(.appBody().weight(.semibold))
-                        .foregroundStyle(.appPrimaryText)
+                        .foregroundStyle(Color.appPrimaryText)
                         .frame(maxWidth: .infinity, minHeight: 44)
                         .background(Color.appInputFill)
                         .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
@@ -303,20 +303,20 @@ struct APISettingsView: View {
                                     .frame(width: 28, height: 28)
                                 Text("\(idx + 1)")
                                     .font(.appMicro())
-                                    .foregroundStyle(.brandAccent)
+                                    .foregroundStyle(Color.brandAccent)
                             }
                             VStack(alignment: .leading, spacing: AppSpacing.xs) {
                                 Text(p.name.isEmpty ? "未命名" : p.name)
                                     .font(.appSubheadline().weight(.semibold))
-                                    .foregroundStyle(.appPrimaryText)
+                                    .foregroundStyle(Color.appPrimaryText)
                                 Text("\(p.modelName) · \(shortURL(p.baseURL))")
                                     .font(.appCaption())
-                                    .foregroundStyle(.appSecondaryText)
+                                    .foregroundStyle(Color.appSecondaryText)
                             }
                             Spacer(minLength: 0)
                             if settings.activeProfile.id == p.id {
                                 Image(systemName: "checkmark.circle.fill")
-                                    .foregroundStyle(.appSuccess)
+                                    .foregroundStyle(Color.appSuccess)
                             }
                         }
                         .padding(.horizontal, AppSpacing.lg)
@@ -396,7 +396,7 @@ struct PermissionsView: View {
             VStack(alignment: .leading, spacing: AppSpacing.xl) {
                 Text("系统权限")
                     .font(.appTitle1())
-                    .foregroundStyle(.appPrimaryText)
+                    .foregroundStyle(Color.appPrimaryText)
 
                 VStack(spacing: AppSpacing.xl) {
                     SettingsSection(title: "系统能力") {
@@ -420,7 +420,7 @@ struct PermissionsView: View {
                         Divider().padding(.leading, 64)
                         Button("刷新授权状态") { settings.refreshAuthStatuses() }
                             .font(.appSubheadline().weight(.semibold))
-                            .foregroundStyle(.brandAccent)
+                            .foregroundStyle(Color.brandAccent)
                             .frame(maxWidth: .infinity, minHeight: 44)
                     }
 
@@ -428,10 +428,10 @@ struct PermissionsView: View {
                         VStack(alignment: .leading, spacing: AppSpacing.sm) {
                             Label("关于健康数据读取", systemImage: "heart.fill")
                                 .font(.appSubheadline().weight(.semibold))
-                                .foregroundStyle(.appPrimaryText)
+                                .foregroundStyle(Color.appPrimaryText)
                             Text("健康读取需要 App 以“包含 HealthKit 能力的描述文件”重新签名。免费 Apple ID 的侧载签名通常无法开启 HealthKit 能力，会导致授权失败。若需使用健康数据，请用付费开发者账号（$99/年）签名的描述文件重签本 IPA。")
                                 .font(.appCaption())
-                                .foregroundStyle(.appSecondaryText)
+                                .foregroundStyle(Color.appSecondaryText)
                                 .lineLimit(nil)
                         }
                         .padding(AppSpacing.lg)
@@ -456,12 +456,12 @@ struct CustomPromptView: View {
             VStack(alignment: .leading, spacing: AppSpacing.xl) {
                 Text("自定义系统提示")
                     .font(.appTitle1())
-                    .foregroundStyle(.appPrimaryText)
+                    .foregroundStyle(Color.appPrimaryText)
 
                 VStack(alignment: .leading, spacing: AppSpacing.md) {
                     Text("自定义系统提示会追加在默认提示之后，用于塑造助手的角色、语气与回答偏好。例如：\n“你是一个简洁的中文助手，回答不超过三句话，多用分点。”")
                         .font(.appCaption())
-                        .foregroundStyle(.appSecondaryText)
+                        .foregroundStyle(Color.appSecondaryText)
                         .lineLimit(nil)
 
                     TextEditor(text: $settings.systemPrompt)
@@ -497,7 +497,7 @@ struct LegalView: View {
             Text(legalText)
                 .font(.appCaption())
                 .lineSpacing(5)
-                .foregroundStyle(.appPrimaryText)
+                .foregroundStyle(Color.appPrimaryText)
                 .padding(AppSpacing.xxl)
         }
         .background(Color.appBackground)
@@ -654,18 +654,18 @@ struct AboutView: View {
             VStack(alignment: .leading, spacing: AppSpacing.xl) {
                 Text("关于")
                     .font(.appTitle1())
-                    .foregroundStyle(.appPrimaryText)
+                    .foregroundStyle(Color.appPrimaryText)
 
                 VStack(spacing: AppSpacing.xl) {
                     SettingsSection(title: "版本信息") {
                         HStack {
                             Text("版本")
                                 .font(.appSubheadline().weight(.semibold))
-                                .foregroundStyle(.appPrimaryText)
+                                .foregroundStyle(Color.appPrimaryText)
                             Spacer()
                             Text(appVersion)
                                 .font(.appCaption())
-                                .foregroundStyle(.appSecondaryText)
+                                .foregroundStyle(Color.appSecondaryText)
                         }
                         .padding(.horizontal, AppSpacing.lg)
                         .padding(.vertical, AppSpacing.md)
@@ -682,7 +682,7 @@ struct AboutView: View {
                     SettingsSection(title: "介绍") {
                         Text("同步 · 运行在 iPhone 上的本地 AI Agent")
                             .font(.appCaption())
-                            .foregroundStyle(.appSecondaryText)
+                            .foregroundStyle(Color.appSecondaryText)
                             .padding(AppSpacing.lg)
                     }
                 }
@@ -709,15 +709,15 @@ struct LinkRow: View {
             HStack(spacing: AppSpacing.sm) {
                 Text(title)
                     .font(.appSubheadline().weight(.semibold))
-                    .foregroundStyle(.appPrimaryText)
+                    .foregroundStyle(Color.appPrimaryText)
                 Spacer()
                 Text(value)
                     .font(.appCaption())
-                    .foregroundStyle(.appSecondaryText)
+                    .foregroundStyle(Color.appSecondaryText)
                     .lineLimit(1)
                 Image(systemName: "arrow.up.right.square")
                     .font(.system(size: 12, weight: .semibold, design: .rounded))
-                    .foregroundStyle(.brandAccent)
+                    .foregroundStyle(Color.brandAccent)
             }
             .padding(.horizontal, AppSpacing.lg)
             .padding(.vertical, AppSpacing.md)
@@ -745,15 +745,15 @@ struct CapabilityToggleRow: View {
                     .frame(width: 36, height: 36)
                 Image(systemName: icon)
                     .font(.system(size: 16, weight: .semibold, design: .rounded))
-                    .foregroundStyle(.appPrimaryText.opacity(0.8))
+                    .foregroundStyle(Color.appPrimaryText.opacity(0.8))
             }
             VStack(alignment: .leading, spacing: AppSpacing.xs) {
                 Text(title)
                     .font(.appSubheadline().weight(.semibold))
-                    .foregroundStyle(.appPrimaryText)
+                    .foregroundStyle(Color.appPrimaryText)
                 Text(subtitle + " · " + settings.status(key).rawValue)
                     .font(.appCaption())
-                    .foregroundStyle(.appSecondaryText)
+                    .foregroundStyle(Color.appSecondaryText)
             }
             Spacer(minLength: 0)
             Toggle("", isOn: Binding(
@@ -786,7 +786,7 @@ struct SectionHeader: View {
     var body: some View {
         Text(title)
             .font(.appCaption().weight(.semibold))
-            .foregroundStyle(.appSecondaryText)
+            .foregroundStyle(Color.appSecondaryText)
             .padding(.horizontal, AppSpacing.lg)
     }
 }
@@ -799,7 +799,7 @@ struct AppTextField: View {
     var body: some View {
         TextField(placeholder, text: $text)
             .font(.appBody())
-            .foregroundStyle(.appPrimaryText)
+            .foregroundStyle(Color.appPrimaryText)
             .autocapitalization(.none)
             .keyboardType(keyboard)
             .padding(.horizontal, AppSpacing.md)
@@ -816,7 +816,7 @@ struct AppSecureField: View {
     var body: some View {
         SecureField(placeholder, text: $text)
             .font(.appBody())
-            .foregroundStyle(.appPrimaryText)
+            .foregroundStyle(Color.appPrimaryText)
             .autocapitalization(.none)
             .padding(.horizontal, AppSpacing.md)
             .padding(.vertical, AppSpacing.md)
