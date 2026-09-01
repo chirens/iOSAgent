@@ -348,7 +348,7 @@ struct SideMenuOverlay: View {
         HStack(spacing: 14) {
             ZStack {
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(LinearGradient(colors: [Color.accentColor, Color.accentColor.opacity(0.75)], startPoint: .topLeading, endPoint: .bottomTrailing))
+                    .fill(Color.accentColor)
                     .frame(width: 48, height: 48)
                 Image(systemName: "sparkles")
                     .font(.system(size: 22, weight: .bold))

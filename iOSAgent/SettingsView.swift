@@ -91,6 +91,7 @@ struct SettingsView: View {
             }
         }
         .navigationTitle("设置")
+        .navigationBarTitleDisplayMode(.large)
         .listStyle(.insetGrouped)
         .scrollContentBackground(.visible)
         .background(Color(.systemGroupedBackground))
@@ -148,11 +149,11 @@ struct SettingRow: View {
         HStack(spacing: 14) {
             ZStack {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(LinearGradient(colors: colors.map { $0.opacity(0.18) }, startPoint: .topLeading, endPoint: .bottomTrailing))
+                    .fill((colors.first ?? .secondary).opacity(0.14))
                     .frame(width: 38, height: 38)
                 Image(systemName: icon)
                     .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(LinearGradient(colors: colors, startPoint: .topLeading, endPoint: .bottomTrailing))
+                    .foregroundStyle(colors.first ?? .secondary)
             }
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
@@ -208,12 +209,19 @@ struct APISettingsView: View {
                         .foregroundStyle(testResult.contains("成功") || testResult.contains("OK") ? .green : .red)
                 }
                 Button("测试连接") { testConnection() }
+                    .buttonStyle(.bordered)
                     .disabled(isTesting || draftKey.isEmpty || draftBase.isEmpty)
                 if !draftBase.isEmpty && !draftKey.isEmpty {
-                    Button {
-                        saveProfile()
-                    } label: {
-                        Label("保存", systemImage: "square.and.arrow.down")
+                    HStack {
+                        Spacer()
+                        Button {
+                            saveProfile()
+                        } label: {
+                            Label("保存", systemImage: "checkmark")
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .buttonBorderShape(.capsule)
+                        .controlSize(.small)
                     }
                 }
             } footer: {
@@ -262,6 +270,7 @@ struct APISettingsView: View {
             }
         }
         .navigationTitle("API 设置")
+        .navigationBarTitleDisplayMode(.large)
         .scrollContentBackground(.visible)
         .background(Color(.systemGroupedBackground))
         .onAppear { loadProfile(settings.activeProfile) }
@@ -351,6 +360,7 @@ struct PermissionsView: View {
             }
         }
         .navigationTitle("系统权限")
+        .navigationBarTitleDisplayMode(.large)
         .listStyle(.insetGrouped)
         .scrollContentBackground(.visible)
         .background(Color(.systemGroupedBackground))
@@ -383,6 +393,7 @@ struct CustomPromptView: View {
             Spacer(minLength: 0)
         }
         .navigationTitle("自定义系统提示")
+        .navigationBarTitleDisplayMode(.large)
         .background(Color(.systemGroupedBackground))
     }
 }
@@ -407,6 +418,7 @@ struct LegalView: View {
         }
         .background(Color(.systemGroupedBackground))
         .navigationTitle(type.rawValue)
+        .navigationBarTitleDisplayMode(.large)
     }
 
     private var legalText: String {
@@ -598,6 +610,7 @@ struct AboutView: View {
             }
         }
         .navigationTitle("关于")
+        .navigationBarTitleDisplayMode(.large)
         .listStyle(.insetGrouped)
         .scrollContentBackground(.visible)
         .background(Color(.systemGroupedBackground))
