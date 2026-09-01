@@ -11,6 +11,7 @@ struct iOSAgentApp: App {
                 .environmentObject(ChatStore.shared)
                 .environmentObject(SettingsStore.shared)
                 .environmentObject(NotificationsManager.shared)
+                .tint(.brandAccent)
                 .tint(Color.brandAccent)
         }
     }

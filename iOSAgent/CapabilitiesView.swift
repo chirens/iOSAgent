@@ -25,36 +25,38 @@ struct CapabilitiesView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: AppSpacing.lg) {
                 Text("同步 能做什么")
-                    .font(.largeTitle.weight(.bold))
+                    .font(.appTitle1())
+                    .foregroundStyle(.appPrimaryText)
                     .padding(.horizontal)
 
                 Text("所有能力均通过 iOS 原生框架直接调用，无需越狱，无需借助其他 App。")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .font(.appSubheadline())
+                    .foregroundStyle(.appSecondaryText)
                     .padding(.horizontal)
 
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 160), spacing: 12)], spacing: 12) {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 160), spacing: AppSpacing.md)], spacing: AppSpacing.md) {
                     ForEach(cards) { card in
-                        VStack(alignment: .leading, spacing: 10) {
+                        VStack(alignment: .leading, spacing: AppSpacing.sm) {
                             ZStack {
                                 Circle()
                                     .fill(card.color.opacity(0.15))
                                     .frame(width: 44, height: 44)
                                 Image(systemName: card.icon)
-                                    .font(.system(size: 20, weight: .semibold))
+                                    .font(.system(size: 20, weight: .semibold, design: .rounded))
                                     .foregroundStyle(card.color)
                             }
                             Text(card.title)
-                                .font(.headline)
+                                .font(.appTitle3().weight(.bold))
+                                .foregroundStyle(.appPrimaryText)
                             Text(card.desc)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                                .font(.appCaption())
+                                .foregroundStyle(.appSecondaryText)
                                 .lineLimit(2)
                             Spacer()
                             Text(card.example)
-                                .font(.caption2)
+                                .font(.appCaption2())
                                 .foregroundStyle(.white)
                                 .padding(.horizontal, 8)
                                 .padding(.vertical, 4)
@@ -63,16 +65,16 @@ struct CapabilitiesView: View {
                         }
                         .frame(height: 170)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(14)
-                        .background(Color(.systemBackground))
-                        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-                        .shadow(color: .black.opacity(0.04), radius: 8, x: 0, y: 3)
+                        .padding(AppSpacing.md)
+                        .background(Color.appSurface)
+                        .clipShape(RoundedRectangle(cornerRadius: AppRadius.lg, style: .continuous))
+                        .appCardShadow()
                     }
                 }
                 .padding(.horizontal)
             }
             .padding(.vertical)
         }
-        .background(Color(.systemGroupedBackground))
+        .background(Color.appBackground)
     }
 }

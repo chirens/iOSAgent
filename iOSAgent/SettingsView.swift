@@ -1,10 +1,5 @@
 import SwiftUI
 
-extension Color {
-    /// 品牌强调色：克制的有意蓝色，呼应 App 蓝色圆环图标，替换满屏默认蓝
-    static let brandAccent = Color(red: 0.10, green: 0.42, blue: 0.96)
-}
-
 enum SettingsRoute: Hashable {
     case api
     case permissions
@@ -19,95 +14,53 @@ struct SettingsView: View {
     @State private var cacheSizeText: String = ""
 
     var body: some View {
-        List {
-            // 核心设置
-            Section {
-                NavigationLink(value: SettingsRoute.api) {
-                    SettingRow(icon: "key.fill",
-                               colors: [.blue, .cyan],
-                               title: "API 设置",
-                               subtitle: "Base URL · 模型 · 连接测试")
-                }
-                NavigationLink(value: SettingsRoute.permissions) {
-                    SettingRow(icon: "lock.shield.fill",
-                               colors: [.orange, .yellow],
-                               title: "系统权限",
-                               subtitle: "健康 / 提醒 / 日历 / 相册…")
-                }
-                NavigationLink(value: SettingsRoute.customPrompt) {
-                    SettingRow(icon: "text.quote",
-                               colors: [.purple, .pink],
-                               title: "自定义系统提示",
-                               subtitle: "塑造助手语气与偏好")
-                }
-            } header: {
-                Text("核心设置")
-            }
+        ScrollView {
+            VStack(alignment: .leading, spacing: AppSpacing.xl) {
+                Text("设置")
+                    .font(.appTitle1())
+                    .foregroundStyle(.appPrimaryText)
+                    .padding(.horizontal, AppSpacing.xxl)
 
-            // 应用
-            Section {
-                Button {
-                    showClearCacheAlert = true
-                } label: {
-                    SettingRow(icon: "trash.fill",
-                               colors: [.red, .orange],
-                               title: "清除缓存",
-                               subtitle: "清理生成的临时文件与附件")
-                }
-                .buttonStyle(.plain)
-            } header: {
-                Text("应用")
-            }
+                VStack(spacing: AppSpacing.xl) {
+                    SettingsSection(title: "核心设置") {
+                        SettingsLinkRow(icon: "key.fill", color: .pastelBlue, title: "API 设置", subtitle: "Base URL · 模型 · 连接测试", destination: .api)
+                        SettingsLinkRow(icon: "lock.shield.fill", color: .pastelOrange, title: "系统权限", subtitle: "健康 / 提醒 / 日历 / 相册…", destination: .permissions)
+                        SettingsLinkRow(icon: "text.quote", color: .pastelPurple, title: "自定义系统提示", subtitle: "塑造助手语气与偏好", destination: .customPrompt)
+                    }
 
-            // 协议与声明
-            Section {
-                NavigationLink(value: SettingsRoute.legal(.userAgreement)) {
-                    SettingRow(icon: "doc.text.fill",
-                               colors: [.indigo, .purple],
-                               title: "用户协议",
-                               subtitle: "使用条款与行为规范")
-                }
-                NavigationLink(value: SettingsRoute.legal(.privacyPolicy)) {
-                    SettingRow(icon: "hand.raised.fill",
-                               colors: [.green, .teal],
-                               title: "隐私政策",
-                               subtitle: "数据收集与使用说明")
-                }
-                NavigationLink(value: SettingsRoute.legal(.disclaimer)) {
-                    SettingRow(icon: "exclamationmark.shield.fill",
-                               colors: [.gray, .secondary],
-                               title: "免责声明",
-                               subtitle: "能力边界与风险提示")
-                }
-            } header: {
-                Text("协议与声明")
-            }
+                    SettingsSection(title: "应用") {
+                        Button { showClearCacheAlert = true } label: {
+                            SettingsLinkRow(icon: "trash.fill", color: .pastelPink, title: "清除缓存", subtitle: "清理生成的临时文件与附件", showChevron: false)
+                        }
+                        .buttonStyle(.plain)
+                    }
 
-            // 关于
-            Section {
-                NavigationLink(value: SettingsRoute.about) {
-                    SettingRow(icon: "info.circle.fill",
-                               colors: [.gray, .gray],
-                               title: "关于 同步",
-                               subtitle: "版本与链接")
+                    SettingsSection(title: "协议与声明") {
+                        SettingsLinkRow(icon: "doc.text.fill", color: .pastelTeal, title: "用户协议", subtitle: "使用条款与行为规范", destination: .legal(.userAgreement))
+                        SettingsLinkRow(icon: "hand.raised.fill", color: .pastelGreen, title: "隐私政策", subtitle: "数据收集与使用说明", destination: .legal(.privacyPolicy))
+                        SettingsLinkRow(icon: "exclamationmark.shield.fill", color: .pastelGray, title: "免责声明", subtitle: "能力边界与风险提示", destination: .legal(.disclaimer))
+                    }
+
+                    SettingsSection(title: "关于") {
+                        SettingsLinkRow(icon: "info.circle.fill", color: .pastelGray, title: "关于 同步", subtitle: "版本与链接", destination: .about)
+                    }
                 }
-            } header: {
-                Text("关于")
+                .padding(.horizontal, AppSpacing.xxl)
             }
+            .padding(.top, AppSpacing.xl)
+            .padding(.bottom, AppSpacing.xxl)
         }
-        .navigationTitle("设置")
-        .navigationBarTitleDisplayMode(.large)
-        .listStyle(.insetGrouped)
-        .scrollContentBackground(.visible)
-        .background(Color(.systemGroupedBackground))
-        .onAppear { calculateCacheSize() }
+        .background(Color.appBackground)
         .alert("清除缓存", isPresented: $showClearCacheAlert) {
             Button("取消", role: .cancel) {}
             Button("清除", role: .destructive) { clearCache() }
         } message: {
             Text("将删除所有生成的文件（文档 / 演示文稿 / 图片 / PDF 等）与临时附件，历史对话不会被删除。\n当前缓存：\(cacheSizeText)")
         }
+        .onAppear { calculateCacheSize() }
     }
+
+    // MARK: - Helpers
 
     private func calculateCacheSize() {
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
@@ -129,7 +82,6 @@ struct SettingsView: View {
                          "png", "jpg", "jpeg", "heic", "gif", "webp", "bmp", "tiff"]
         guard let urls = try? FileManager.default.contentsOfDirectory(at: docs, includingPropertiesForKeys: nil, options: .skipsHiddenFiles) else { return }
         for url in urls {
-            // 只删除生成的文件，保留 conversations.json
             if removable.contains(url.pathExtension.lowercased()) {
                 try? FileManager.default.removeItem(at: url)
             }
@@ -144,35 +96,79 @@ struct SettingsView: View {
     }
 }
 
-struct SettingRow: View {
-    let icon: String
-    let colors: [Color]
+// MARK: - Reusable Components
+
+struct SettingsSection<Content: View>: View {
     let title: String
-    let subtitle: String
+    @ViewBuilder let content: Content
 
     var body: some View {
-        HStack(spacing: 12) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill((colors.first ?? .secondary).opacity(0.14))
-                    .frame(width: 38, height: 38)
-                Image(systemName: icon)
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(colors.first ?? .secondary)
+        VStack(alignment: .leading, spacing: AppSpacing.md) {
+            Text(title)
+                .font(.appCaption())
+                .foregroundStyle(.appSecondaryText)
+                .padding(.leading, AppSpacing.lg)
+
+            VStack(spacing: 0) {
+                content
             }
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.subheadline.weight(.semibold))
-                Text(subtitle)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            Spacer(minLength: 0)
-            Image(systemName: "chevron.right")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.tertiary)
+            .background(Color.appSurface)
+            .clipShape(RoundedRectangle(cornerRadius: AppRadius.lg, style: .continuous))
+            .appCardShadow()
         }
-        .padding(.vertical, 4)
+    }
+}
+
+struct SettingsLinkRow: View {
+    let icon: String
+    let color: Color
+    let title: String
+    let subtitle: String
+    var showChevron: Bool = true
+    var destination: SettingsRoute?
+
+    var body: some View {
+        rowContent
+            .padding(.horizontal, AppSpacing.lg)
+            .padding(.vertical, AppSpacing.md)
+            .contentShape(Rectangle())
+            .background(
+                NavigationLink(value: destination) {
+                    EmptyView()
+                }
+                .opacity(0)
+                .disabled(destination == nil)
+            )
+    }
+
+    private var rowContent: some View {
+        HStack(spacing: AppSpacing.md) {
+            ZStack {
+                RoundedRectangle(cornerRadius: AppRadius.sm, style: .continuous)
+                    .fill(color.opacity(0.35))
+                    .frame(width: 36, height: 36)
+                Image(systemName: icon)
+                    .font(.system(size: 16, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.appPrimaryText.opacity(0.8))
+            }
+
+            VStack(alignment: .leading, spacing: AppSpacing.xs) {
+                Text(title)
+                    .font(.appSubheadline().weight(.semibold))
+                    .foregroundStyle(.appPrimaryText)
+                Text(subtitle)
+                    .font(.appCaption())
+                    .foregroundStyle(.appSecondaryText)
+            }
+
+            Spacer(minLength: 0)
+
+            if showChevron {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.appSecondaryText)
+            }
+        }
     }
 }
 
@@ -190,106 +186,156 @@ struct APISettingsView: View {
     @State private var saved = false
 
     var body: some View {
-        Form {
-            Section("当前编辑的配置") {
-                TextField("配置名称（如 DeepSeek / OpenAI）", text: $draftName)
-                    .autocapitalization(.none)
-                TextField("Base URL", text: $draftBase)
-                    .autocapitalization(.none)
-                    .keyboardType(.URL)
-                SecureField("API Key", text: $draftKey)
-                    .autocapitalization(.none)
-                TextField("模型名", text: $draftModel)
-                    .autocapitalization(.none)
-                TextField("语音模型（默认 whisper-1）", text: $draftSTT)
-                    .autocapitalization(.none)
-            }
+        ScrollView {
+            VStack(alignment: .leading, spacing: AppSpacing.xl) {
+                Text("API 设置")
+                    .font(.appTitle1())
+                    .foregroundStyle(.appPrimaryText)
 
-            Section {
-                if isTesting {
-                    HStack(spacing: 8) {
-                        ProgressView()
-                        Text("正在测试连接…")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                        Spacer(minLength: 0)
-                    }
-                } else if let testResult {
-                    HStack(spacing: 8) {
-                        Image(systemName: testResult.contains("OK") || testResult.contains("成功") ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
-                            .foregroundStyle(testResult.contains("OK") || testResult.contains("成功") ? .green : .red)
-                        Text(testResult)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                        Spacer(minLength: 0)
-                    }
+                VStack(spacing: AppSpacing.xl) {
+                    inputCard
+                    actionCard
+                    if !settings.profiles.isEmpty { profilesCard }
                 }
 
-                HStack(spacing: 12) {
-                    Button { testConnection() } label: { Text("测试连接") }
-                        .buttonStyle(.bordered)
-                        .frame(maxWidth: .infinity)
-                        .disabled(isTesting || draftKey.isEmpty || draftBase.isEmpty)
-                    Button {
-                        saveProfile()
-                    } label: {
-                        Label("保存", systemImage: "checkmark")
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .frame(maxWidth: .infinity)
-                    .disabled(isTesting || draftKey.isEmpty || draftBase.isEmpty)
-                }
-                .controlSize(.regular)
-            } footer: {
                 Text("兼容 OpenAI / DeepSeek 等任意 OpenAI 格式接口。注意：DeepSeek 不支持音频转写，语音输入请使用支持 /audio/transcriptions 的接口（如 OpenAI）。")
+                    .font(.appCaption())
+                    .foregroundStyle(.appSecondaryText)
+                    .padding(.horizontal, AppSpacing.lg)
             }
+            .padding(.horizontal, AppSpacing.xxl)
+            .padding(.top, AppSpacing.xl)
+            .padding(.bottom, AppSpacing.xxl)
+        }
+        .background(Color.appBackground)
+        .onAppear { loadProfile(settings.activeProfile) }
+    }
 
-            if !settings.profiles.isEmpty {
-                Section {
-                    ForEach(Array(settings.profiles.enumerated()), id: \.element.id) { idx, p in
-                        Button {
-                            settings.setActiveProfile(p.id)
-                            loadProfile(p)
-                        } label: {
-                            HStack(spacing: 10) {
-                                ZStack {
-                                    Circle()
-                                        .fill(Color.accentColor.opacity(0.12))
-                                        .frame(width: 26, height: 26)
-                                    Text("\(idx + 1)")
-                                        .font(.caption.weight(.bold))
-                                        .foregroundStyle(Color.accentColor)
-                                }
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(p.name.isEmpty ? "未命名" : p.name)
-                                        .font(.subheadline.weight(.semibold))
-                                    Text("\(p.modelName) · \(shortURL(p.baseURL))")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                                Spacer()
-                                if settings.activeProfile.id == p.id {
-                                    Image(systemName: "checkmark.circle.fill")
-                                        .foregroundStyle(.green)
-                                }
-                            }
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    .onDelete { offsets in
-                        offsets.map { settings.profiles[$0].id }.forEach { settings.deleteProfile($0) }
-                    }
-                } header: {
-                    Text("已保存的配置（点选使用，左滑删除）")
-                }
+    private var inputCard: some View {
+        VStack(alignment: .leading, spacing: AppSpacing.md) {
+            SectionHeader("当前编辑的配置")
+            VStack(spacing: AppSpacing.sm) {
+                AppTextField("配置名称（如 DeepSeek / OpenAI）", text: $draftName)
+                AppTextField("Base URL", text: $draftBase, keyboard: .URL)
+                AppSecureField("API Key", text: $draftKey)
+                AppTextField("模型名", text: $draftModel)
+                AppTextField("语音模型（默认 whisper-1）", text: $draftSTT)
             }
         }
-        .navigationTitle("API 设置")
-        .navigationBarTitleDisplayMode(.large)
-        .scrollContentBackground(.visible)
-        .background(Color(.systemGroupedBackground))
-        .onAppear { loadProfile(settings.activeProfile) }
+        .padding(AppSpacing.lg)
+        .background(Color.appSurface)
+        .clipShape(RoundedRectangle(cornerRadius: AppRadius.lg, style: .continuous))
+        .appCardShadow()
+    }
+
+    private var actionCard: some View {
+        VStack(alignment: .leading, spacing: AppSpacing.md) {
+            SectionHeader("连接测试")
+
+            if isTesting {
+                HStack(spacing: AppSpacing.sm) {
+                    ProgressView()
+                    Text("正在测试连接…")
+                        .font(.appSubheadline())
+                        .foregroundStyle(.appSecondaryText)
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, AppSpacing.lg)
+            } else if let testResult {
+                HStack(spacing: AppSpacing.sm) {
+                    Image(systemName: testResult.contains("OK") || testResult.contains("成功") ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
+                        .foregroundStyle(testResult.contains("OK") || testResult.contains("成功") ? .appSuccess : .appError)
+                    Text(testResult)
+                        .font(.appSubheadline())
+                        .foregroundStyle(.appSecondaryText)
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, AppSpacing.lg)
+            }
+
+            HStack(spacing: AppSpacing.md) {
+                Button { testConnection() } label: {
+                    Text("测试连接")
+                        .font(.appBody().weight(.semibold))
+                        .foregroundStyle(.appPrimaryText)
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                        .background(Color.appInputFill)
+                        .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
+                }
+                .disabled(isTesting || draftKey.isEmpty || draftBase.isEmpty)
+
+                Button { saveProfile() } label: {
+                    Text("保存")
+                        .font(.appBody().weight(.bold))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                        .background(isSaveDisabled ? Color.gray.opacity(0.3) : Color.brandAccent)
+                        .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
+                }
+                .disabled(isSaveDisabled)
+            }
+            .padding(.horizontal, AppSpacing.lg)
+            .padding(.bottom, AppSpacing.lg)
+        }
+        .padding(.top, AppSpacing.lg)
+        .background(Color.appSurface)
+        .clipShape(RoundedRectangle(cornerRadius: AppRadius.lg, style: .continuous))
+        .appCardShadow()
+    }
+
+    private var isSaveDisabled: Bool {
+        isTesting || draftKey.isEmpty || draftBase.isEmpty
+    }
+
+    private var profilesCard: some View {
+        VStack(alignment: .leading, spacing: AppSpacing.md) {
+            SectionHeader("已保存的配置")
+            VStack(spacing: 0) {
+                ForEach(Array(settings.profiles.enumerated()), id: \.element.id) { idx, p in
+                    Button {
+                        settings.setActiveProfile(p.id)
+                        loadProfile(p)
+                    } label: {
+                        HStack(spacing: AppSpacing.md) {
+                            ZStack {
+                                Circle()
+                                    .fill(Color.brandAccent.opacity(0.12))
+                                    .frame(width: 28, height: 28)
+                                Text("\(idx + 1)")
+                                    .font(.appMicro())
+                                    .foregroundStyle(.brandAccent)
+                            }
+                            VStack(alignment: .leading, spacing: AppSpacing.xs) {
+                                Text(p.name.isEmpty ? "未命名" : p.name)
+                                    .font(.appSubheadline().weight(.semibold))
+                                    .foregroundStyle(.appPrimaryText)
+                                Text("\(p.modelName) · \(shortURL(p.baseURL))")
+                                    .font(.appCaption())
+                                    .foregroundStyle(.appSecondaryText)
+                            }
+                            Spacer(minLength: 0)
+                            if settings.activeProfile.id == p.id {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .foregroundStyle(.appSuccess)
+                            }
+                        }
+                        .padding(.horizontal, AppSpacing.lg)
+                        .padding(.vertical, AppSpacing.md)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    if idx != settings.profiles.count - 1 {
+                        Divider()
+                            .padding(.leading, 64)
+                    }
+                }
+            }
+            .padding(.bottom, AppSpacing.sm)
+        }
+        .padding(.top, AppSpacing.lg)
+        .background(Color.appSurface)
+        .clipShape(RoundedRectangle(cornerRadius: AppRadius.lg, style: .continuous))
+        .appCardShadow()
     }
 
     private func shortURL(_ s: String) -> String {
@@ -308,7 +354,6 @@ struct APISettingsView: View {
 
     private func saveProfile() {
         let name = draftName.trimmingCharacters(in: .whitespaces)
-        // 若正在编辑的就是当前激活项，则就地更新，避免重复
         let id: String
         if let active = settings.profiles.first(where: { $0.id == settings.activeProfile.id }),
            active.baseURL.trimmingCharacters(in: .whitespaces) == draftBase.trimmingCharacters(in: .whitespaces),
@@ -345,41 +390,59 @@ struct APISettingsView: View {
 
 struct PermissionsView: View {
     @EnvironmentObject var settings: SettingsStore
+
     var body: some View {
-        List {
-            Section(header: Text("系统能力"), footer: Text("开启后可在对话中说“5分钟后叫我”“帮我设个明天9点的提醒”等。每项首次开启时会请求系统授权。")) {
-                CapabilityToggleRow(key: "notifications", icon: "alarm.fill", color: .orange, title: "闹钟 / 计时器", subtitle: "本地通知，到点响铃")
-                CapabilityToggleRow(key: "reminders", icon: "checkmark.square.fill", color: .blue, title: "提醒事项", subtitle: "读写系统提醒事项")
-                CapabilityToggleRow(key: "calendar", icon: "calendar.badge.plus", color: .red, title: "日历", subtitle: "读写系统日历")
-                CapabilityToggleRow(key: "health", icon: "heart.fill", color: .pink, title: "健康", subtitle: "读取步数/心率/睡眠等")
-                CapabilityToggleRow(key: "contacts", icon: "person.2.fill", color: .green, title: "通讯录", subtitle: "搜索联系人")
-                CapabilityToggleRow(key: "location", icon: "location.fill", color: .indigo, title: "位置", subtitle: "获取当前位置")
-                CapabilityToggleRow(key: "clipboard", icon: "doc.on.clipboard", color: .yellow, title: "剪贴板", subtitle: "读取/写入剪贴板")
-                CapabilityToggleRow(key: "photos", icon: "photo.fill", color: .purple, title: "相册", subtitle: "枚举最近照片")
-                CapabilityToggleRow(key: "device", icon: "iphone", color: .gray, title: "设备信息", subtitle: "型号/电量/系统版本")
+        ScrollView {
+            VStack(alignment: .leading, spacing: AppSpacing.xl) {
+                Text("系统权限")
+                    .font(.appTitle1())
+                    .foregroundStyle(.appPrimaryText)
 
-                Button("刷新授权状态") { settings.refreshAuthStatuses() }
-            }
+                VStack(spacing: AppSpacing.xl) {
+                    SettingsSection(title: "系统能力") {
+                        CapabilityToggleRow(key: "notifications", icon: "alarm.fill", color: .pastelOrange, title: "闹钟 / 计时器", subtitle: "本地通知，到点响铃")
+                        Divider().padding(.leading, 64)
+                        CapabilityToggleRow(key: "reminders", icon: "checkmark.square.fill", color: .pastelBlue, title: "提醒事项", subtitle: "读写系统提醒事项")
+                        Divider().padding(.leading, 64)
+                        CapabilityToggleRow(key: "calendar", icon: "calendar.badge.plus", color: .pastelPink, title: "日历", subtitle: "读写系统日历")
+                        Divider().padding(.leading, 64)
+                        CapabilityToggleRow(key: "health", icon: "heart.fill", color: .pastelPink, title: "健康", subtitle: "读取步数/心率/睡眠等")
+                        Divider().padding(.leading, 64)
+                        CapabilityToggleRow(key: "contacts", icon: "person.2.fill", color: .pastelGreen, title: "通讯录", subtitle: "搜索联系人")
+                        Divider().padding(.leading, 64)
+                        CapabilityToggleRow(key: "location", icon: "location.fill", color: .pastelPurple, title: "位置", subtitle: "获取当前位置")
+                        Divider().padding(.leading, 64)
+                        CapabilityToggleRow(key: "clipboard", icon: "doc.on.clipboard", color: .pastelOrange, title: "剪贴板", subtitle: "读取/写入剪贴板")
+                        Divider().padding(.leading, 64)
+                        CapabilityToggleRow(key: "photos", icon: "photo.fill", color: .pastelPurple, title: "相册", subtitle: "枚举最近照片")
+                        Divider().padding(.leading, 64)
+                        CapabilityToggleRow(key: "device", icon: "iphone", color: .pastelGray, title: "设备信息", subtitle: "型号/电量/系统版本")
+                        Divider().padding(.leading, 64)
+                        Button("刷新授权状态") { settings.refreshAuthStatuses() }
+                            .font(.appSubheadline().weight(.semibold))
+                            .foregroundStyle(.brandAccent)
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                    }
 
-            Section {
-                VStack(alignment: .leading, spacing: 8) {
-                    Label("关于健康数据读取", systemImage: "heart.fill")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.pink)
-                    Text("健康读取需要 App 以“包含 HealthKit 能力的描述文件”重新签名。免费 Apple ID 的侧载签名通常无法开启 HealthKit 能力，会导致授权失败。若需使用健康数据，请用付费开发者账号（$99/年）签名的描述文件重签本 IPA。")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    SettingsSection(title: "说明") {
+                        VStack(alignment: .leading, spacing: AppSpacing.sm) {
+                            Label("关于健康数据读取", systemImage: "heart.fill")
+                                .font(.appSubheadline().weight(.semibold))
+                                .foregroundStyle(.appPrimaryText)
+                            Text("健康读取需要 App 以“包含 HealthKit 能力的描述文件”重新签名。免费 Apple ID 的侧载签名通常无法开启 HealthKit 能力，会导致授权失败。若需使用健康数据，请用付费开发者账号（$99/年）签名的描述文件重签本 IPA。")
+                                .font(.appCaption())
+                                .foregroundStyle(.appSecondaryText)
+                                .lineLimit(nil)
+                        }
+                        .padding(AppSpacing.lg)
+                    }
                 }
-                .padding(.vertical, 4)
-            } header: {
-                Text("说明")
             }
+            .padding(.horizontal, AppSpacing.xxl)
+            .padding(.top, AppSpacing.xl)
+            .padding(.bottom, AppSpacing.xxl)
         }
-        .navigationTitle("系统权限")
-        .navigationBarTitleDisplayMode(.large)
-        .listStyle(.insetGrouped)
-        .scrollContentBackground(.visible)
-        .background(Color(.systemGroupedBackground))
+        .background(Color.appBackground)
     }
 }
 
@@ -387,30 +450,34 @@ struct PermissionsView: View {
 
 struct CustomPromptView: View {
     @EnvironmentObject var settings: SettingsStore
-    var body: some View {
-        VStack(spacing: 0) {
-            Text("自定义系统提示会追加在默认提示之后，用于塑造助手的角色、语气与回答偏好。例如：\n“你是一个简洁的中文助手，回答不超过三句话，多用分点。”")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding()
-                .background(Color(.secondarySystemBackground))
-                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .padding(.horizontal)
-                .padding(.top)
 
-            TextEditor(text: $settings.systemPrompt)
-                .font(.body)
-                .frame(minHeight: 200)
-                .padding(12)
-                .background(Color(.systemBackground))
-                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .padding()
-            Spacer(minLength: 0)
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: AppSpacing.xl) {
+                Text("自定义系统提示")
+                    .font(.appTitle1())
+                    .foregroundStyle(.appPrimaryText)
+
+                VStack(alignment: .leading, spacing: AppSpacing.md) {
+                    Text("自定义系统提示会追加在默认提示之后，用于塑造助手的角色、语气与回答偏好。例如：\n“你是一个简洁的中文助手，回答不超过三句话，多用分点。”")
+                        .font(.appCaption())
+                        .foregroundStyle(.appSecondaryText)
+                        .lineLimit(nil)
+
+                    TextEditor(text: $settings.systemPrompt)
+                        .font(.appBody())
+                        .frame(minHeight: 200)
+                        .padding(AppSpacing.md)
+                        .background(Color.appSurface)
+                        .clipShape(RoundedRectangle(cornerRadius: AppRadius.lg, style: .continuous))
+                        .appCardShadow()
+                }
+            }
+            .padding(.horizontal, AppSpacing.xxl)
+            .padding(.top, AppSpacing.xl)
+            .padding(.bottom, AppSpacing.xxl)
         }
-        .navigationTitle("自定义系统提示")
-        .navigationBarTitleDisplayMode(.large)
-        .background(Color(.systemGroupedBackground))
+        .background(Color.appBackground)
     }
 }
 
@@ -428,13 +495,13 @@ struct LegalView: View {
     var body: some View {
         ScrollView {
             Text(legalText)
-                .font(.footnote)
+                .font(.appCaption())
                 .lineSpacing(5)
-                .padding()
+                .foregroundStyle(.appPrimaryText)
+                .padding(AppSpacing.xxl)
         }
-        .background(Color(.systemGroupedBackground))
+        .background(Color.appBackground)
         .navigationTitle(type.rawValue)
-        .navigationBarTitleDisplayMode(.large)
     }
 
     private var legalText: String {
@@ -583,59 +650,84 @@ struct LegalView: View {
 
 struct AboutView: View {
     var body: some View {
-        List {
-            Section {
-                HStack {
-                    Text("版本")
-                    Spacer()
-                    Text(appVersion)
-                        .foregroundStyle(.secondary)
-                }
-                Link(destination: URL(string: "https://chen.cm")!) {
-                    HStack {
-                        Text("网站")
-                        Spacer()
-                        Text("https://chen.cm")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Image(systemName: "arrow.up.right.square")
-                            .font(.caption)
-                            .foregroundStyle(.tint)
-                    }
-                }
-                Link(destination: URL(string: "https://github.com/chirens/iOSAgent")!) {
-                    HStack {
-                        Text("仓库")
-                        Spacer()
-                        Text("https://github.com/chirens/iOSAgent")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Image(systemName: "arrow.up.right.square")
-                            .font(.caption)
-                            .foregroundStyle(.tint)
-                    }
-                }
-            } header: {
+        ScrollView {
+            VStack(alignment: .leading, spacing: AppSpacing.xl) {
                 Text("关于")
-            }
+                    .font(.appTitle1())
+                    .foregroundStyle(.appPrimaryText)
 
-            Section {
-                Text("同步 · 运行在 iPhone 上的本地 AI Agent")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                VStack(spacing: AppSpacing.xl) {
+                    SettingsSection(title: "版本信息") {
+                        HStack {
+                            Text("版本")
+                                .font(.appSubheadline().weight(.semibold))
+                                .foregroundStyle(.appPrimaryText)
+                            Spacer()
+                            Text(appVersion)
+                                .font(.appCaption())
+                                .foregroundStyle(.appSecondaryText)
+                        }
+                        .padding(.horizontal, AppSpacing.lg)
+                        .padding(.vertical, AppSpacing.md)
+
+                        Divider().padding(.leading, AppSpacing.lg)
+
+                        LinkRow(title: "网站", value: "https://chen.cm", url: "https://chen.cm")
+
+                        Divider().padding(.leading, AppSpacing.lg)
+
+                        LinkRow(title: "仓库", value: "https://github.com/chirens/iOSAgent", url: "https://github.com/chirens/iOSAgent")
+                    }
+
+                    SettingsSection(title: "介绍") {
+                        Text("同步 · 运行在 iPhone 上的本地 AI Agent")
+                            .font(.appCaption())
+                            .foregroundStyle(.appSecondaryText)
+                            .padding(AppSpacing.lg)
+                    }
+                }
             }
+            .padding(.horizontal, AppSpacing.xxl)
+            .padding(.top, AppSpacing.xl)
+            .padding(.bottom, AppSpacing.xxl)
         }
-        .navigationTitle("关于")
-        .navigationBarTitleDisplayMode(.large)
-        .listStyle(.insetGrouped)
-        .scrollContentBackground(.visible)
-        .background(Color(.systemGroupedBackground))
+        .background(Color.appBackground)
     }
 
     private var appVersion: String {
-        (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "7.0"
+        (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "8.0"
     }
 }
+
+struct LinkRow: View {
+    let title: String
+    let value: String
+    let url: String
+
+    var body: some View {
+        Link(destination: URL(string: url)!) {
+            HStack(spacing: AppSpacing.sm) {
+                Text(title)
+                    .font(.appSubheadline().weight(.semibold))
+                    .foregroundStyle(.appPrimaryText)
+                Spacer()
+                Text(value)
+                    .font(.appCaption())
+                    .foregroundStyle(.appSecondaryText)
+                    .lineLimit(1)
+                Image(systemName: "arrow.up.right.square")
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.brandAccent)
+            }
+            .padding(.horizontal, AppSpacing.lg)
+            .padding(.vertical, AppSpacing.md)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Capability Toggle Row
 
 struct CapabilityToggleRow: View {
     @EnvironmentObject var settings: SettingsStore
@@ -646,23 +738,24 @@ struct CapabilityToggleRow: View {
     let subtitle: String
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: AppSpacing.md) {
             ZStack {
-                Circle()
-                    .fill(color.opacity(0.15))
+                RoundedRectangle(cornerRadius: AppRadius.sm, style: .continuous)
+                    .fill(color.opacity(0.35))
                     .frame(width: 36, height: 36)
                 Image(systemName: icon)
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(color)
+                    .font(.system(size: 16, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.appPrimaryText.opacity(0.8))
             }
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: AppSpacing.xs) {
                 Text(title)
-                    .font(.subheadline.weight(.semibold))
+                    .font(.appSubheadline().weight(.semibold))
+                    .foregroundStyle(.appPrimaryText)
                 Text(subtitle + " · " + settings.status(key).rawValue)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(.appCaption())
+                    .foregroundStyle(.appSecondaryText)
             }
-            Spacer()
+            Spacer(minLength: 0)
             Toggle("", isOn: Binding(
                 get: { settings.isEnabled(key) },
                 set: { newValue in
@@ -679,6 +772,55 @@ struct CapabilityToggleRow: View {
             ))
             .labelsHidden()
         }
-        .padding(.vertical, 2)
+        .padding(.horizontal, AppSpacing.lg)
+        .padding(.vertical, AppSpacing.md)
+    }
+}
+
+// MARK: - Shared Form Components
+
+struct SectionHeader: View {
+    let title: String
+    init(_ title: String) { self.title = title }
+
+    var body: some View {
+        Text(title)
+            .font(.appCaption().weight(.semibold))
+            .foregroundStyle(.appSecondaryText)
+            .padding(.horizontal, AppSpacing.lg)
+    }
+}
+
+struct AppTextField: View {
+    let placeholder: String
+    @Binding var text: String
+    var keyboard: UIKeyboardType = .default
+
+    var body: some View {
+        TextField(placeholder, text: $text)
+            .font(.appBody())
+            .foregroundStyle(.appPrimaryText)
+            .autocapitalization(.none)
+            .keyboardType(keyboard)
+            .padding(.horizontal, AppSpacing.md)
+            .padding(.vertical, AppSpacing.md)
+            .background(Color.appInputFill)
+            .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
+    }
+}
+
+struct AppSecureField: View {
+    let placeholder: String
+    @Binding var text: String
+
+    var body: some View {
+        SecureField(placeholder, text: $text)
+            .font(.appBody())
+            .foregroundStyle(.appPrimaryText)
+            .autocapitalization(.none)
+            .padding(.horizontal, AppSpacing.md)
+            .padding(.vertical, AppSpacing.md)
+            .background(Color.appInputFill)
+            .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
     }
 }
