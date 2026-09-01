@@ -80,6 +80,8 @@ struct FilePreviewView: View {
             }
             .navigationTitle(url.lastPathComponent)
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(Color.appBackground, for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button("关闭") { dismiss() }
@@ -133,12 +135,12 @@ struct FilePreviewView: View {
 
     private var pptContent: some View {
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: 18) {
+            LazyVStack(alignment: .leading, spacing: AppSpacing.md) {
                 ForEach(Array(pptSlides.enumerated()), id: \.offset) { idx, slide in
                     PPTSlideCard(slide: slide, index: idx)
                 }
             }
-            .padding()
+            .padding(AppSpacing.md)
         }
         .background(Color.appBackground)
     }
@@ -148,7 +150,7 @@ struct FilePreviewView: View {
         let index: Int
 
         var body: some View {
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: AppSpacing.sm) {
                 Text("\(index + 1). \(slide.title)")
                     .font(.appTitle3().weight(.bold))
                     .foregroundStyle(Color.brandAccent)
@@ -167,9 +169,9 @@ struct FilePreviewView: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(14)
+            .padding(AppSpacing.md)
             .background(Color.appSurface)
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
         }
     }
 

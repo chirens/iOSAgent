@@ -5,34 +5,34 @@ import SwiftUI
 // 统一颜色、字体、间距、圆角、阴影，避免各页面硬编码。
 
 extension Color {
-    /// 页面背景：#F9F9F9
-    static let appBackground = Color(hex: "F9F9F9")
-    /// 卡片/浮层面背景：#FFFFFF
-    static let appSurface = Color(hex: "FFFFFF")
-    /// 输入框/浅灰填充：#F5F5F5
-    static let appInputFill = Color(hex: "F5F5F5")
-    /// 主文字：#2D2D2D
-    static let appPrimaryText = Color(hex: "2D2D2D")
-    /// 次文字：#8E8E93
+    /// 页面背景：纯黑
+    static let appBackground = Color(hex: "000000")
+    /// 卡片/浮层面背景：iOS 系统深灰
+    static let appSurface = Color(hex: "1C1C1E")
+    /// 输入框/浅灰填充：比卡片稍亮
+    static let appInputFill = Color(hex: "2C2C2E")
+    /// 主文字：纯白
+    static let appPrimaryText = Color(hex: "FFFFFF")
+    /// 次文字：系统灰
     static let appSecondaryText = Color(hex: "8E8E93")
-    /// 分隔线/微弱边框：#E5E5EA
-    static let appSeparator = Color(hex: "E5E5EA")
-    /// 成功绿
-    static let appSuccess = Color(hex: "34C759")
-    /// 错误红
-    static let appError = Color(hex: "FF3B30")
+    /// 分隔线/微弱边框：深灰
+    static let appSeparator = Color(hex: "38383A")
+    /// 成功绿（WorkBuddy 绿）
+    static let appSuccess = Color(hex: "10B981")
+    /// 错误红（暗红）
+    static let appError = Color(hex: "FF453A")
 
-    /// 品牌强调色：呼应 App 图标蓝色圆环
-    static let brandAccent = Color(red: 0.10, green: 0.42, blue: 0.96)
+    /// 品牌强调色：WorkBuddy 绿（呼应截图中的标签/同步状态绿）
+    static let brandAccent = Color(hex: "10B981")
 
-    /// 粉彩分类色（柔和，低饱和度）
-    static let pastelBlue = Color(hex: "C6E7FF")
-    static let pastelGreen = Color(hex: "E1EACD")
-    static let pastelOrange = Color(hex: "FFDDAE")
-    static let pastelPurple = Color(hex: "DCD6F7")
-    static let pastelPink = Color(hex: "FFD6E0")
-    static let pastelTeal = Color(hex: "C8F0F0")
-    static let pastelGray = Color(hex: "E8E8ED")
+    /// 粉彩分类色（暗黑模式下降低亮度）
+    static let pastelBlue = Color(hex: "2C4A5E")
+    static let pastelGreen = Color(hex: "2D4A34")
+    static let pastelOrange = Color(hex: "5A4A2A")
+    static let pastelPurple = Color(hex: "4A4460")
+    static let pastelPink = Color(hex: "5A3A44")
+    static let pastelTeal = Color(hex: "2A4A4A")
+    static let pastelGray = Color(hex: "3A3A3C")
 
     init(hex: String) {
         let hex = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
@@ -78,11 +78,11 @@ extension Font {
 enum AppSpacing {
     static let xs: CGFloat = 4
     static let sm: CGFloat = 8
-    static let md: CGFloat = 12
-    static let lg: CGFloat = 16
-    static let xl: CGFloat = 20
-    static let xxl: CGFloat = 24
-    static let xxxl: CGFloat = 32
+    static let md: CGFloat = 10
+    static let lg: CGFloat = 14
+    static let xl: CGFloat = 14
+    static let xxl: CGFloat = 16
+    static let xxxl: CGFloat = 20
 }
 
 enum AppRadius {
@@ -93,10 +93,10 @@ enum AppRadius {
 }
 
 enum AppShadow {
-    /// 卡片标准阴影
-    static let card = ShadowStyle(color: .black.opacity(0.04), radius: 8, x: 0, y: 4)
+    /// 暗黑模式下卡片阴影用极淡白色勾边，避免黑底发灰
+    static let card = ShadowStyle(color: .white.opacity(0.04), radius: 6, x: 0, y: 3)
     /// 浮起阴影
-    static let elevated = ShadowStyle(color: .black.opacity(0.06), radius: 12, x: 0, y: 6)
+    static let elevated = ShadowStyle(color: .white.opacity(0.06), radius: 10, x: 0, y: 5)
 }
 
 struct ShadowStyle {

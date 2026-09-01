@@ -47,7 +47,7 @@ struct ChatView: View {
         VStack(spacing: 0) {
             ScrollViewReader { proxy in
                 ScrollView {
-                    LazyVStack(spacing: 16) {
+                    LazyVStack(spacing: AppSpacing.md) {
                         ForEach(messages) { msg in
                             MessageBubble(message: msg)
                                 .id(msg.id)
@@ -58,13 +58,13 @@ struct ChatView: View {
                                 Dot(delay: 0.15)
                                 Dot(delay: 0.3)
                             }
-                            .padding(.horizontal)
+                            .padding(.horizontal, AppSpacing.md)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .id("typing")
                         }
                     }
-                    .padding(.horizontal)
-                    .padding(.vertical, 14)
+                    .padding(.horizontal, AppSpacing.md)
+                    .padding(.vertical, AppSpacing.md)
                 }
                 .onChange(of: messages.count) { _ in
                     scrollToBottom(proxy)
@@ -97,15 +97,15 @@ struct ChatView: View {
                                 .foregroundStyle(Color.brandAccent)
                                 .padding(.horizontal, 8)
                                 .padding(.vertical, 4)
-                                .background(Color.brandAccent.opacity(0.12))
+                                .background(Color.brandAccent.opacity(0.15))
                                 .clipShape(Capsule())
                         }
                         .buttonStyle(.plain)
                     }
                     Spacer(minLength: 0)
                 }
-                .padding(.horizontal)
-                .padding(.top, 4)
+                .padding(.horizontal, AppSpacing.md)
+                .padding(.top, AppSpacing.xs)
             }
 
             // @技能 提示：输入以 @ 开头时可点选插入技能名
@@ -124,16 +124,16 @@ struct ChatView: View {
                                     .foregroundStyle(Color.brandAccent)
                                     .padding(.horizontal, 8)
                                     .padding(.vertical, 4)
-                                    .background(Color.brandAccent.opacity(0.12))
+                                    .background(Color.brandAccent.opacity(0.15))
                                     .clipShape(Capsule())
                             }
                             .buttonStyle(.plain)
                         }
                         Spacer(minLength: 0)
                     }
-                    .padding(.horizontal)
+                    .padding(.horizontal, AppSpacing.md)
                 }
-                .padding(.top, 4)
+                .padding(.top, AppSpacing.xs)
             }
 
             // + 号紧凑菜单面板（位于输入栏上方）
@@ -173,12 +173,13 @@ struct ChatView: View {
                 }
 
                 HStack(spacing: 8) {
-                TextField("说点什么…（输入 @ 可指定技能）", text: $input, axis: .vertical)
-                    .font(.appBody())
-                    .lineLimit(1...5)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .id(inputID)
+                    TextField("说点什么…", text: $input, axis: .vertical)
+                        .font(.appBody())
+                        .foregroundStyle(Color.appPrimaryText)
+                        .lineLimit(1...5)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .id(inputID)
 
                     // 按住说话
                     VoiceButton(voice: voice,
@@ -188,9 +189,8 @@ struct ChatView: View {
                                 },
                                 onFinish: { Task { await finishVoice() } })
                 }
-                .background(Color.appSurface)
+                .background(Color.appInputFill)
                 .clipShape(Capsule())
-                .shadow(color: .black.opacity(0.05), radius: 6, x: 0, y: 2)
 
                 Button(action: send) {
                     Image(systemName: "arrow.up.circle.fill")
@@ -200,15 +200,18 @@ struct ChatView: View {
                 .disabled(input.isEmpty || isLoading)
                 .buttonStyle(.plain)
             }
-            .padding(.horizontal)
-            .padding(.vertical, 10)
-            .background(.ultraThinMaterial)
+            .padding(.horizontal, AppSpacing.md)
+            .padding(.vertical, AppSpacing.sm)
+            .background(Color.appBackground)
             .overlay(alignment: .top) {
-                Divider().opacity(0.3)
+                Divider().background(Color.appSeparator).opacity(0.5)
             }
         }
         .id(conversationId)
         .navigationTitle(store.selected?.title ?? "对话")
+        .background(Color.appBackground)
+        .toolbarBackground(Color.appBackground, for: .navigationBar)
+        .toolbarColorScheme(.dark, for: .navigationBar)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button {
@@ -359,9 +362,9 @@ struct ChatView: View {
         }
         .padding(10)
         .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            RoundedRectangle(cornerRadius: AppRadius.lg, style: .continuous)
                 .fill(Color.appSurface)
-                .shadow(color: .black.opacity(0.12), radius: 12, x: 0, y: 4)
+                .shadow(color: .black.opacity(0.25), radius: 12, x: 0, y: 4)
         )
     }
 
@@ -396,7 +399,7 @@ struct ChatView: View {
                 if chevron {
                     Image(systemName: "chevron.right")
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(Color.appSecondaryText)
                 }
             }
             .contentShape(Rectangle())
@@ -632,7 +635,7 @@ struct MessageBubble: View {
                         RoundedRectangle(cornerRadius: 18, style: .circular)
                             .fill(bubbleBackground)
                     )
-                    .shadow(color: .black.opacity(0.04), radius: 6, x: 0, y: 2)
+                    .shadow(color: .black.opacity(0.15), radius: 6, x: 0, y: 2)
                     .textSelection(.enabled)
 
                 if message.role == "assistant" {

@@ -25,26 +25,26 @@ struct CapabilitiesView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: AppSpacing.lg) {
+            VStack(alignment: .leading, spacing: AppSpacing.md) {
                 Text("同步 能做什么")
                     .font(.appTitle1())
                     .foregroundStyle(Color.appPrimaryText)
-                    .padding(.horizontal)
+                    .padding(.horizontal, AppSpacing.md)
 
                 Text("所有能力均通过 iOS 原生框架直接调用，无需越狱，无需借助其他 App。")
                     .font(.appSubheadline())
                     .foregroundStyle(Color.appSecondaryText)
-                    .padding(.horizontal)
+                    .padding(.horizontal, AppSpacing.md)
 
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 160), spacing: AppSpacing.md)], spacing: AppSpacing.md) {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: AppSpacing.md)], spacing: AppSpacing.md) {
                     ForEach(cards) { card in
-                        VStack(alignment: .leading, spacing: AppSpacing.sm) {
+                        VStack(alignment: .leading, spacing: AppSpacing.xs) {
                             ZStack {
                                 Circle()
-                                    .fill(card.color.opacity(0.15))
-                                    .frame(width: 44, height: 44)
+                                    .fill(card.color.opacity(0.18))
+                                    .frame(width: 40, height: 40)
                                 Image(systemName: card.icon)
-                                    .font(.system(size: 20, weight: .semibold, design: .rounded))
+                                    .font(.system(size: 18, weight: .semibold, design: .rounded))
                                     .foregroundStyle(card.color)
                             }
                             Text(card.title)
@@ -63,17 +63,17 @@ struct CapabilitiesView: View {
                                 .background(card.color.opacity(0.9))
                                 .clipShape(Capsule())
                         }
-                        .frame(height: 170)
+                        .frame(height: 150)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(AppSpacing.md)
                         .background(Color.appSurface)
-                        .clipShape(RoundedRectangle(cornerRadius: AppRadius.lg, style: .continuous))
+                        .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
                         .appCardShadow()
                     }
                 }
-                .padding(.horizontal)
+                .padding(.horizontal, AppSpacing.md)
             }
-            .padding(.vertical)
+            .padding(.vertical, AppSpacing.md)
         }
         .background(Color.appBackground)
     }
