@@ -545,6 +545,42 @@ struct ChatView: View {
             isLoading = false
         }
     }
+
+    private var attachmentRow: some View {
+        Group {
+            if selectedImage != nil || selectedFileURL != nil {
+                HStack(spacing: 10) {
+                    if let selectedImage {
+                        Image(uiImage: selectedImage)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: 44, height: 44)
+                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    } else if let name = selectedFileName {
+                        HStack(spacing: 6) {
+                            Image(systemName: fileIcon)
+                                .foregroundStyle(Color.appSecondaryText)
+                            Text(name)
+                                .font(.appCaption())
+                                .lineLimit(1)
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 8)
+                        .background(Color.appInputFill)
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    }
+                    Button { clearAttachment() } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.callout)
+                            .foregroundStyle(.white)
+                    }
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal)
+                .padding(.top, 8)
+            }
+        }
+    }
 }
 
 // 语音按钮独立成子视图，避免输入栏 HStack 表达式过大导致编译器无法在合理时间内类型检查
@@ -658,41 +694,6 @@ struct MessageBubble: View {
         }
     }
 
-    private var attachmentRow: some View {
-        Group {
-            if selectedImage != nil || selectedFileURL != nil {
-                HStack(spacing: 10) {
-                    if let selectedImage {
-                        Image(uiImage: selectedImage)
-                            .resizable()
-                            .scaledToFill()
-                            .frame(width: 44, height: 44)
-                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    } else if let name = selectedFileName {
-                        HStack(spacing: 6) {
-                            Image(systemName: fileIcon)
-                                .foregroundStyle(Color.appSecondaryText)
-                            Text(name)
-                                .font(.appCaption())
-                                .lineLimit(1)
-                        }
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 8)
-                        .background(Color.appInputFill)
-                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    }
-                    Button { clearAttachment() } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.callout)
-                            .foregroundStyle(.white)
-                    }
-                    Spacer(minLength: 0)
-                }
-                .padding(.horizontal)
-                .padding(.top, 8)
-            }
-        }
-    }
 }
 
 struct Dot: View {
