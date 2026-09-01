@@ -135,28 +135,7 @@ struct FilePreviewView: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 18) {
                 ForEach(Array(pptSlides.enumerated()), id: \.offset) { idx, slide in
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("\(idx + 1). \(slide.title)")
-                            .font(.appTitle3().weight(.bold))
-                            .foregroundStyle(.brandAccent)
-                        if slide.bullets.isEmpty {
-                            Text("（无要点）")
-                                .font(.appSubheadline())
-                                .foregroundStyle(.appSecondaryText)
-                        } else {
-                            ForEach(slide.bullets, id: \.self) { b in
-                                HStack(alignment: .top, spacing: 6) {
-                                    Text("•")
-                                    Text(b)
-                                        .font(.appSubheadline())
-                                }
-                            }
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(14)
-                    .background(Color.appSurface)
-                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    PPTSlideCard(slide: slide, index: idx)
                 }
             }
             .padding()
@@ -164,17 +143,47 @@ struct FilePreviewView: View {
         .background(Color.appBackground)
     }
 
+    private struct PPTSlideCard: View {
+        let slide: PPTSlide
+        let index: Int
+
+        var body: some View {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("\(index + 1). \(slide.title)")
+                    .font(.appTitle3().weight(.bold))
+                    .foregroundStyle(Color.brandAccent)
+                if slide.bullets.isEmpty {
+                    Text("（无要点）")
+                        .font(.appSubheadline())
+                        .foregroundStyle(Color.appSecondaryText)
+                } else {
+                    ForEach(slide.bullets, id: \.self) { b in
+                        HStack(alignment: .top, spacing: 6) {
+                            Text("•")
+                            Text(b)
+                                .font(.appSubheadline())
+                        }
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(14)
+            .background(Color.appSurface)
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+    }
+
     private var unsupportedContent: some View {
         VStack(spacing: 16) {
             Spacer()
             Image(systemName: "doc.fill")
                 .font(.system(size: 48, weight: .semibold, design: .rounded))
-                .foregroundStyle(.appSecondaryText)
+                .foregroundStyle(Color.appSecondaryText)
             Text("该格式暂不支持应用内预览")
                 .font(.appTitle3().weight(.bold))
             Text("点击下方按钮用其他 App 打开")
                 .font(.appSubheadline())
-                .foregroundStyle(.appSecondaryText)
+                .foregroundStyle(Color.appSecondaryText)
             ShareLink(item: url) {
                 Label("用其他 App 打开", systemImage: "square.and.arrow.up")
                     .font(.subheadline.weight(.medium))

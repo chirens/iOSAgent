@@ -13,7 +13,7 @@ struct RemindersView: View {
             VStack(alignment: .leading, spacing: AppSpacing.xl) {
                 Text("提醒 / 待办")
                     .font(.appTitle1())
-                    .foregroundStyle(.appPrimaryText)
+                    .foregroundStyle(Color.appPrimaryText)
 
                 if !settings.isEnabled("reminders") {
                     statusCard("请在设置中开启“提醒事项”能力")
@@ -58,11 +58,11 @@ struct RemindersView: View {
                     HStack {
                         Text(key)
                             .font(.appCaption().weight(.semibold))
-                            .foregroundStyle(.appSecondaryText)
+                            .foregroundStyle(Color.appSecondaryText)
                         Spacer()
                         Text("\(grouped[key]?.count ?? 0)")
                             .font(.appSubheadline())
-                            .foregroundStyle(.appSecondaryText)
+                            .foregroundStyle(Color.appSecondaryText)
                     }
                     .padding(.horizontal, AppSpacing.lg)
 
@@ -126,24 +126,24 @@ struct ReminderRow: View {
             Button(action: onComplete) {
                 Image(systemName: reminder.isCompleted ? "checkmark.circle.fill" : "circle")
                     .font(.system(size: 20, weight: .semibold, design: .rounded))
-                    .foregroundStyle(.brandAccent)
+                    .foregroundStyle(Color.brandAccent)
             }
             .buttonStyle(.plain)
 
             VStack(alignment: .leading, spacing: AppSpacing.xs) {
                 Text(reminder.title ?? "无标题")
                     .font(.appBody().weight(.semibold))
-                    .foregroundStyle(.appPrimaryText)
+                    .foregroundStyle(Color.appPrimaryText)
                     .strikethrough(reminder.isCompleted)
                 if let dueText = dueString {
                     Text(dueText)
                         .font(.appCaption())
-                        .foregroundStyle(.appSecondaryText)
+                        .foregroundStyle(Color.appSecondaryText)
                 }
                 if let notes = reminder.notes, !notes.isEmpty {
                     Text(notes)
                         .font(.appCaption())
-                        .foregroundStyle(.appSecondaryText)
+                        .foregroundStyle(Color.appSecondaryText)
                         .lineLimit(1)
                 }
             }

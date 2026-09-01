@@ -28,12 +28,12 @@ struct CapabilitiesView: View {
             VStack(alignment: .leading, spacing: AppSpacing.lg) {
                 Text("同步 能做什么")
                     .font(.appTitle1())
-                    .foregroundStyle(.appPrimaryText)
+                    .foregroundStyle(Color.appPrimaryText)
                     .padding(.horizontal)
 
                 Text("所有能力均通过 iOS 原生框架直接调用，无需越狱，无需借助其他 App。")
                     .font(.appSubheadline())
-                    .foregroundStyle(.appSecondaryText)
+                    .foregroundStyle(Color.appSecondaryText)
                     .padding(.horizontal)
 
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 160), spacing: AppSpacing.md)], spacing: AppSpacing.md) {
@@ -49,10 +49,10 @@ struct CapabilitiesView: View {
                             }
                             Text(card.title)
                                 .font(.appTitle3().weight(.bold))
-                                .foregroundStyle(.appPrimaryText)
+                                .foregroundStyle(Color.appPrimaryText)
                             Text(card.desc)
                                 .font(.appCaption())
-                                .foregroundStyle(.appSecondaryText)
+                                .foregroundStyle(Color.appSecondaryText)
                                 .lineLimit(2)
                             Spacer()
                             Text(card.example)
