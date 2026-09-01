@@ -15,16 +15,18 @@ struct SettingsView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: AppSpacing.xl) {
+            VStack(alignment: .leading, spacing: AppSpacing.lg) {
                 Text("设置")
                     .font(.appTitle1())
                     .foregroundStyle(Color.appPrimaryText)
-                    .padding(.horizontal, AppSpacing.xxl)
+                    .padding(.horizontal, AppSpacing.lg)
 
-                VStack(spacing: AppSpacing.xl) {
+                VStack(spacing: AppSpacing.md) {
                     SettingsSection(title: "核心设置") {
                         SettingsLinkRow(icon: "key.fill", color: .pastelBlue, title: "API 设置", subtitle: "Base URL · 模型 · 连接测试", destination: .api)
+                        Divider().padding(.leading, 48)
                         SettingsLinkRow(icon: "lock.shield.fill", color: .pastelOrange, title: "系统权限", subtitle: "健康 / 提醒 / 日历 / 相册…", destination: .permissions)
+                        Divider().padding(.leading, 48)
                         SettingsLinkRow(icon: "text.quote", color: .pastelPurple, title: "自定义系统提示", subtitle: "塑造助手语气与偏好", destination: .customPrompt)
                     }
 
@@ -37,7 +39,9 @@ struct SettingsView: View {
 
                     SettingsSection(title: "协议与声明") {
                         SettingsLinkRow(icon: "doc.text.fill", color: .pastelTeal, title: "用户协议", subtitle: "使用条款与行为规范", destination: .legal(.userAgreement))
+                        Divider().padding(.leading, 48)
                         SettingsLinkRow(icon: "hand.raised.fill", color: .pastelGreen, title: "隐私政策", subtitle: "数据收集与使用说明", destination: .legal(.privacyPolicy))
+                        Divider().padding(.leading, 48)
                         SettingsLinkRow(icon: "exclamationmark.shield.fill", color: .pastelGray, title: "免责声明", subtitle: "能力边界与风险提示", destination: .legal(.disclaimer))
                     }
 
@@ -45,10 +49,10 @@ struct SettingsView: View {
                         SettingsLinkRow(icon: "info.circle.fill", color: .pastelGray, title: "关于 同步", subtitle: "版本与链接", destination: .about)
                     }
                 }
-                .padding(.horizontal, AppSpacing.xxl)
+                .padding(.horizontal, AppSpacing.lg)
             }
-            .padding(.top, AppSpacing.xl)
-            .padding(.bottom, AppSpacing.xxl)
+            .padding(.top, AppSpacing.md)
+            .padding(.bottom, AppSpacing.xl)
         }
         .background(Color.appBackground)
         .alert("清除缓存", isPresented: $showClearCacheAlert) {
@@ -103,17 +107,17 @@ struct SettingsSection<Content: View>: View {
     @ViewBuilder let content: Content
 
     var body: some View {
-        VStack(alignment: .leading, spacing: AppSpacing.md) {
+        VStack(alignment: .leading, spacing: AppSpacing.xs) {
             Text(title)
-                .font(.appCaption())
+                .font(.appCaption2().weight(.semibold))
                 .foregroundStyle(Color.appSecondaryText)
-                .padding(.leading, AppSpacing.lg)
+                .padding(.leading, AppSpacing.md)
 
             VStack(spacing: 0) {
                 content
             }
             .background(Color.appSurface)
-            .clipShape(RoundedRectangle(cornerRadius: AppRadius.lg, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
             .appCardShadow()
         }
     }
@@ -129,8 +133,8 @@ struct SettingsLinkRow: View {
 
     var body: some View {
         rowContent
-            .padding(.horizontal, AppSpacing.lg)
-            .padding(.vertical, AppSpacing.md)
+            .padding(.horizontal, AppSpacing.md)
+            .padding(.vertical, AppSpacing.sm)
             .contentShape(Rectangle())
             .background(
                 NavigationLink(value: destination) {
@@ -145,11 +149,11 @@ struct SettingsLinkRow: View {
         HStack(spacing: AppSpacing.md) {
             ZStack {
                 RoundedRectangle(cornerRadius: AppRadius.sm, style: .continuous)
-                    .fill(color.opacity(0.35))
-                    .frame(width: 36, height: 36)
+                    .fill(color.opacity(0.22))
+                    .frame(width: 32, height: 32)
                 Image(systemName: icon)
-                    .font(.system(size: 16, weight: .semibold, design: .rounded))
-                    .foregroundStyle(Color.appPrimaryText.opacity(0.8))
+                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                    .foregroundStyle(color)
             }
 
             VStack(alignment: .leading, spacing: AppSpacing.xs) {
@@ -187,12 +191,12 @@ struct APISettingsView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: AppSpacing.xl) {
+            VStack(alignment: .leading, spacing: AppSpacing.md) {
                 Text("API 设置")
                     .font(.appTitle1())
                     .foregroundStyle(Color.appPrimaryText)
 
-                VStack(spacing: AppSpacing.xl) {
+                VStack(spacing: AppSpacing.md) {
                     inputCard
                     actionCard
                     if !settings.profiles.isEmpty { profilesCard }
@@ -201,20 +205,20 @@ struct APISettingsView: View {
                 Text("兼容 OpenAI / DeepSeek 等任意 OpenAI 格式接口。注意：DeepSeek 不支持音频转写，语音输入请使用支持 /audio/transcriptions 的接口（如 OpenAI）。")
                     .font(.appCaption())
                     .foregroundStyle(Color.appSecondaryText)
-                    .padding(.horizontal, AppSpacing.lg)
+                    .padding(.horizontal, AppSpacing.md)
             }
-            .padding(.horizontal, AppSpacing.xxl)
-            .padding(.top, AppSpacing.xl)
-            .padding(.bottom, AppSpacing.xxl)
+            .padding(.horizontal, AppSpacing.lg)
+            .padding(.top, AppSpacing.md)
+            .padding(.bottom, AppSpacing.xl)
         }
         .background(Color.appBackground)
         .onAppear { loadProfile(settings.activeProfile) }
     }
 
     private var inputCard: some View {
-        VStack(alignment: .leading, spacing: AppSpacing.md) {
+        VStack(alignment: .leading, spacing: AppSpacing.sm) {
             SectionHeader("当前编辑的配置")
-            VStack(spacing: AppSpacing.sm) {
+            VStack(spacing: AppSpacing.xs) {
                 AppTextField(placeholder: "配置名称（如 DeepSeek / OpenAI）", text: $draftName)
                 AppTextField(placeholder: "Base URL", text: $draftBase, keyboard: .URL)
                 AppSecureField(placeholder: "API Key", text: $draftKey)
@@ -222,14 +226,14 @@ struct APISettingsView: View {
                 AppTextField(placeholder: "语音模型（默认 whisper-1）", text: $draftSTT)
             }
         }
-        .padding(AppSpacing.lg)
+        .padding(AppSpacing.md)
         .background(Color.appSurface)
-        .clipShape(RoundedRectangle(cornerRadius: AppRadius.lg, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
         .appCardShadow()
     }
 
     private var actionCard: some View {
-        VStack(alignment: .leading, spacing: AppSpacing.md) {
+        VStack(alignment: .leading, spacing: AppSpacing.sm) {
             SectionHeader("连接测试")
 
             if isTesting {
@@ -240,7 +244,7 @@ struct APISettingsView: View {
                         .foregroundStyle(Color.appSecondaryText)
                     Spacer(minLength: 0)
                 }
-                .padding(.horizontal, AppSpacing.lg)
+                .padding(.horizontal, AppSpacing.md)
             } else if let testResult {
                 HStack(spacing: AppSpacing.sm) {
                     Image(systemName: testResult.contains("OK") || testResult.contains("成功") ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
@@ -250,7 +254,7 @@ struct APISettingsView: View {
                         .foregroundStyle(Color.appSecondaryText)
                     Spacer(minLength: 0)
                 }
-                .padding(.horizontal, AppSpacing.lg)
+                .padding(.horizontal, AppSpacing.md)
             }
 
             HStack(spacing: AppSpacing.md) {
@@ -258,7 +262,7 @@ struct APISettingsView: View {
                     Text("测试连接")
                         .font(.appBody().weight(.semibold))
                         .foregroundStyle(Color.appPrimaryText)
-                        .frame(maxWidth: .infinity, minHeight: 44)
+                        .frame(maxWidth: .infinity, minHeight: 40)
                         .background(Color.appInputFill)
                         .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
                 }
@@ -268,18 +272,18 @@ struct APISettingsView: View {
                     Text("保存")
                         .font(.appBody().weight(.bold))
                         .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity, minHeight: 44)
-                        .background(isSaveDisabled ? Color.gray.opacity(0.3) : Color.brandAccent)
+                        .frame(maxWidth: .infinity, minHeight: 40)
+                        .background(isSaveDisabled ? Color.appSecondaryText.opacity(0.25) : Color.brandAccent)
                         .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
                 }
                 .disabled(isSaveDisabled)
             }
-            .padding(.horizontal, AppSpacing.lg)
-            .padding(.bottom, AppSpacing.lg)
+            .padding(.horizontal, AppSpacing.md)
+            .padding(.bottom, AppSpacing.md)
         }
-        .padding(.top, AppSpacing.lg)
+        .padding(.top, AppSpacing.md)
         .background(Color.appSurface)
-        .clipShape(RoundedRectangle(cornerRadius: AppRadius.lg, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
         .appCardShadow()
     }
 
@@ -288,7 +292,7 @@ struct APISettingsView: View {
     }
 
     private var profilesCard: some View {
-        VStack(alignment: .leading, spacing: AppSpacing.md) {
+        VStack(alignment: .leading, spacing: AppSpacing.sm) {
             SectionHeader("已保存的配置")
             VStack(spacing: 0) {
                 ForEach(Array(settings.profiles.enumerated()), id: \.element.id) { idx, p in
@@ -300,7 +304,7 @@ struct APISettingsView: View {
                             ZStack {
                                 Circle()
                                     .fill(Color.brandAccent.opacity(0.12))
-                                    .frame(width: 28, height: 28)
+                                    .frame(width: 24, height: 24)
                                 Text("\(idx + 1)")
                                     .font(.appMicro())
                                     .foregroundStyle(Color.brandAccent)
@@ -319,22 +323,22 @@ struct APISettingsView: View {
                                     .foregroundStyle(Color.appSuccess)
                             }
                         }
-                        .padding(.horizontal, AppSpacing.lg)
-                        .padding(.vertical, AppSpacing.md)
+                        .padding(.horizontal, AppSpacing.md)
+                        .padding(.vertical, AppSpacing.sm)
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     if idx != settings.profiles.count - 1 {
                         Divider()
-                            .padding(.leading, 64)
+                            .padding(.leading, 44)
                     }
                 }
             }
-            .padding(.bottom, AppSpacing.sm)
+            .padding(.bottom, AppSpacing.xs)
         }
-        .padding(.top, AppSpacing.lg)
+        .padding(.top, AppSpacing.md)
         .background(Color.appSurface)
-        .clipShape(RoundedRectangle(cornerRadius: AppRadius.lg, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
         .appCardShadow()
     }
 
@@ -393,35 +397,35 @@ struct PermissionsView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: AppSpacing.xl) {
+            VStack(alignment: .leading, spacing: AppSpacing.md) {
                 Text("系统权限")
                     .font(.appTitle1())
                     .foregroundStyle(Color.appPrimaryText)
 
-                VStack(spacing: AppSpacing.xl) {
+                VStack(spacing: AppSpacing.md) {
                     SettingsSection(title: "系统能力") {
                         CapabilityToggleRow(key: "notifications", icon: "alarm.fill", color: .pastelOrange, title: "闹钟 / 计时器", subtitle: "本地通知，到点响铃")
-                        Divider().padding(.leading, 64)
+                        Divider().padding(.leading, 44)
                         CapabilityToggleRow(key: "reminders", icon: "checkmark.square.fill", color: .pastelBlue, title: "提醒事项", subtitle: "读写系统提醒事项")
-                        Divider().padding(.leading, 64)
+                        Divider().padding(.leading, 44)
                         CapabilityToggleRow(key: "calendar", icon: "calendar.badge.plus", color: .pastelPink, title: "日历", subtitle: "读写系统日历")
-                        Divider().padding(.leading, 64)
+                        Divider().padding(.leading, 44)
                         CapabilityToggleRow(key: "health", icon: "heart.fill", color: .pastelPink, title: "健康", subtitle: "读取步数/心率/睡眠等")
-                        Divider().padding(.leading, 64)
+                        Divider().padding(.leading, 44)
                         CapabilityToggleRow(key: "contacts", icon: "person.2.fill", color: .pastelGreen, title: "通讯录", subtitle: "搜索联系人")
-                        Divider().padding(.leading, 64)
+                        Divider().padding(.leading, 44)
                         CapabilityToggleRow(key: "location", icon: "location.fill", color: .pastelPurple, title: "位置", subtitle: "获取当前位置")
-                        Divider().padding(.leading, 64)
+                        Divider().padding(.leading, 44)
                         CapabilityToggleRow(key: "clipboard", icon: "doc.on.clipboard", color: .pastelOrange, title: "剪贴板", subtitle: "读取/写入剪贴板")
-                        Divider().padding(.leading, 64)
+                        Divider().padding(.leading, 44)
                         CapabilityToggleRow(key: "photos", icon: "photo.fill", color: .pastelPurple, title: "相册", subtitle: "枚举最近照片")
-                        Divider().padding(.leading, 64)
+                        Divider().padding(.leading, 44)
                         CapabilityToggleRow(key: "device", icon: "iphone", color: .pastelGray, title: "设备信息", subtitle: "型号/电量/系统版本")
-                        Divider().padding(.leading, 64)
+                        Divider().padding(.leading, 44)
                         Button("刷新授权状态") { settings.refreshAuthStatuses() }
                             .font(.appSubheadline().weight(.semibold))
                             .foregroundStyle(Color.brandAccent)
-                            .frame(maxWidth: .infinity, minHeight: 44)
+                            .frame(maxWidth: .infinity, minHeight: 38)
                     }
 
                     SettingsSection(title: "说明") {
@@ -434,13 +438,13 @@ struct PermissionsView: View {
                                 .foregroundStyle(Color.appSecondaryText)
                                 .lineLimit(nil)
                         }
-                        .padding(AppSpacing.lg)
+                        .padding(AppSpacing.md)
                     }
                 }
             }
-            .padding(.horizontal, AppSpacing.xxl)
-            .padding(.top, AppSpacing.xl)
-            .padding(.bottom, AppSpacing.xxl)
+            .padding(.horizontal, AppSpacing.lg)
+            .padding(.top, AppSpacing.md)
+            .padding(.bottom, AppSpacing.xl)
         }
         .background(Color.appBackground)
     }
@@ -453,7 +457,7 @@ struct CustomPromptView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: AppSpacing.xl) {
+            VStack(alignment: .leading, spacing: AppSpacing.md) {
                 Text("自定义系统提示")
                     .font(.appTitle1())
                     .foregroundStyle(Color.appPrimaryText)
@@ -466,16 +470,17 @@ struct CustomPromptView: View {
 
                     TextEditor(text: $settings.systemPrompt)
                         .font(.appBody())
+                        .foregroundStyle(Color.appPrimaryText)
                         .frame(minHeight: 200)
                         .padding(AppSpacing.md)
                         .background(Color.appSurface)
-                        .clipShape(RoundedRectangle(cornerRadius: AppRadius.lg, style: .continuous))
+                        .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
                         .appCardShadow()
                 }
             }
-            .padding(.horizontal, AppSpacing.xxl)
-            .padding(.top, AppSpacing.xl)
-            .padding(.bottom, AppSpacing.xxl)
+            .padding(.horizontal, AppSpacing.lg)
+            .padding(.top, AppSpacing.md)
+            .padding(.bottom, AppSpacing.xl)
         }
         .background(Color.appBackground)
     }
@@ -498,7 +503,7 @@ struct LegalView: View {
                 .font(.appCaption())
                 .lineSpacing(5)
                 .foregroundStyle(Color.appPrimaryText)
-                .padding(AppSpacing.xxl)
+                .padding(AppSpacing.lg)
         }
         .background(Color.appBackground)
         .navigationTitle(type.rawValue)
@@ -651,12 +656,12 @@ struct LegalView: View {
 struct AboutView: View {
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: AppSpacing.xl) {
+            VStack(alignment: .leading, spacing: AppSpacing.md) {
                 Text("关于")
                     .font(.appTitle1())
                     .foregroundStyle(Color.appPrimaryText)
 
-                VStack(spacing: AppSpacing.xl) {
+                VStack(spacing: AppSpacing.md) {
                     SettingsSection(title: "版本信息") {
                         HStack {
                             Text("版本")
@@ -667,14 +672,14 @@ struct AboutView: View {
                                 .font(.appCaption())
                                 .foregroundStyle(Color.appSecondaryText)
                         }
-                        .padding(.horizontal, AppSpacing.lg)
-                        .padding(.vertical, AppSpacing.md)
+                        .padding(.horizontal, AppSpacing.md)
+                        .padding(.vertical, AppSpacing.sm)
 
-                        Divider().padding(.leading, AppSpacing.lg)
+                        Divider().padding(.leading, AppSpacing.md)
 
                         LinkRow(title: "网站", value: "https://chen.cm", url: "https://chen.cm")
 
-                        Divider().padding(.leading, AppSpacing.lg)
+                        Divider().padding(.leading, AppSpacing.md)
 
                         LinkRow(title: "仓库", value: "https://github.com/chirens/iOSAgent", url: "https://github.com/chirens/iOSAgent")
                     }
@@ -683,13 +688,13 @@ struct AboutView: View {
                         Text("同步 · 运行在 iPhone 上的本地 AI Agent")
                             .font(.appCaption())
                             .foregroundStyle(Color.appSecondaryText)
-                            .padding(AppSpacing.lg)
+                            .padding(AppSpacing.md)
                     }
                 }
             }
-            .padding(.horizontal, AppSpacing.xxl)
-            .padding(.top, AppSpacing.xl)
-            .padding(.bottom, AppSpacing.xxl)
+            .padding(.horizontal, AppSpacing.lg)
+            .padding(.top, AppSpacing.md)
+            .padding(.bottom, AppSpacing.xl)
         }
         .background(Color.appBackground)
     }
@@ -719,8 +724,8 @@ struct LinkRow: View {
                     .font(.system(size: 12, weight: .semibold, design: .rounded))
                     .foregroundStyle(Color.brandAccent)
             }
-            .padding(.horizontal, AppSpacing.lg)
-            .padding(.vertical, AppSpacing.md)
+            .padding(.horizontal, AppSpacing.md)
+            .padding(.vertical, AppSpacing.sm)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -741,11 +746,11 @@ struct CapabilityToggleRow: View {
         HStack(spacing: AppSpacing.md) {
             ZStack {
                 RoundedRectangle(cornerRadius: AppRadius.sm, style: .continuous)
-                    .fill(color.opacity(0.35))
-                    .frame(width: 36, height: 36)
+                    .fill(color.opacity(0.22))
+                    .frame(width: 32, height: 32)
                 Image(systemName: icon)
-                    .font(.system(size: 16, weight: .semibold, design: .rounded))
-                    .foregroundStyle(Color.appPrimaryText.opacity(0.8))
+                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                    .foregroundStyle(color)
             }
             VStack(alignment: .leading, spacing: AppSpacing.xs) {
                 Text(title)
@@ -771,9 +776,10 @@ struct CapabilityToggleRow: View {
                 }
             ))
             .labelsHidden()
+            .tint(Color.brandAccent)
         }
-        .padding(.horizontal, AppSpacing.lg)
-        .padding(.vertical, AppSpacing.md)
+        .padding(.horizontal, AppSpacing.md)
+        .padding(.vertical, AppSpacing.sm)
     }
 }
 
@@ -785,9 +791,9 @@ struct SectionHeader: View {
 
     var body: some View {
         Text(title)
-            .font(.appCaption().weight(.semibold))
+            .font(.appCaption2().weight(.semibold))
             .foregroundStyle(Color.appSecondaryText)
-            .padding(.horizontal, AppSpacing.lg)
+            .padding(.horizontal, AppSpacing.md)
     }
 }
 

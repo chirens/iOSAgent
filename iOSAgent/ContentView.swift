@@ -107,6 +107,9 @@ struct ChatRootView: View {
                     }
                 }
         }
+        .background(Color.appBackground)
+        .toolbarBackground(Color.appBackground, for: .navigationBar)
+        .toolbarColorScheme(.dark, for: .navigationBar)
     }
 }
 
@@ -120,14 +123,14 @@ struct ChatRootList: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: AppSpacing.xl) {
+            VStack(alignment: .leading, spacing: AppSpacing.md) {
                 newConversationCard
                 conversationsCard
                 remindersCard
             }
-            .padding(.horizontal, AppSpacing.xxl)
-            .padding(.top, AppSpacing.xl)
-            .padding(.bottom, AppSpacing.xxl)
+            .padding(.horizontal, AppSpacing.lg)
+            .padding(.top, AppSpacing.md)
+            .padding(.bottom, AppSpacing.xl)
         }
         .background(Color.appBackground)
         .refreshable { await loadReminders() }
@@ -155,23 +158,23 @@ struct ChatRootList: View {
                         .font(.system(size: 12, weight: .semibold, design: .rounded))
                         .foregroundStyle(Color.appSecondaryText)
                 }
-                .padding(.horizontal, AppSpacing.lg)
-                .padding(.vertical, AppSpacing.md)
+                .padding(.horizontal, AppSpacing.md)
+                .padding(.vertical, AppSpacing.sm)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
         }
         .background(Color.appSurface)
-        .clipShape(RoundedRectangle(cornerRadius: AppRadius.lg, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
         .appCardShadow()
     }
 
     private var conversationsCard: some View {
-        VStack(alignment: .leading, spacing: AppSpacing.md) {
+        VStack(alignment: .leading, spacing: AppSpacing.xs) {
             Text("历史对话")
-                .font(.appCaption().weight(.semibold))
+                .font(.appCaption2().weight(.semibold))
                 .foregroundStyle(Color.appSecondaryText)
-                .padding(.leading, AppSpacing.lg)
+                .padding(.leading, AppSpacing.md)
 
             VStack(spacing: 0) {
                 ForEach(store.sorted) { conversation in
@@ -189,18 +192,18 @@ struct ChatRootList: View {
                         }
                     }
                     if conversation.id != store.sorted.last?.id {
-                        Divider().padding(.leading, AppSpacing.lg)
+                        Divider().padding(.leading, AppSpacing.md)
                     }
                 }
             }
             .background(Color.appSurface)
-            .clipShape(RoundedRectangle(cornerRadius: AppRadius.lg, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
             .appCardShadow()
         }
     }
 
     private var remindersCard: some View {
-        VStack(alignment: .leading, spacing: AppSpacing.md) {
+        VStack(alignment: .leading, spacing: AppSpacing.xs) {
             Button {
                 withAnimation(.easeInOut(duration: 0.2)) {
                     reminderExpanded.toggle()
@@ -208,7 +211,7 @@ struct ChatRootList: View {
             } label: {
                 HStack {
                     Text("提醒 / 待办")
-                        .font(.appCaption().weight(.semibold))
+                        .font(.appCaption2().weight(.semibold))
                         .foregroundStyle(Color.appSecondaryText)
                     Spacer()
                     if !reminders.isEmpty {
@@ -225,7 +228,8 @@ struct ChatRootList: View {
                         .foregroundStyle(Color.appSecondaryText)
                         .rotationEffect(.degrees(reminderExpanded ? 0 : -90))
                 }
-                .padding(.leading, AppSpacing.lg)
+                .padding(.leading, AppSpacing.md)
+                .padding(.vertical, AppSpacing.xs)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -237,18 +241,18 @@ struct ChatRootList: View {
                             .font(.appSubheadline())
                             .foregroundStyle(Color.appSecondaryText)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(AppSpacing.lg)
+                            .padding(AppSpacing.md)
                     } else if reminders.isEmpty && !loadingReminders {
                         Text("没有待完成的提醒")
                             .font(.appSubheadline())
                             .foregroundStyle(Color.appSecondaryText)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(AppSpacing.lg)
+                            .padding(AppSpacing.md)
                     } else {
                         ForEach(reminders.prefix(5), id: \.calendarItemIdentifier) { reminder in
                             MiniReminderRow(reminder: reminder) { complete(reminder) }
                             if reminder.calendarItemIdentifier != reminders.prefix(5).last?.calendarItemIdentifier {
-                                Divider().padding(.leading, 52)
+                                Divider().padding(.leading, 44)
                             }
                         }
                         if reminders.count > 5 {
@@ -259,14 +263,14 @@ struct ChatRootList: View {
                                     .font(.appSubheadline().weight(.medium))
                                     .foregroundStyle(Color.brandAccent)
                                     .frame(maxWidth: .infinity, alignment: .leading)
-                                    .padding(AppSpacing.lg)
+                                    .padding(AppSpacing.md)
                             }
                             .buttonStyle(.plain)
                         }
                     }
                 }
                 .background(Color.appSurface)
-                .clipShape(RoundedRectangle(cornerRadius: AppRadius.lg, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
                 .appCardShadow()
             }
         }
@@ -318,8 +322,8 @@ struct ConversationRow: View {
                     .lineLimit(1)
             }
         }
-        .padding(.horizontal, AppSpacing.lg)
-        .padding(.vertical, AppSpacing.md)
+        .padding(.horizontal, AppSpacing.md)
+        .padding(.vertical, AppSpacing.sm)
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
     }
@@ -350,8 +354,8 @@ struct MiniReminderRow: View {
             }
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, AppSpacing.lg)
-        .padding(.vertical, AppSpacing.md)
+        .padding(.horizontal, AppSpacing.md)
+        .padding(.vertical, AppSpacing.sm)
         .contentShape(Rectangle())
     }
 
@@ -388,8 +392,8 @@ struct SideMenuOverlay: View {
                     }
                     .frame(width: min(geo.size.width * 0.78, 320))
                     .frame(maxHeight: .infinity)
-                    .background(.ultraThinMaterial)
-                    .shadow(color: .black.opacity(0.18), radius: 18, x: 8, y: 0)
+                    .background(Color.appSurface)
+                    .shadow(color: .black.opacity(0.3), radius: 16, x: 8, y: 0)
 
                     Spacer(minLength: 0)
                 }
@@ -410,9 +414,9 @@ struct SideMenuOverlay: View {
             ZStack {
                 RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous)
                     .fill(Color.brandAccent)
-                    .frame(width: 48, height: 48)
+                    .frame(width: 44, height: 44)
                 Image(systemName: "sparkles")
-                    .font(.system(size: 22, weight: .bold, design: .rounded))
+                    .font(.system(size: 20, weight: .bold, design: .rounded))
                     .foregroundStyle(.white)
             }
             VStack(alignment: .leading, spacing: AppSpacing.xs) {
@@ -425,14 +429,14 @@ struct SideMenuOverlay: View {
             }
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, AppSpacing.xl)
+        .padding(.horizontal, AppSpacing.lg)
         .padding(.top, AppSpacing.xl)
-        .padding(.bottom, AppSpacing.lg)
+        .padding(.bottom, AppSpacing.md)
     }
 
     private var sideMenuList: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: AppSpacing.xl) {
+            VStack(alignment: .leading, spacing: AppSpacing.md) {
                 SideMenuSection(title: "对话") {
                     SideMenuButton(icon: "plus", color: .pastelBlue, title: "新建对话") {
                         let id = store.newConversation()
@@ -447,14 +451,14 @@ struct SideMenuOverlay: View {
                                 isPresented = false
                             }
                             if conversation.id != store.sorted.last?.id {
-                                Divider().padding(.leading, 52)
+                                Divider().padding(.leading, 44)
                             }
                         }
                     } else {
                         Text("暂无历史对话")
                             .font(.appCaption())
                             .foregroundStyle(Color.appSecondaryText)
-                            .padding(.horizontal, AppSpacing.lg)
+                            .padding(.horizontal, AppSpacing.md)
                             .padding(.vertical, AppSpacing.sm)
                     }
                 }
@@ -473,7 +477,7 @@ struct SideMenuOverlay: View {
                     }
                 }
             }
-            .padding(.horizontal, AppSpacing.xl)
+            .padding(.horizontal, AppSpacing.lg)
             .padding(.top, AppSpacing.sm)
             .padding(.bottom, AppSpacing.xl)
         }
@@ -482,7 +486,7 @@ struct SideMenuOverlay: View {
     private var sideMenuFooter: some View {
         VStack(spacing: 0) {
             Divider()
-                .padding(.horizontal, AppSpacing.xl)
+                .padding(.horizontal, AppSpacing.lg)
             Button {
                 isPresented = false
                 onSettings()
@@ -492,13 +496,13 @@ struct SideMenuOverlay: View {
                     ZStack {
                         RoundedRectangle(cornerRadius: AppRadius.sm, style: .continuous)
                             .fill(Color.appInputFill)
-                            .frame(width: 34, height: 34)
+                            .frame(width: 32, height: 32)
                         Image(systemName: "gearshape.fill")
-                            .font(.system(size: 16, weight: .semibold, design: .rounded))
+                            .font(.system(size: 15, weight: .semibold, design: .rounded))
                             .foregroundStyle(Color.appSecondaryText)
                     }
                 }
-                .padding(.horizontal, AppSpacing.xl)
+                .padding(.horizontal, AppSpacing.lg)
                 .padding(.vertical, AppSpacing.sm)
                 .contentShape(Rectangle())
             }
@@ -512,18 +516,18 @@ struct SideMenuSection<Content: View>: View {
     @ViewBuilder let content: Content
 
     var body: some View {
-        VStack(alignment: .leading, spacing: AppSpacing.md) {
+        VStack(alignment: .leading, spacing: AppSpacing.xs) {
             Text(title)
-                .font(.appCaption().weight(.semibold))
+                .font(.appCaption2().weight(.semibold))
                 .foregroundStyle(Color.appSecondaryText)
-                .padding(.leading, AppSpacing.lg)
+                .padding(.leading, AppSpacing.md)
 
             VStack(spacing: 0) {
                 content
             }
-            .padding(.vertical, AppSpacing.sm)
-            .background(Color.appSurface)
-            .clipShape(RoundedRectangle(cornerRadius: AppRadius.lg, style: .continuous))
+            .padding(.vertical, AppSpacing.xs)
+            .background(Color(hex: "2C2C2E"))
+            .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
             .appCardShadow()
         }
     }
@@ -540,11 +544,11 @@ struct SideMenuButton: View {
             HStack(spacing: AppSpacing.md) {
                 ZStack {
                     RoundedRectangle(cornerRadius: AppRadius.sm, style: .continuous)
-                        .fill(color.opacity(0.45))
-                        .frame(width: 34, height: 34)
+                        .fill(color.opacity(0.22))
+                        .frame(width: 30, height: 30)
                     Image(systemName: icon)
-                        .font(.system(size: 15, weight: .semibold, design: .rounded))
-                        .foregroundStyle(Color.appPrimaryText.opacity(0.8))
+                        .font(.system(size: 14, weight: .semibold, design: .rounded))
+                        .foregroundStyle(color)
                 }
                 Text(title)
                     .font(.appSubheadline().weight(.semibold))
@@ -552,8 +556,8 @@ struct SideMenuButton: View {
                     .lineLimit(1)
                 Spacer(minLength: 0)
             }
-            .padding(.horizontal, AppSpacing.lg)
-            .padding(.vertical, AppSpacing.md)
+            .padding(.horizontal, AppSpacing.md)
+            .padding(.vertical, AppSpacing.sm)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -568,7 +572,7 @@ struct FilesHistoryView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: AppSpacing.xl) {
+            VStack(alignment: .leading, spacing: AppSpacing.md) {
                 Text("文件")
                     .font(.appTitle1())
                     .foregroundStyle(Color.appPrimaryText)
@@ -578,9 +582,9 @@ struct FilesHistoryView: View {
                         .font(.appSubheadline())
                         .foregroundStyle(Color.appSecondaryText)
                         .frame(maxWidth: .infinity, alignment: .center)
-                        .padding(AppSpacing.xxl)
+                        .padding(AppSpacing.xl)
                         .background(Color.appSurface)
-                        .clipShape(RoundedRectangle(cornerRadius: AppRadius.lg, style: .continuous))
+                        .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
                         .appCardShadow()
                 } else {
                     VStack(spacing: 0) {
@@ -591,9 +595,9 @@ struct FilesHistoryView: View {
                                 } label: {
                                     HStack(spacing: AppSpacing.md) {
                                         Image(systemName: fileIcon(for: url))
-                                            .font(.system(size: 18, weight: .semibold, design: .rounded))
+                                            .font(.system(size: 17, weight: .semibold, design: .rounded))
                                             .foregroundStyle(Color.brandAccent)
-                                            .frame(width: 36, height: 36)
+                                            .frame(width: 32, height: 32)
                                             .background(Color.brandAccent.opacity(0.12))
                                             .clipShape(RoundedRectangle(cornerRadius: AppRadius.sm, style: .continuous))
                                         VStack(alignment: .leading, spacing: AppSpacing.xs) {
@@ -620,21 +624,21 @@ struct FilesHistoryView: View {
                                 }
                                 .buttonStyle(.plain)
                             }
-                            .padding(.horizontal, AppSpacing.lg)
-                            .padding(.vertical, AppSpacing.md)
+                            .padding(.horizontal, AppSpacing.md)
+                            .padding(.vertical, AppSpacing.sm)
                             if url != files.last {
-                                Divider().padding(.leading, 64)
+                                Divider().padding(.leading, 44)
                             }
                         }
                     }
                     .background(Color.appSurface)
-                    .clipShape(RoundedRectangle(cornerRadius: AppRadius.lg, style: .continuous))
+                    .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
                     .appCardShadow()
                 }
             }
-            .padding(.horizontal, AppSpacing.xxl)
-            .padding(.top, AppSpacing.xl)
-            .padding(.bottom, AppSpacing.xxl)
+            .padding(.horizontal, AppSpacing.lg)
+            .padding(.top, AppSpacing.md)
+            .padding(.bottom, AppSpacing.xl)
         }
         .background(Color.appBackground)
         .navigationTitle("文件")
@@ -723,6 +727,9 @@ struct SettingsRootView: View {
                         )
                 }
         }
+        .background(Color.appBackground)
+        .toolbarBackground(Color.appBackground, for: .navigationBar)
+        .toolbarColorScheme(.dark, for: .navigationBar)
     }
 }
 

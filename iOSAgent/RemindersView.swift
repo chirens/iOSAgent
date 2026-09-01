@@ -10,7 +10,7 @@ struct RemindersView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: AppSpacing.xl) {
+            VStack(alignment: .leading, spacing: AppSpacing.md) {
                 Text("提醒 / 待办")
                     .font(.appTitle1())
                     .foregroundStyle(Color.appPrimaryText)
@@ -25,9 +25,9 @@ struct RemindersView: View {
                     remindersContent
                 }
             }
-            .padding(.horizontal, AppSpacing.xxl)
-            .padding(.top, AppSpacing.xl)
-            .padding(.bottom, AppSpacing.xxl)
+            .padding(.horizontal, AppSpacing.lg)
+            .padding(.top, AppSpacing.md)
+            .padding(.bottom, AppSpacing.xl)
         }
         .background(Color.appBackground)
         .refreshable { await load() }
@@ -36,6 +36,8 @@ struct RemindersView: View {
             Task { await load() }
         }
         .navigationTitle("提醒 / 待办")
+        .toolbarBackground(Color.appBackground, for: .navigationBar)
+        .toolbarColorScheme(.dark, for: .navigationBar)
     }
 
     private func statusCard(_ text: String, color: Color = .appSecondaryText) -> some View {
@@ -43,39 +45,39 @@ struct RemindersView: View {
             .font(.appSubheadline())
             .foregroundStyle(color)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(AppSpacing.lg)
+            .padding(AppSpacing.md)
             .background(Color.appSurface)
-            .clipShape(RoundedRectangle(cornerRadius: AppRadius.lg, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
             .appCardShadow()
     }
 
     private var remindersContent: some View {
-        VStack(spacing: AppSpacing.xl) {
+        VStack(spacing: AppSpacing.md) {
             let grouped = Dictionary(grouping: reminders, by: { $0.calendar?.title ?? "未分类" })
             let keys = grouped.keys.sorted()
             ForEach(keys, id: \.self) { key in
-                VStack(alignment: .leading, spacing: AppSpacing.md) {
+                VStack(alignment: .leading, spacing: AppSpacing.xs) {
                     HStack {
                         Text(key)
-                            .font(.appCaption().weight(.semibold))
+                            .font(.appCaption2().weight(.semibold))
                             .foregroundStyle(Color.appSecondaryText)
                         Spacer()
                         Text("\(grouped[key]?.count ?? 0)")
                             .font(.appSubheadline())
                             .foregroundStyle(Color.appSecondaryText)
                     }
-                    .padding(.horizontal, AppSpacing.lg)
+                    .padding(.horizontal, AppSpacing.md)
 
                     VStack(spacing: 0) {
                         ForEach(grouped[key] ?? [], id: \.calendarItemIdentifier) { reminder in
                             ReminderRow(reminder: reminder) { complete(reminder) }
                             if reminder.calendarItemIdentifier != grouped[key]?.last?.calendarItemIdentifier {
-                                Divider().padding(.leading, 52)
+                                Divider().padding(.leading, 44)
                             }
                         }
                     }
                     .background(Color.appSurface)
-                    .clipShape(RoundedRectangle(cornerRadius: AppRadius.lg, style: .continuous))
+                    .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
                     .appCardShadow()
                 }
             }
@@ -149,8 +151,8 @@ struct ReminderRow: View {
             }
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, AppSpacing.lg)
-        .padding(.vertical, AppSpacing.md)
+        .padding(.horizontal, AppSpacing.md)
+        .padding(.vertical, AppSpacing.sm)
         .contentShape(Rectangle())
     }
 
