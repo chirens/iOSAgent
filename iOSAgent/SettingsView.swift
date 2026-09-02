@@ -789,8 +789,7 @@ struct SkillsView: View {
     @State private var ghError: String?
     @State private var installingIDs: Set<String> = []
     @State private var searchCache: [String: [SkillGitHubSearchResult]] = [:]
-    // 限流防护：令牌（与设置同步）+ 冷却截止时间 + 显式搜索计数
-    @State private var ghToken: String = ""
+    // 限流防护：冷却截止时间 + 显式搜索计数（令牌直接绑定 settings.githubToken）
     @State private var ghCooldownUntil: Date = .distantPast
     @State private var searchNonce: Int = 0
 
@@ -860,14 +859,16 @@ struct SkillsView: View {
                             .font(.appCaption2().weight(.semibold))
                             .foregroundStyle(Color.appSecondaryText)
                         Spacer(minLength: 0)
-                        if !ghToken.isEmpty {
+                        if !settings.githubToken.isEmpty {
                             Text("已配置")
                                 .font(.appMicro())
                                 .foregroundStyle(Color.appSuccess)
                         }
                     }
                     .padding(.leading, AppSpacing.md)
-                    AppSecureField(placeholder: "ghp_xxx 或 github_pat_xxx（提升限额）", text: $ghToken)
+                    AppSecureField(placeholder: "ghp_xxx 或 github_pat_xxx（提升限额）",
+                                   text: Binding(get: { settings.githubToken },
+                                                set: { settings.githubToken = $0 }))
                         .padding(.horizontal, AppSpacing.md)
                     Text("未认证时搜索 / 安装接口限流约 10 次/分钟，填入令牌可显著提升限额（30 次/分钟）。可在 GitHub → Settings → Developer settings → Personal access tokens 生成只读令牌。")
                         .font(.appCaption())
@@ -880,8 +881,6 @@ struct SkillsView: View {
                 .background(Color.appSurface)
                 .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
                 .appCardShadow()
-                .onAppear { ghToken = settings.githubToken }
-                .onChange(of: ghToken) { settings.githubToken = ghToken }
 
                 // GitHub 搜索结果
                 if searchMode == .github {
