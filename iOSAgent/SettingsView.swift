@@ -6,6 +6,7 @@ enum SettingsRoute: Hashable {
     case customPrompt
     case legal(LegalType)
     case about
+    case skills
 }
 
 struct SettingsView: View {
@@ -28,6 +29,8 @@ struct SettingsView: View {
                         SettingsLinkRow(icon: "lock.shield.fill", color: .pastelOrange, title: "系统权限", subtitle: "健康 / 提醒 / 日历 / 相册…", destination: .permissions)
                         Divider().padding(.leading, 48)
                         SettingsLinkRow(icon: "text.quote", color: .pastelPurple, title: "自定义系统提示", subtitle: "塑造助手语气与偏好", destination: .customPrompt)
+                        Divider().padding(.leading, 48)
+                        SettingsLinkRow(icon: "brain.fill", color: .pastelTeal, title: "技能中心", subtitle: "搜索 / 安装 GitHub 技能", destination: .skills)
                     }
 
                     SettingsSection(title: "应用") {
@@ -732,6 +735,186 @@ struct LinkRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+    }
+}
+
+// MARK: - 技能中心（搜索 + 从 GitHub 安装 + 删除）
+
+struct SkillsView: View {
+    @ObservedObject private var router = SkillRouter.shared
+    @State private var query = ""
+    @State private var installURL = ""
+    @State private var installing = false
+    @State private var message: String?
+    @State private var errorText: String?
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: AppSpacing.md) {
+                Text("技能中心")
+                    .font(.appTitle1())
+                    .foregroundStyle(Color.appPrimaryText)
+
+                // 搜索框
+                HStack(spacing: AppSpacing.sm) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(Color.appSecondaryText)
+                    TextField("搜索技能名称 / 描述 / 触发词", text: $query)
+                        .font(.appBody())
+                        .foregroundStyle(Color.appPrimaryText)
+                        .autocapitalization(.none)
+                        .disableAutocorrection(true)
+                }
+                .padding(.horizontal, AppSpacing.md)
+                .padding(.vertical, AppSpacing.sm)
+                .background(Color.appInputFill)
+                .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
+
+                // 从 GitHub 安装
+                VStack(alignment: .leading, spacing: AppSpacing.sm) {
+                    Text("从 GitHub 安装技能")
+                        .font(.appCaption2().weight(.semibold))
+                        .foregroundStyle(Color.appSecondaryText)
+                        .padding(.leading, AppSpacing.md)
+                    HStack(spacing: AppSpacing.sm) {
+                        AppTextField(placeholder: "粘贴 skill 的 .md 链接（支持 github blob 链接）", text: $installURL, keyboard: .URL)
+                        Button {
+                            installTapped()
+                        } label: {
+                            if installing {
+                                ProgressView()
+                                    .frame(width: 56, height: 40)
+                            } else {
+                                Text("安装")
+                                    .font(.appBody().weight(.bold))
+                                    .foregroundStyle(.white)
+                                    .padding(.horizontal, AppSpacing.lg)
+                                    .frame(height: 40)
+                                    .background(Color.brandAccent)
+                                    .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
+                            }
+                        }
+                        .disabled(installing || installURL.trimmingCharacters(in: .whitespaces).isEmpty)
+                    }
+                    if let message {
+                        Text(message)
+                            .font(.appCaption())
+                            .foregroundStyle(Color.appSuccess)
+                            .padding(.leading, AppSpacing.md)
+                    }
+                    if let errorText {
+                        Text(errorText)
+                            .font(.appCaption())
+                            .foregroundStyle(Color.appError)
+                            .padding(.leading, AppSpacing.md)
+                    }
+                }
+                .padding(.vertical, AppSpacing.sm)
+                .background(Color.appSurface)
+                .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
+                .appCardShadow()
+
+                // 已安装技能列表
+                SettingsSection(title: "已安装技能（\(filtered.count)）") {
+                    if filtered.isEmpty {
+                        Text("没有匹配的技能")
+                            .font(.appSubheadline())
+                            .foregroundStyle(Color.appSecondaryText)
+                            .padding(AppSpacing.md)
+                    } else {
+                        ForEach(filtered) { skill in
+                            skillRow(skill)
+                            if skill.id != filtered.last?.id {
+                                Divider().padding(.leading, 44)
+                            }
+                        }
+                    }
+                }
+            }
+            .padding(.horizontal, AppSpacing.lg)
+            .padding(.top, AppSpacing.md)
+            .padding(.bottom, AppSpacing.xl)
+        }
+        .background(Color.appBackground)
+    }
+
+    private var filtered: [Skill] {
+        let q = query.trimmingCharacters(in: .whitespaces).lowercased()
+        guard !q.isEmpty else { return router.allSkills }
+        return router.allSkills.filter {
+            $0.name.lowercased().contains(q)
+            || $0.description.lowercased().contains(q)
+            || $0.triggers.contains { $0.lowercased().contains(q) }
+        }
+    }
+
+    private func skillRow(_ skill: Skill) -> some View {
+        HStack(spacing: AppSpacing.md) {
+            ZStack {
+                RoundedRectangle(cornerRadius: AppRadius.sm, style: .continuous)
+                    .fill(Color.brandAccent.opacity(0.18))
+                    .frame(width: 32, height: 32)
+                Image(systemName: skill.icon.isEmpty ? "sparkles" : skill.icon)
+                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                    .foregroundStyle(Color.brandAccent)
+            }
+            VStack(alignment: .leading, spacing: AppSpacing.xs) {
+                HStack(spacing: 6) {
+                    Text(skill.name)
+                        .font(.appSubheadline().weight(.semibold))
+                        .foregroundStyle(Color.appPrimaryText)
+                    if !skill.isBuiltIn {
+                        Text("用户")
+                            .font(.appMicro())
+                            .foregroundStyle(Color.appSecondaryText)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.appInputFill)
+                            .clipShape(Capsule())
+                    }
+                }
+                Text(skill.description)
+                    .font(.appCaption())
+                    .foregroundStyle(Color.appSecondaryText)
+                if !skill.triggers.isEmpty {
+                    Text(skill.triggers.prefix(6).joined(separator: "、"))
+                        .font(.appMicro())
+                        .foregroundStyle(Color.appSecondaryText)
+                        .lineLimit(1)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, AppSpacing.md)
+        .padding(.vertical, AppSpacing.sm)
+        .contentShape(Rectangle())
+        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+            if !skill.isBuiltIn {
+                Button(role: .destructive) { deleteSkill(skill) } label: { Label("删除", systemImage: "trash") }
+            }
+        }
+    }
+
+    private func installTapped() {
+        let url = installURL
+        installing = true
+        errorText = nil
+        message = nil
+        Task {
+            do {
+                let installed = try await router.install(from: url)
+                message = "已安装 \(installed.count) 个技能：\(installed.map { $0.name }.joined(separator: "、"))"
+                installURL = ""
+            } catch {
+                errorText = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            }
+            installing = false
+        }
+    }
+
+    private func deleteSkill(_ skill: Skill) {
+        try? router.remove(userSkillID: skill.id)
     }
 }
 

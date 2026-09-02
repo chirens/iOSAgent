@@ -278,6 +278,8 @@ final class AgentClient {
 
         let custom = SettingsStore.shared.systemPrompt
         let customBlock = custom.isEmpty ? "" : "\n\n用户自定义补充：\(custom)"
+        let catalog = SkillRouter.shared.allSkills
+        let catalogBlock = catalog.isEmpty ? "" : "\n\n可用技能目录（当用户需求与某技能相关时，按下方对应规则调用；无关则忽略）：\n" + catalog.map { "- \($0.name)：\($0.description)" }.joined(separator: "\n")
         let skillBlock = buildSkillBlock(activeSkills)
 
         return """
@@ -310,7 +312,7 @@ final class AgentClient {
         用户：10分钟后叫我
         → 调用 set_alarm(title="提醒", fire_in_minutes=10)
 
-        \(customBlock)\(skillBlock)
+        \(customBlock)\(catalogBlock)\(skillBlock)
         """
     }
 
@@ -352,14 +354,52 @@ struct Skill: Identifiable, Hashable {
     let triggers: [String]
     let tools: [String]
     let prompt: String
+    var isBuiltIn: Bool = false
 }
 
-/// 技能路由：根据用户输入匹配相关技能。
+/// 技能路由：根据用户输入匹配相关技能，并管理用户从沙盒安装的自定义技能。
 @MainActor
 final class SkillRouter: ObservableObject {
     static let shared = SkillRouter()
-    let allSkills: [Skill] = SkillRegistry.allSkills
-    private init() {}
+    private let builtInSkills: [Skill] = SkillRegistry.allSkills.map { s in
+        var c = s
+        c.isBuiltIn = true
+        return c
+    }
+    @Published private(set) var userSkills: [Skill] = []
+
+    private let skillsDir: URL = {
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        return docs.appendingPathComponent("Skills", isDirectory: true)
+    }()
+
+    private init() {
+        loadUserSkills()
+    }
+
+    /// 内置技能 + 用户安装技能
+    var allSkills: [Skill] { builtInSkills + userSkills }
+
+    func loadUserSkills() {
+        userSkills = SkillFileStore.loadSkills(from: skillsDir)
+    }
+
+    /// 从 GitHub / 任意 http(s) 链接安装技能到沙盒。
+    func install(from urlString: String) async throws -> [Skill] {
+        let installed = try await SkillInstaller.install(urlString: urlString, into: skillsDir)
+        loadUserSkills()
+        return installed
+    }
+
+    func remove(userSkillID id: String) throws {
+        guard let skill = userSkills.first(where: { $0.id == id }) else { return }
+        try SkillFileStore.delete(skill: skill, from: skillsDir)
+        loadUserSkills()
+    }
+
+    func skill(byID id: String) -> Skill? {
+        allSkills.first { $0.id == id }
+    }
 
     func match(input: String) -> [Skill] {
         let lower = input.lowercased()
@@ -400,6 +440,180 @@ final class SkillRouter: ObservableObject {
             return String(parts[1]).trimmingCharacters(in: .whitespaces)
         }
         return ""
+    }
+}
+
+/// 解析带 YAML frontmatter 的 skill markdown；无 frontmatter 时整篇作为提示词。
+struct SkillMarkdownParser {
+    static func parse(_ text: String, fallbackID: String) -> Skill? {
+        let (front, body) = extractFrontmatter(text)
+        let name: String
+        let icon: String
+        let description: String
+        let triggers: [String]
+        let tools: [String]
+        let prompt: String
+
+        if let front = front {
+            let dict = parseFrontmatter(front)
+            let rawName = (dict["name"] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            name = rawName.isEmpty ? fallbackID.capitalized : rawName
+            let rawIcon = (dict["icon"] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            icon = rawIcon.isEmpty ? "sparkles" : rawIcon
+            description = (dict["description"] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            triggers = parseList(dict["triggers"])
+            tools = parseList(dict["tools"])
+            prompt = body.trimmingCharacters(in: .whitespacesAndNewlines)
+        } else {
+            name = fallbackID.capitalized
+            icon = "sparkles"
+            description = "用户安装的技能"
+            triggers = []
+            tools = []
+            prompt = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+
+        let id = slug(name)
+        return Skill(id: id, name: name, icon: icon, description: description,
+                     triggers: triggers, tools: tools, prompt: prompt, isBuiltIn: false)
+    }
+
+    private static func extractFrontmatter(_ text: String) -> (String?, String) {
+        let lines = text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        guard lines.first?.trimmingCharacters(in: .whitespaces) == "---" else {
+            return (nil, text)
+        }
+        if let closeIdx = lines.dropFirst().firstIndex(where: { $0.trimmingCharacters(in: .whitespaces) == "---" }) {
+            let front = lines[1...closeIdx].joined(separator: "\n")
+            let body = lines[(closeIdx + 1)...].joined(separator: "\n")
+            return (front, body)
+        }
+        return (nil, text)
+    }
+
+    private static func parseFrontmatter(_ text: String) -> [String: String] {
+        var dict: [String: String] = [:]
+        var currentKey: String?
+        for raw in text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init) {
+            let line = raw.trimmingCharacters(in: .whitespaces)
+            if line.hasPrefix("- ") {
+                if let key = currentKey {
+                    let item = String(line.dropFirst(2)).trimmingCharacters(in: .whitespaces)
+                    if let existing = dict[key], !existing.isEmpty {
+                        dict[key] = existing + "\n" + item
+                    } else {
+                        dict[key] = item
+                    }
+                }
+                continue
+            }
+            if let colon = line.range(of: ":") {
+                let key = String(line[line.startIndex..<colon.lowerBound]).trimmingCharacters(in: .whitespaces).lowercased()
+                let value = String(line[colon.upperBound...]).trimmingCharacters(in: .whitespaces)
+                if key.isEmpty { continue }
+                if value.isEmpty {
+                    currentKey = key
+                } else {
+                    dict[key] = value
+                    currentKey = nil
+                }
+            }
+        }
+        return dict
+    }
+
+    private static func parseList(_ raw: String?) -> [String] {
+        guard let raw = raw, !raw.isEmpty else { return [] }
+        let sep: Character = raw.contains("\n") ? "\n" : ","
+        return raw.split(separator: sep).map {
+            String($0).trimmingCharacters(in: .whitespaces).trimmingCharacters(in: CharacterSet(charactersIn: "- "))
+        }.filter { !$0.isEmpty }
+    }
+
+    private static func slug(_ s: String) -> String {
+        var out = ""
+        for ch in s.unicodeScalars {
+            if CharacterSet.alphanumerics.contains(ch) || ch.value >= 0x4E00 {
+                out.append(Character(ch))
+            } else {
+                out.append("-")
+            }
+        }
+        while out.contains("--") { out = out.replacingOccurrences(of: "--", with: "-") }
+        let trimmed = out.trimmingCharacters(in: CharacterSet(charactersIn: "-"))
+        return trimmed.isEmpty ? "skill" : trimmed
+    }
+}
+
+/// 用户技能文件读写（沙盒 Documents/Skills/*.md）
+struct SkillFileStore {
+    static func loadSkills(from dir: URL) -> [Skill] {
+        guard let urls = try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil, options: .skipsHiddenFiles) else { return [] }
+        return urls.filter { $0.pathExtension.lowercased() == "md" }.compactMap { url in
+            guard let text = try? String(contentsOf: url, encoding: .utf8) else { return nil }
+            return SkillMarkdownParser.parse(text, fallbackID: url.deletingPathExtension().lastPathComponent)
+        }
+    }
+
+    static func delete(skill: Skill, from dir: URL) throws {
+        let file = dir.appendingPathComponent("\(skill.id).md")
+        try FileManager.default.removeItem(at: file)
+    }
+}
+
+enum SkillInstallError: Error, LocalizedError {
+    case invalidURL
+    case downloadFailed
+    case noSkillFound
+    case parseFailed
+    var errorDescription: String? {
+        switch self {
+        case .invalidURL: return "链接无效，请输入 http(s) 开头的技能文件地址"
+        case .downloadFailed: return "下载失败，请检查链接与网络"
+        case .noSkillFound: return "未能从该链接解析出有效技能（需要含 name 的 markdown 或纯文本）"
+        case .parseFailed: return "文件内容无法解析"
+        }
+    }
+}
+
+/// 从 GitHub / 任意 http(s) 链接安装单个 skill markdown 到沙盒。
+struct SkillInstaller {
+    static func install(urlString: String, into dir: URL) async throws -> [Skill] {
+        let trimmed = urlString.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let url = URL(string: trimmed), let scheme = url.scheme, scheme.hasPrefix("http") else {
+            throw SkillInstallError.invalidURL
+        }
+        let target = normalizeGitHub(url)
+        let skill = try await downloadAndSave(target, into: dir)
+        return [skill]
+    }
+
+    /// github.com blob 链接转 raw.githubusercontent.com
+    private static func normalizeGitHub(_ url: URL) -> URL {
+        var s = url.absoluteString
+        if s.contains("github.com") && s.contains("/blob/") {
+            s = s.replacingOccurrences(of: "github.com", with: "raw.githubusercontent.com")
+            s = s.replacingOccurrences(of: "/blob/", with: "/")
+        }
+        return URL(string: s) ?? url
+    }
+
+    private static func downloadAndSave(_ url: URL, into dir: URL) async throws -> Skill {
+        var req = URLRequest(url: url)
+        req.timeoutInterval = 30
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        if let http = resp as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+            throw SkillInstallError.downloadFailed
+        }
+        guard let text = String(data: data, encoding: .utf8) else { throw SkillInstallError.parseFailed }
+        let fallbackID = url.deletingPathExtension().lastPathComponent
+        guard let skill = SkillMarkdownParser.parse(text, fallbackID: fallbackID) else {
+            throw SkillInstallError.noSkillFound
+        }
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let file = dir.appendingPathComponent("\(skill.id).md")
+        try text.write(to: file, atomically: true, encoding: .utf8)
+        return skill
     }
 }
 

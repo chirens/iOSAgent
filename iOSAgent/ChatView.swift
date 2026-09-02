@@ -38,6 +38,8 @@ struct ChatView: View {
 
     // v7.5 Skill 框架：当前消息命中的技能
     @State private var activeSkills: [Skill] = []
+    // 观察技能路由，安装/删除用户技能后实时刷新
+    @ObservedObject private var skillRouter = SkillRouter.shared
 
     // v7.8 + 号紧凑菜单：图片/文件/技能/模型
     @State private var plusMenu: PlusMenuState = .closed
@@ -115,7 +117,7 @@ struct ChatView: View {
                         Text("指定技能：")
                             .font(.appCaption2())
                             .foregroundStyle(Color.appSecondaryText)
-                        ForEach(SkillRouter.shared.allSkills) { skill in
+                        ForEach(skillRouter.allSkills) { skill in
                             Button {
                                 input = "@\(skill.name) "
                             } label: {
@@ -300,7 +302,7 @@ struct ChatView: View {
             case .skills:
                 plusBackRow
                 Divider()
-                ForEach(SkillRouter.shared.allSkills) { skill in
+                ForEach(skillRouter.allSkills) { skill in
                     Button {
                         pinnedSkillID = skill.id
                         activeSkills = [skill]
@@ -321,7 +323,7 @@ struct ChatView: View {
                         .padding(.vertical, 7)
                     }
                     .buttonStyle(.plain)
-                    if skill.id != SkillRouter.shared.allSkills.last?.id { Divider() }
+                    if skill.id != skillRouter.allSkills.last?.id { Divider() }
                 }
             case .models:
                 plusBackRow
@@ -484,19 +486,19 @@ struct ChatView: View {
         let raw = input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !raw.isEmpty else { return }
 
-        let explicit = SkillRouter.shared.matchExplicit(input: raw)
+        let explicit = skillRouter.matchExplicit(input: raw)
         let text: String
         var skills: [Skill]
         if let e = explicit {
-            text = SkillRouter.shared.stripSkillPrefix(raw)
+            text = skillRouter.stripSkillPrefix(raw)
             skills = e
         } else if let pid = pinnedSkillID,
-                  let pinned = SkillRouter.shared.allSkills.first(where: { $0.id == pid }) {
+                  let pinned = skillRouter.allSkills.first(where: { $0.id == pid }) {
             text = raw
             skills = [pinned]
         } else {
             text = raw
-            skills = SkillRouter.shared.match(input: raw)
+            skills = skillRouter.match(input: raw)
         }
         activeSkills = skills
         pinnedSkillID = nil
