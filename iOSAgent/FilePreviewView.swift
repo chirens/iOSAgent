@@ -1,5 +1,6 @@
 import SwiftUI
 import PDFKit
+import QuickLook
 import UIKit
 
 /// 用于 sheet(item:) 的 Identifiable 包装：本工具链的 URL 不遵循 Identifiable，
@@ -108,10 +109,6 @@ struct FilePreviewView: View {
                     .padding()
             }
             .background(Color.appBackground)
-        } else if ext == "pdf" {
-            PDFKitPreview(url: url)
-        } else if ext == "pptx" {
-            pptContent
         } else if textExts.contains(ext) {
             ScrollView {
                 Text(plainText.isEmpty ? "(空文件)" : plainText)
@@ -120,16 +117,9 @@ struct FilePreviewView: View {
                     .padding()
             }
             .background(Color.appBackground)
-        } else if ext == "docx", !docxText.isEmpty {
-            ScrollView {
-                Text(docxText)
-                    .font(.appBody())
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding()
-            }
-            .background(Color.appBackground)
         } else {
-            unsupportedContent
+            // pptx/docx/pdf 等交给系统 QuickLook，避免解析 Office XML 源码。
+            QuickLookPreview(url: url)
         }
     }
 
@@ -292,6 +282,30 @@ struct FilePreviewView: View {
             .replacingOccurrences(of: "&gt;", with: ">")
             .replacingOccurrences(of: "&quot;", with: "\"")
             .replacingOccurrences(of: "&apos;", with: "'")
+    }
+}
+
+/// QuickLook 原生预览（支持 pptx/docx/pdf 等）
+struct QuickLookPreview: UIViewControllerRepresentable {
+    let url: URL
+
+    func makeCoordinator() -> Coordinator { Coordinator(url: url) }
+
+    func makeUIViewController(context: Context) -> QLPreviewController {
+        let vc = QLPreviewController()
+        vc.dataSource = context.coordinator
+        return vc
+    }
+
+    func updateUIViewController(_ uiViewController: QLPreviewController, context: Context) {}
+
+    final class Coordinator: NSObject, QLPreviewControllerDataSource {
+        let url: URL
+        init(url: URL) { self.url = url }
+        func numberOfPreviewItems(in controller: QLPreviewController) -> Int { 1 }
+        func previewController(_ controller: QLPreviewController, previewItemAt index: Int) -> QLPreviewItem {
+            url as QLPreviewItem
+        }
     }
 }
 

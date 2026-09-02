@@ -120,10 +120,21 @@ struct ChatRootList: View {
     @State private var reminders: [EKReminder] = []
     @State private var loadingReminders = false
     @State private var reminderExpanded = false
+    @State private var searchText = ""
+
+    private var filteredConversations: [Conversation] {
+        let nonempty = store.sorted.filter { !($0.title == "新对话" && $0.messages.isEmpty) }
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !query.isEmpty else { return nonempty }
+        return nonempty.filter { c in
+            c.title.lowercased().contains(query) || c.messages.contains { $0.content.lowercased().contains(query) }
+        }
+    }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: AppSpacing.md) {
+                searchBar
                 newConversationCard
                 conversationsCard
                 remindersCard
@@ -138,6 +149,34 @@ struct ChatRootList: View {
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
             Task { await loadReminders() }
         }
+    }
+
+    private var searchBar: some View {
+        HStack(spacing: AppSpacing.sm) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(Color.appSecondaryText)
+            TextField("搜索历史对话", text: $searchText)
+                .font(.appBody())
+                .foregroundStyle(Color.appPrimaryText)
+                .autocapitalization(.none)
+                .disableAutocorrection(true)
+            if !searchText.isEmpty {
+                Button {
+                    searchText = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundStyle(Color.appSecondaryText)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, AppSpacing.md)
+        .padding(.vertical, AppSpacing.sm)
+        .background(Color.appSurface)
+        .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
+        .appCardShadow()
     }
 
     private var newConversationCard: some View {
@@ -171,28 +210,45 @@ struct ChatRootList: View {
 
     private var conversationsCard: some View {
         VStack(alignment: .leading, spacing: AppSpacing.xs) {
-            Text("历史对话")
-                .font(.appCaption2().weight(.semibold))
-                .foregroundStyle(Color.appSecondaryText)
-                .padding(.leading, AppSpacing.md)
+            HStack {
+                Text("历史对话")
+                    .font(.appCaption2().weight(.semibold))
+                    .foregroundStyle(Color.appSecondaryText)
+                Spacer()
+                if !searchText.isEmpty {
+                    Text("找到 \(filteredConversations.count) 条")
+                        .font(.appCaption2())
+                        .foregroundStyle(Color.appSecondaryText)
+                }
+            }
+            .padding(.leading, AppSpacing.md)
+            .padding(.trailing, AppSpacing.md)
 
             VStack(spacing: 0) {
-                ForEach(store.sorted) { conversation in
-                    Button {
-                        path.append(ChatRoute.chat(conversation.id))
-                    } label: {
-                        ConversationRow(conversation: conversation)
-                    }
-                    .buttonStyle(.plain)
-                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                        Button(role: .destructive) {
-                            store.delete(conversation.id)
+                if filteredConversations.isEmpty {
+                    Text(searchText.isEmpty ? "暂无历史对话" : "没有匹配到对话")
+                        .font(.appSubheadline())
+                        .foregroundStyle(Color.appSecondaryText)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(AppSpacing.md)
+                } else {
+                    ForEach(filteredConversations) { conversation in
+                        Button {
+                            path.append(ChatRoute.chat(conversation.id))
                         } label: {
-                            Label("删除", systemImage: "trash")
+                            ConversationRow(conversation: conversation)
                         }
-                    }
-                    if conversation.id != store.sorted.last?.id {
-                        Divider().padding(.leading, AppSpacing.md)
+                        .buttonStyle(.plain)
+                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                            Button(role: .destructive) {
+                                store.delete(conversation.id)
+                            } label: {
+                                Label("删除", systemImage: "trash")
+                            }
+                        }
+                        if conversation.id != filteredConversations.last?.id {
+                            Divider().padding(.leading, AppSpacing.md)
+                        }
                     }
                 }
             }

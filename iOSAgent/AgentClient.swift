@@ -96,7 +96,9 @@ final class AgentClient {
                 throw AgentError.http(code, msg)
             }
 
-            var streamingMsg = StoredMessage(role: "assistant", content: "", isStreaming: true, status: "模型思考中…")
+            let skillNames = activeSkills.map(\.name).joined(separator: "、")
+            var streamingMsg = StoredMessage(role: "assistant", content: "", isStreaming: true,
+                                             status: skillNames.isEmpty ? "模型思考中…" : "使用技能：\(skillNames)")
             out.append(streamingMsg)
             await onUpdate(out)
 
@@ -334,7 +336,10 @@ final class AgentClient {
     private func toolResultString(_ result: ToolResult) -> String {
         var base = result.success ? "[执行成功]" : "[执行失败]"
         base += " \(result.message)"
-        if let data = result.data, let dataJson = try? JSONSerialization.data(withJSONObject: data.mapValues { $0.value }, options: .fragmentsAllowed),
+        // 生成文件类工具的数据仅包含内部路径，不要展示给用户；其它工具结果仍保留结构化数据供模型参考。
+        if result.fileURL == nil,
+           let data = result.data,
+           let dataJson = try? JSONSerialization.data(withJSONObject: data.mapValues { $0.value }, options: .fragmentsAllowed),
            let s = String(data: dataJson, encoding: .utf8) {
             base += "\n数据：\(s)"
         }
@@ -365,11 +370,11 @@ final class AgentClient {
 
         let custom = SettingsStore.shared.systemPrompt
         let customBlock = custom.isEmpty ? "" : "\n\n用户自定义补充：\(custom)"
-        let catalog = SkillRouter.shared.allSkills
-        let catalogBlock = catalog.isEmpty ? "" : "\n\n可用技能目录（当用户需求与某技能相关时，按下方对应规则调用；无关则忽略）：\n" + catalog.map { "- \($0.name)：\($0.description)" }.joined(separator: "\n")
         let skillBlock = buildSkillBlock(activeSkills)
 
         return """
+        \(skillBlock)
+
         你是 同步，一个运行在 iPhone 上的本地 AI Agent。你可以调用系统工具帮用户完成操作。
 
         当前时间：\(nowStr)（东八区，北京时间）。系统时间已直接提供给你，不要向用户询问现在几点或今天几号，直接用当前时间计算。
@@ -385,7 +390,7 @@ final class AgentClient {
         3. 对于相对时间如“5分钟后”“半小时后”“明天早上9点”，直接使用 fire_in_minutes / due_in_minutes / duration_minutes；对于绝对时间使用 fire_at / due_at / start_at（ISO8601 格式，如 2026-08-26T09:00:00+08:00）。
         4. 用户说“提醒我N分钟后做某事”时，标题就是这件事本身（如“喝水”“拿快递”），不要再问用户标题。
         5. 如果用户没有指定标题，根据内容推断一个合适的标题。
-        6. 工具执行后，根据结果用一句话向用户确认，不要暴露内部 ID 或 JSON。
+        6. 工具执行后，根据结果用一句话向用户确认，不要暴露内部 ID、路径或 JSON。
         7. 如果某个能力未开启，引导用户到设置页开启，不要重复尝试调用失败工具。
         8. 当用户要求生成文件、PPT、写报告、整理数据时，使用 create_file（文本/md/csv）或 create_ppt（PPT）。先自己规划内容结构，再调用工具生成；生成后用一句话告诉用户文件已保存，可点击分享按钮导出。
 
@@ -399,15 +404,19 @@ final class AgentClient {
         用户：10分钟后叫我
         → 调用 set_alarm(title="提醒", fire_in_minutes=10)
 
-        \(customBlock)\(catalogBlock)\(skillBlock)
+        \(customBlock)
         """
     }
 
     private func buildSkillBlock(_ skills: [Skill]) -> String {
         guard !skills.isEmpty else { return "" }
-        let header = "\n\n当前激活的专业技能：\n" + skills.map { "- \($0.name)：\($0.description)" }.joined(separator: "\n") + "\n\n请严格遵循对应技能的规则。若用户需求与技能无关，则忽略技能规则，按常规方式回答。"
-        let bodies = skills.map { "[\($0.name)]\n\($0.prompt)" }.joined(separator: "\n\n")
-        return header + "\n\n" + bodies
+        let header = """
+        【已强制激活的专业技能，必须严格遵循】
+        以下技能已针对本次对话激活，你必须完全按照对应技能的规则、风格和要求回答。如果用户请求与技能直接相关，禁止忽略技能规则。
+        """
+        let list = skills.map { "- \($0.name)：\($0.description)" }.joined(separator: "\n")
+        let bodies = skills.map { "\n=== [\($0.name)] ===\n\($0.prompt)" }.joined(separator: "\n")
+        return header + "\n" + list + bodies
     }
 
     private func formatISODate(_ date: Date, hour: Int) -> String {
