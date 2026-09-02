@@ -401,7 +401,7 @@ struct SideMenuOverlay: View {
             .gesture(
                 DragGesture()
                     .onEnded { value in
-                        if value.translation.width > 60 {
+                        if value.translation.width > 60 || value.translation.width < -60 {
                             isPresented = false
                         }
                     }
@@ -695,6 +695,7 @@ struct SettingsRootView: View {
                     case .customPrompt: CustomPromptView()
                     case .legal(let type): LegalView(type: type)
                     case .about: AboutView()
+                    case .skills: SkillsView()
                     }
                 }
                 .toolbar {
