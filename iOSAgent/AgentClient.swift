@@ -20,12 +20,21 @@ enum AgentError: Error, LocalizedError {
 @MainActor
 final class AgentClient {
     static let shared = AgentClient()
-    private let session = URLSession.shared
+    /// 长超时 session：解决真实对话因首 token 延迟或工具链较长导致的 timeout。
+    private let session: URLSession = {
+        let cfg = URLSessionConfiguration.default
+        cfg.timeoutIntervalForRequest = 180
+        cfg.timeoutIntervalForResource = 300
+        cfg.waitsForConnectivity = true
+        return URLSession(configuration: cfg)
+    }()
     private init() {}
 
     /// 运行 agent 循环：传入完整消息历史，返回更新后的历史 + 最终文本。
     /// image 仅由 ChatView 在新增的 user 消息上携带，此处不再重写历史。
-    func run(messages: [StoredMessage], image: UIImage?, tools: [ToolSpec], activeSkills: [Skill] = []) async throws
+    /// onUpdate 在流式生成和工具执行过程中被多次调用，用于实时刷新 UI。
+    func run(messages: [StoredMessage], image: UIImage?, tools: [ToolSpec], activeSkills: [Skill] = [],
+             onUpdate: @MainActor @escaping ([StoredMessage]) -> Void = { _ in }) async throws
         -> (messages: [StoredMessage], finalText: String) {
 
         let settings = SettingsStore.shared
@@ -40,9 +49,9 @@ final class AgentClient {
         }
 
         var out = messages
-        if let image, let jpeg = image.jpegData(compressionQuality: 0.8),
+        if let image, let jpeg = prepareImageData(image),
            let lastUserIdx = out.indices.last(where: { out[$0].role == "user" }) {
-            out[lastUserIdx].imageBase64 = jpeg.base64EncodedString()
+            out[lastUserIdx].imageBase64 = jpeg
         }
 
         let toolSchemas = tools.map { $0.schema }
@@ -50,9 +59,6 @@ final class AgentClient {
 
         for _ in 0..<8 {
             let reqMessages = buildAPIMessages(out, includeSystem: !out.contains { $0.role == "system" }, activeSkills: activeSkills)
-            // 推理模型（kimi-k3/k2、deepseek-r1、o1/o3/o4、qwq 等）固定采样参数，
-            // 传 temperature 会 400（"invalid temperature: only 1 is allowed"）；
-            // 且官方已废弃 max_tokens、要求改用 max_completion_tokens。
             let lowerModel = model.lowercased()
             let isReasoning = lowerModel.contains("kimi-k3") || lowerModel.contains("kimi-k2")
                 || lowerModel.contains("deepseek-r1") || lowerModel.contains("deepseek-reasoner")
@@ -60,7 +66,9 @@ final class AgentClient {
                 || lowerModel.contains("qwq") || lowerModel.contains("reasoning") || lowerModel.contains("-thinking")
             var body: [String: Any] = [
                 "model": model,
-                "messages": reqMessages
+                "messages": reqMessages,
+                "stream": true,
+                "stream_options": ["include_usage": false]
             ]
             if isReasoning {
                 body["max_completion_tokens"] = 8000
@@ -79,46 +87,48 @@ final class AgentClient {
             req.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
             req.httpBody = try JSONSerialization.data(withJSONObject: body)
 
-            let (data, resp) = try await session.data(for: req)
-            if let http = resp as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
-                let msg = String(data: data, encoding: .utf8) ?? "HTTP \(http.statusCode)"
-                throw AgentError.http(http.statusCode, msg)
-            }
-            guard let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let choices = obj["choices"] as? [[String: Any]],
-                  let first = choices.first,
-                  let msg = first["message"] as? [String: Any] else {
-                throw AgentError.invalidResponse
+            let (stream, resp) = try await session.bytes(for: req)
+            guard let http = resp as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+                var data = Data()
+                for try await byte in stream { data.append(byte) }
+                let msg = String(data: data, encoding: .utf8) ?? "HTTP \(http?.statusCode ?? 0)"
+                throw AgentError.http(http?.statusCode ?? 0, msg)
             }
 
-            var asst = StoredMessage(role: "assistant", content: msg["content"] as? String ?? "")
-            var toolCalls: [StoredToolCall] = []
-            if let tcs = msg["tool_calls"] as? [[String: Any]] {
-                for tc in tcs {
-                    let id = tc["id"] as? String ?? UUID().uuidString
-                    let fn = tc["function"] as? [String: Any]
-                    toolCalls.append(StoredToolCall(
-                        id: id,
-                        name: fn?["name"] as? String ?? "",
-                        arguments: fn?["arguments"] as? String ?? "{}"))
-                }
-            }
-            if !toolCalls.isEmpty { asst.toolCalls = toolCalls }
-            out.append(asst)
+            var streamingMsg = StoredMessage(role: "assistant", content: "", isStreaming: true, status: "模型思考中…")
+            out.append(streamingMsg)
+            await onUpdate(out)
+
+            let (updatedMsg, toolCalls) = try await consumeStream(stream: stream, msg: &streamingMsg, out: &out, onUpdate: onUpdate)
+            streamingMsg = updatedMsg
 
             if toolCalls.isEmpty {
-                finalText = asst.content
+                streamingMsg.isStreaming = false
+                streamingMsg.status = nil
+                out[out.count - 1] = streamingMsg
+                finalText = streamingMsg.content
+                await onUpdate(out)
                 break
             }
 
             // 执行每个工具，并把结果追加为 tool 消息
+            streamingMsg.isStreaming = false
+            streamingMsg.status = nil
+            out[out.count - 1] = streamingMsg
+            await onUpdate(out)
+
             for tc in toolCalls {
+                if let lastIdx = out.indices.last {
+                    out[lastIdx].status = "执行：\(tc.name)…"
+                    await onUpdate(out)
+                }
                 let args = parseArgs(tc.arguments)
                 let result = await SystemTools.execute(tool: tc.name, call: args)
                 let content = toolResultString(result)
                 out.append(StoredMessage(role: "tool", content: content,
                                          toolCallId: tc.id, toolName: tc.name,
                                          fileURL: result.fileURL))
+                await onUpdate(out)
             }
         }
 
@@ -126,6 +136,82 @@ final class AgentClient {
             finalText = last.content
         }
         return (out, finalText)
+    }
+
+    /// 压缩 / 缩放图片，避免 base64 过大导致超时或请求失败。
+    private func prepareImageData(_ image: UIImage?) -> String? {
+        guard let image = image else { return nil }
+        let maxSide: CGFloat = 1024
+        let scale = min(1.0, min(maxSide / image.size.width, maxSide / image.size.height))
+        let newSize = CGSize(width: image.size.width * scale, height: image.size.height * scale)
+        UIGraphicsBeginImageContextWithOptions(newSize, false, 1.0)
+        image.draw(in: CGRect(origin: .zero, size: newSize))
+        let resized = UIGraphicsGetImageFromCurrentImageContext()
+        UIGraphicsEndImageContext()
+        guard let jpeg = (resized ?? image).jpegData(compressionQuality: 0.7) else { return nil }
+        return jpeg.base64EncodedString()
+    }
+
+    /// 解析 SSE 流，返回（最终 assistant 消息，工具调用列表）。
+    private func consumeStream(stream: URLSession.AsyncBytes,
+                               msg: inout StoredMessage,
+                               out: inout [StoredMessage],
+                               onUpdate: @MainActor @escaping ([StoredMessage]) -> Void) async throws -> (StoredMessage, [StoredToolCall]) {
+        var accumulated: [Int: StoredToolCall] = [:]
+
+        for try await line in stream.lines {
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.isEmpty || trimmed.hasPrefix("event:") || trimmed.hasPrefix(":") { continue }
+            guard trimmed.hasPrefix("data:") else { continue }
+            let payload = String(trimmed.dropFirst(5)).trimmingCharacters(in: .whitespaces)
+            if payload == "[DONE]" { break }
+
+            guard let data = payload.data(using: .utf8),
+                  let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let choices = obj["choices"] as? [[String: Any]],
+                  let first = choices.first else { continue }
+
+            if let delta = first["delta"] as? [String: Any] {
+                if let content = delta["content"] as? String {
+                    msg.content += content
+                    if msg.status != "正在生成回复" { msg.status = "正在生成回复" }
+                }
+                if let tcs = delta["tool_calls"] as? [[String: Any]] {
+                    for tc in tcs {
+                        let idx = tc["index"] as? Int ?? 0
+                        var call = accumulated[idx] ?? StoredToolCall(id: "", name: "", arguments: "")
+                        if let id = tc["id"] as? String, !id.isEmpty { call.id = id }
+                        if let fn = tc["function"] as? [String: Any] {
+                            if let name = fn["name"] as? String { call.name += name }
+                            if let args = fn["arguments"] as? String { call.arguments += args }
+                        }
+                        accumulated[idx] = call
+                    }
+                    let names = accumulated.values.map { $0.name }.filter { !$0.isEmpty }.joined(separator: "、")
+                    msg.status = names.isEmpty ? "正在规划工具…" : "正在调用：\(names)"
+                }
+            }
+
+            if let finish = first["finish_reason"] as? String {
+                if finish == "tool_calls" {
+                    msg.toolCalls = Array(accumulated.sorted { $0.key < $1.key }.map { $0.value })
+                    msg.status = "正在执行工具…"
+                } else if finish == "stop" || finish == "length" {
+                    msg.isStreaming = false
+                    msg.status = nil
+                }
+            }
+
+            if let lastIdx = out.indices.last {
+                out[lastIdx] = msg
+            }
+            await onUpdate(out)
+
+            if msg.toolCalls != nil || !msg.isStreaming { break }
+        }
+
+        let calls = Array(accumulated.sorted { $0.key < $1.key }.map { $0.value })
+        return (msg, calls)
     }
 
     /// 单轮问答（供 App Intents 使用，不挂工具）

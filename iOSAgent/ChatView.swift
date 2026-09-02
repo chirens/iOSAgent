@@ -3,13 +3,6 @@ import PhotosUI
 import UniformTypeIdentifiers
 import UIKit
 
-enum PlusMenuState: Equatable {
-    case closed
-    case root
-    case skills
-    case models
-}
-
 struct ChatView: View {
     let conversationId: UUID
     @Binding var path: NavigationPath
@@ -41,8 +34,8 @@ struct ChatView: View {
     // 观察技能路由，安装/删除用户技能后实时刷新
     @ObservedObject private var skillRouter = SkillRouter.shared
 
-    // v7.8 + 号紧凑菜单：图片/文件/技能/模型
-    @State private var plusMenu: PlusMenuState = .closed
+    // v7.8 + 号附件面板：图片/文件/技能/模型
+    @State private var showAttachmentSheet = false
     @State private var pinnedSkillID: String?
 
     var body: some View {
@@ -51,8 +44,12 @@ struct ChatView: View {
                 ScrollView {
                     LazyVStack(spacing: AppSpacing.md) {
                         ForEach(messages) { msg in
-                            MessageBubble(message: msg)
-                                .id(msg.id)
+                            MessageBubble(
+                                message: msg,
+                                onResend: msg.role == "user" ? { resendMessage(msg) } : nil,
+                                onRegenerate: msg.role == "assistant" ? { regenerate(from: msg) } : nil
+                            )
+                            .id(msg.id)
                         }
                         if isLoading {
                             HStack(spacing: 6) {
@@ -69,6 +66,9 @@ struct ChatView: View {
                     .padding(.vertical, AppSpacing.md)
                 }
                 .onChange(of: messages.count) { _ in
+                    scrollToBottom(proxy)
+                }
+                .onChange(of: messages.last?.content) { _ in
                     scrollToBottom(proxy)
                 }
                 .onChange(of: isLoading) { _ in
@@ -138,24 +138,14 @@ struct ChatView: View {
                 .padding(.top, AppSpacing.xs)
             }
 
-            // + 号紧凑菜单面板（位于输入栏上方）
-            if plusMenu != .closed {
-                plusMenuPanel
-                    .padding(.horizontal)
-                    .transition(.scale(scale: 0.96, anchor: .bottomLeading).combined(with: .opacity))
-            }
-
             // 输入栏
             HStack(spacing: 10) {
                 Button {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                        plusMenu = plusMenu == .closed ? .root : .closed
-                    }
+                    showAttachmentSheet = true
                 } label: {
                     Image(systemName: "plus.circle.fill")
                         .font(.system(size: 22, weight: .semibold, design: .rounded))
                         .foregroundStyle(Color.brandAccent)
-                        .rotationEffect(.degrees(plusMenu != .closed ? 45 : 0))
                 }
                 .buttonStyle(.plain)
 
@@ -269,6 +259,21 @@ struct ChatView: View {
                 }
             }
         }
+        .sheet(isPresented: $showAttachmentSheet) {
+            AttachmentSheetView(
+                onPhoto: { showPhotoPicker = true; showAttachmentSheet = false },
+                onFile: { showFilePicker = true; showAttachmentSheet = false },
+                onSkill: { skill in
+                    pinnedSkillID = skill.id
+                    activeSkills = [skill]
+                    showAttachmentSheet = false
+                },
+                onModel: { profile in
+                    settings.setActiveProfile(profile.id)
+                    showAttachmentSheet = false
+                }
+            )
+        }
         .onReceive(speech.$transcript) { text in
             if !text.isEmpty && awaitingVoice {
                 self.input = text
@@ -276,124 +281,144 @@ struct ChatView: View {
         }
     }
 
-    // MARK: - + 号紧凑菜单面板
+    // MARK: - 添加到对话面板
 
-    private var plusMenuPanel: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            switch plusMenu {
-            case .root:
-                plusRow(icon: "photo.fill", title: "图片", chevron: false) {
-                    showPhotoPicker = true
-                    closePlus()
-                }
-                Divider()
-                plusRow(icon: "doc.fill", title: "文件", chevron: false) {
-                    showFilePicker = true
-                    closePlus()
-                }
-                Divider()
-                plusRow(icon: "sparkles", title: "技能", chevron: true) {
-                    plusMenu = .skills
-                }
-                Divider()
-                plusRow(icon: "cpu", title: "模型", chevron: true) {
-                    plusMenu = .models
-                }
-            case .skills:
-                plusBackRow
-                Divider()
-                ForEach(skillRouter.allSkills) { skill in
-                    Button {
-                        pinnedSkillID = skill.id
-                        activeSkills = [skill]
-                        closePlus()
-                    } label: {
-                        HStack(spacing: 10) {
-                            Image(systemName: skill.icon)
-                                .font(.system(size: 14, weight: .semibold))
-                                .foregroundStyle(Color.brandAccent)
-                                .frame(width: 26)
-                            VStack(alignment: .leading, spacing: 1) {
-                                Text(skill.name).font(.subheadline.weight(.medium))
-                                Text(skill.description).font(.appCaption2()).foregroundStyle(Color.appSecondaryText)
+    struct AttachmentSheetView: View {
+        @Environment(\.dismiss) private var dismiss
+        @EnvironmentObject private var settings: SettingsStore
+        @ObservedObject private var skillRouter = SkillRouter.shared
+
+        enum Mode { case root, skills, models }
+        @State private var mode: Mode = .root
+
+        let onPhoto: () -> Void
+        let onFile: () -> Void
+        let onSkill: (Skill) -> Void
+        let onModel: (APIProfile) -> Void
+
+        var body: some View {
+            NavigationStack {
+                List {
+                    switch mode {
+                    case .root:
+                        Section("文件与媒体") {
+                            Button {
+                                dismiss()
+                                onPhoto()
+                            } label: {
+                                rowLabel(icon: "photo.fill", title: "照片")
                             }
-                            Spacer()
+                            Button {
+                                dismiss()
+                                onFile()
+                            } label: {
+                                rowLabel(icon: "doc.fill", title: "本地文件")
+                            }
                         }
-                        .contentShape(Rectangle())
-                        .padding(.vertical, 7)
-                    }
-                    .buttonStyle(.plain)
-                    if skill.id != skillRouter.allSkills.last?.id { Divider() }
-                }
-            case .models:
-                plusBackRow
-                Divider()
-                if settings.profiles.isEmpty {
-                    Text("还没有保存的配置，请到 设置 → API 设置 添加")
-                        .font(.appCaption())
-                        .foregroundStyle(Color.appSecondaryText)
-                        .padding(.vertical, 8)
-                }
-                ForEach(settings.profiles) { p in
-                    Button {
-                        settings.setActiveProfile(p.id)
-                    } label: {
-                        HStack(spacing: 10) {
-                            Image(systemName: "server.rack")
-                                .font(.system(size: 14, weight: .semibold))
+                        Section("工具") {
+                            Button {
+                                mode = .skills
+                            } label: {
+                                rowLabel(icon: "sparkles", title: "技能", chevron: true)
+                            }
+                        }
+                        Section("模型") {
+                            Button {
+                                mode = .models
+                            } label: {
+                                rowLabel(icon: "cpu", title: "切换模型", chevron: true)
+                            }
+                        }
+                    case .skills:
+                        if skillRouter.allSkills.isEmpty {
+                            Text("暂无可用技能")
+                                .font(.appCaption())
                                 .foregroundStyle(Color.appSecondaryText)
-                                .frame(width: 26)
-                            VStack(alignment: .leading, spacing: 1) {
-                                Text(p.name.isEmpty ? "未命名" : p.name).font(.subheadline.weight(.medium))
-                                Text("\(p.modelName) · \(shortURL(p.baseURL))").font(.appCaption2()).foregroundStyle(Color.appSecondaryText)
-                            }
-                            Spacer()
-                            if settings.activeProfile.id == p.id {
-                                Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                        }
+                        ForEach(skillRouter.allSkills) { skill in
+                            Button {
+                                dismiss()
+                                onSkill(skill)
+                            } label: {
+                                HStack(spacing: 12) {
+                                    Image(systemName: skill.icon)
+                                        .font(.system(size: 16, weight: .semibold))
+                                        .foregroundStyle(Color.brandAccent)
+                                        .frame(width: 28)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(skill.name)
+                                            .font(.subheadline.weight(.medium))
+                                            .foregroundStyle(Color.appPrimaryText)
+                                        Text(skill.description)
+                                            .font(.appCaption2())
+                                            .foregroundStyle(Color.appSecondaryText)
+                                            .lineLimit(1)
+                                    }
+                                    Spacer()
+                                }
                             }
                         }
-                        .contentShape(Rectangle())
-                        .padding(.vertical, 7)
+                    case .models:
+                        if settings.profiles.isEmpty {
+                            Text("还没有保存的配置，请到 设置 → API 设置 添加")
+                                .font(.appCaption())
+                                .foregroundStyle(Color.appSecondaryText)
+                        }
+                        ForEach(settings.profiles) { p in
+                            Button {
+                                dismiss()
+                                onModel(p)
+                            } label: {
+                                HStack(spacing: 12) {
+                                    Image(systemName: "server.rack")
+                                        .font(.system(size: 16, weight: .semibold))
+                                        .foregroundStyle(settings.activeProfile.id == p.id ? Color.brandAccent : Color.appSecondaryText)
+                                        .frame(width: 28)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(p.name.isEmpty ? "未命名" : p.name)
+                                            .font(.subheadline.weight(.medium))
+                                            .foregroundStyle(Color.appPrimaryText)
+                                        Text("\(p.modelName) · \(shortURL(p.baseURL))")
+                                            .font(.appCaption2())
+                                            .foregroundStyle(Color.appSecondaryText)
+                                            .lineLimit(1)
+                                    }
+                                    Spacer()
+                                    if settings.activeProfile.id == p.id {
+                                        Image(systemName: "checkmark.circle.fill")
+                                            .foregroundStyle(Color.brandAccent)
+                                    }
+                                }
+                            }
+                        }
                     }
-                    .buttonStyle(.plain)
-                    if p.id != settings.profiles.last?.id { Divider() }
                 }
-            case .closed:
-                EmptyView()
+                .listStyle(.insetGrouped)
+                .navigationTitle(mode == .root ? "添加到对话" : (mode == .skills ? "选择技能" : "切换模型"))
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Button("完成") { dismiss() }
+                            .foregroundStyle(Color.brandAccent)
+                    }
+                    if mode != .root {
+                        ToolbarItem(placement: .navigationBarLeading) {
+                            Button("返回") { mode = .root }
+                                .foregroundStyle(Color.appSecondaryText)
+                        }
+                    }
+                }
+                .background(Color.appBackground)
             }
+            .preferredColorScheme(.dark)
         }
-        .padding(10)
-        .background(
-            RoundedRectangle(cornerRadius: AppRadius.lg, style: .continuous)
-                .fill(Color.appSurface)
-                .shadow(color: .black.opacity(0.25), radius: 12, x: 0, y: 4)
-        )
-    }
 
-    private var plusBackRow: some View {
-        Button {
-            plusMenu = .root
-        } label: {
-            HStack(spacing: 6) {
-                Image(systemName: "chevron.left")
-                Text("返回")
-                Spacer()
-            }
-                .font(.appSubheadline())
-                .foregroundStyle(Color.brandAccent)
-            .contentShape(Rectangle())
-            .padding(.vertical, 7)
-        }
-        .buttonStyle(.plain)
-    }
-
-    private func plusRow(icon: String, title: String, chevron: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: 10) {
+        private func rowLabel(icon: String, title: String, chevron: Bool = false) -> some View {
+            HStack(spacing: 12) {
                 Image(systemName: icon)
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(Color.brandAccent)
-                    .frame(width: 26)
+                    .frame(width: 28)
                 Text(title)
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(Color.appPrimaryText)
@@ -404,15 +429,10 @@ struct ChatView: View {
                         .foregroundStyle(Color.appSecondaryText)
                 }
             }
-            .contentShape(Rectangle())
-            .padding(.vertical, 7)
         }
-        .buttonStyle(.plain)
-    }
 
-    private func closePlus() {
-        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-            plusMenu = .closed
+        private func shortURL(_ s: String) -> String {
+            s.trimmingCharacters(in: ["/"]).replacingOccurrences(of: "https://", with: "").replacingOccurrences(of: "http://", with: "")
         }
     }
 
@@ -450,6 +470,51 @@ struct ChatView: View {
             withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
         } else if isLoading {
             withAnimation { proxy.scrollTo("typing", anchor: .bottom) }
+        }
+    }
+
+    private func resendMessage(_ msg: StoredMessage) {
+        input = msg.content
+        inputID = UUID()
+    }
+
+    private func regenerate(from assistantMsg: StoredMessage) {
+        guard let idx = messages.firstIndex(where: { $0.id == assistantMsg.id }) else { return }
+        var trimmed = Array(messages.prefix(idx))
+        guard let lastUser = trimmed.last(where: { $0.role == "user" }) else { return }
+        if let userIdx = trimmed.firstIndex(where: { $0.id == lastUser.id }) {
+            trimmed = Array(trimmed.prefix(through: userIdx))
+        }
+        activeSkills = skillRouter.match(input: lastUser.content)
+        store.update(conversationId, messages: trimmed)
+
+        Task {
+            do {
+                isLoading = true
+                let (updated, _) = try await AgentClient.shared.run(
+                    messages: trimmed,
+                    image: nil,
+                    tools: SettingsStore.shared.anyToolEnabled ? SystemTools.allTools : [],
+                    activeSkills: activeSkills
+                ) { partial in
+                    store.update(conversationId, messages: partial)
+                }
+                store.update(conversationId, messages: updated)
+            } catch {
+                errorText = error.localizedDescription
+                var finalMsgs = messages
+                if let idx = finalMsgs.indices.last,
+                   finalMsgs[idx].role == "assistant",
+                   finalMsgs[idx].isStreaming {
+                    finalMsgs[idx].isStreaming = false
+                    finalMsgs[idx].status = nil
+                    if finalMsgs[idx].content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        finalMsgs.remove(at: idx)
+                    }
+                }
+                store.update(conversationId, messages: finalMsgs)
+            }
+            isLoading = false
         }
     }
 
@@ -542,10 +607,24 @@ struct ChatView: View {
                     image: imageToSend,
                     tools: SettingsStore.shared.anyToolEnabled ? SystemTools.allTools : [],
                     activeSkills: activeSkills
-                )
+                ) { partial in
+                    store.update(conversationId, messages: partial)
+                }
                 store.update(conversationId, messages: updated)
             } catch {
                 errorText = error.localizedDescription
+                // 失败时清理占位流式消息：保留已生成内容，仅停止流式状态。
+                var finalMsgs = messages
+                if let idx = finalMsgs.indices.last,
+                   finalMsgs[idx].role == "assistant",
+                   finalMsgs[idx].isStreaming {
+                    finalMsgs[idx].isStreaming = false
+                    finalMsgs[idx].status = nil
+                    if finalMsgs[idx].content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        finalMsgs.remove(at: idx)
+                    }
+                }
+                store.update(conversationId, messages: finalMsgs)
             }
             isLoading = false
         }
@@ -614,7 +693,11 @@ struct VoiceButton: View {
 
 struct MessageBubble: View {
     let message: StoredMessage
+    let onResend: (() -> Void)?
+    let onRegenerate: (() -> Void)?
     @State private var previewURL: PreviewItem?
+    @State private var showShareSheet = false
+    @ObservedObject private var speaker = SpeechSynthesizer.shared
 
     var body: some View {
         HStack {
@@ -628,9 +711,15 @@ struct MessageBubble: View {
                         .padding(.horizontal, 14)
                 }
 
-                Text(message.content)
-                    .font(.appBody())
-                    .foregroundStyle(message.role == "user" ? .white : Color.appPrimaryText)
+                if message.isStreaming && message.content.isEmpty, let status = message.status {
+                    HStack(spacing: 6) {
+                        ProgressView()
+                            .scaleEffect(0.7)
+                            .frame(width: 14, height: 14)
+                        Text(status)
+                            .font(.appBody())
+                            .foregroundStyle(Color.appPrimaryText)
+                    }
                     .padding(.horizontal, 16)
                     .padding(.vertical, 12)
                     .background(
@@ -638,9 +727,21 @@ struct MessageBubble: View {
                             .fill(bubbleBackground)
                     )
                     .shadow(color: .black.opacity(0.15), radius: 6, x: 0, y: 2)
-                    .textSelection(.enabled)
+                } else {
+                    Text(message.content)
+                        .font(.appBody())
+                        .foregroundStyle(message.role == "user" ? .white : Color.appPrimaryText)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                        .background(
+                            RoundedRectangle(cornerRadius: 18, style: .circular)
+                                .fill(bubbleBackground)
+                        )
+                        .shadow(color: .black.opacity(0.15), radius: 6, x: 0, y: 2)
+                        .textSelection(.enabled)
+                }
 
-                if message.role == "assistant" {
+                if message.role == "assistant" && !message.isStreaming {
                     HStack(spacing: 4) {
                         Image(systemName: "sparkle")
                             .font(.appCaption2())
@@ -665,8 +766,8 @@ struct MessageBubble: View {
                     .padding(.leading, 4)
                 }
 
-                if message.role == "tool" {
-                    contextMenu
+                if !message.isStreaming {
+                    actionButtons
                 }
             }
             .frame(maxWidth: 300, alignment: message.role == "user" ? .trailing : .leading)
@@ -674,18 +775,57 @@ struct MessageBubble: View {
             if message.role != "user" { Spacer(minLength: 28) }
         }
         .sheet(item: $previewURL) { FilePreviewView(url: $0.url) }
+        .sheet(isPresented: $showShareSheet) {
+            ShareSheet(activityItems: [message.content])
+        }
     }
 
-    private var contextMenu: some View {
-        HStack(spacing: 8) {
+    private var actionButtons: some View {
+        HStack(spacing: 14) {
             Button {
                 UIPasteboard.general.string = message.content
             } label: {
                 Image(systemName: "doc.on.doc")
-                    .font(.appCaption())
-                    .foregroundStyle(Color.appSecondaryText)
+                    .font(.system(size: 13, weight: .medium))
+            }
+
+            if message.role == "user" {
+                if let onResend {
+                    Button(action: onResend) {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 13, weight: .medium))
+                    }
+                }
+            } else if message.role == "assistant" {
+                if let onRegenerate {
+                    Button(action: onRegenerate) {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 13, weight: .medium))
+                    }
+                }
+            }
+
+            Button {
+                showShareSheet = true
+            } label: {
+                Image(systemName: "square.and.arrow.up")
+                    .font(.system(size: 13, weight: .medium))
+            }
+
+            Button {
+                if speaker.speakingMessageID == message.id {
+                    speaker.stop()
+                } else {
+                    speaker.speak(message.content, id: message.id)
+                }
+            } label: {
+                Image(systemName: speaker.speakingMessageID == message.id ? "speaker.wave.2.fill" : "speaker.wave.2")
+                    .font(.system(size: 13, weight: .medium))
             }
         }
+        .foregroundStyle(Color.appSecondaryText)
+        .padding(.leading, 4)
+        .padding(.top, 2)
     }
 
     private var bubbleBackground: Color {
@@ -716,4 +856,49 @@ struct Dot: View {
                 }
             }
     }
+}
+
+// MARK: - 语音朗读
+
+import AVFoundation
+
+@MainActor
+final class SpeechSynthesizer: NSObject, AVSpeechSynthesizerDelegate, ObservableObject {
+    static let shared = SpeechSynthesizer()
+    private let synthesizer = AVSpeechSynthesizer()
+    @Published var speakingMessageID: UUID?
+    private override init() {
+        super.init()
+        synthesizer.delegate = self
+    }
+
+    func speak(_ text: String, id: UUID) {
+        if synthesizer.isSpeaking { synthesizer.stopSpeaking(at: .immediate) }
+        let utterance = AVSpeechUtterance(string: text)
+        utterance.voice = AVSpeechSynthesisVoice(language: "zh-CN")
+        utterance.rate = AVSpeechUtteranceDefaultSpeechRate
+        speakingMessageID = id
+        synthesizer.speak(utterance)
+    }
+
+    func stop() {
+        synthesizer.stopSpeaking(at: .immediate)
+        speakingMessageID = nil
+    }
+
+    nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
+        Task { @MainActor in
+            self.speakingMessageID = nil
+        }
+    }
+}
+
+// MARK: - 系统分享 Sheet
+
+struct ShareSheet: UIViewControllerRepresentable {
+    let activityItems: [Any]
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
+    }
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }

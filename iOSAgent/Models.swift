@@ -17,9 +17,13 @@ struct StoredMessage: Codable, Identifiable {
     var toolName: String? = nil
     var imageBase64: String? = nil           // 仅 user 消息可携带一张截图
     var fileURL: URL? = nil                  // 工具生成的本地文件
+    var isStreaming: Bool = false            // 正在流式生成中
+    var status: String? = nil                // 当前处理状态（如“模型思考中…”）
+    var timestamp: Date = Date()             // 消息显示时间
 
     init(role: String, content: String, toolCalls: [StoredToolCall]? = nil,
-         toolCallId: String? = nil, toolName: String? = nil, imageBase64: String? = nil, fileURL: URL? = nil) {
+         toolCallId: String? = nil, toolName: String? = nil, imageBase64: String? = nil, fileURL: URL? = nil,
+         isStreaming: Bool = false, status: String? = nil) {
         self.role = role
         self.content = content
         self.toolCalls = toolCalls
@@ -27,6 +31,8 @@ struct StoredMessage: Codable, Identifiable {
         self.toolName = toolName
         self.imageBase64 = imageBase64
         self.fileURL = fileURL
+        self.isStreaming = isStreaming
+        self.status = status
     }
 }
 
