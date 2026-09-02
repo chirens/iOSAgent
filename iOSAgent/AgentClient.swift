@@ -609,17 +609,18 @@ struct SkillInstaller {
         return [skill]
     }
 
-    /// GitHub 搜索 skill 文件（filename:SKILL.md）。
+    /// GitHub 搜索 skill 文件（filename:SKILL.md）。未认证 Search API 限制约 10 次/分钟，调用方需节流。
     static func searchGitHub(query: String) async throws -> [SkillGitHubSearchResult] {
         var q = "filename:SKILL.md"
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmed.isEmpty {
             q += "+\(trimmed.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? trimmed)"
         }
-        let url = URL(string: "https://api.github.com/search/code?q=\(q)&per_page=20")!
+        let url = URL(string: "https://api.github.com/search/code?q=\(q)&per_page=10")!
         var req = URLRequest(url: url)
         req.timeoutInterval = 30
         req.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+        req.setValue("iOSAgent/8.4.1", forHTTPHeaderField: "User-Agent")
         let (data, resp) = try await URLSession.shared.data(for: req)
         if let http = resp as? HTTPURLResponse {
             if http.statusCode == 403 || http.statusCode == 429 {
@@ -671,10 +672,11 @@ struct SkillInstaller {
         if !repo.subpath.isEmpty {
             q += " path:\(repo.subpath)"
         }
-        let url = URL(string: "https://api.github.com/search/code?q=\(q.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? q)&per_page=100")!
+        let url = URL(string: "https://api.github.com/search/code?q=\(q.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? q)&per_page=50")!
         var req = URLRequest(url: url)
         req.timeoutInterval = 30
         req.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+        req.setValue("iOSAgent/8.4.1", forHTTPHeaderField: "User-Agent")
         let (data, resp) = try await URLSession.shared.data(for: req)
         if let http = resp as? HTTPURLResponse {
             if http.statusCode == 403 || http.statusCode == 429 {

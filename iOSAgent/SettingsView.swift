@@ -24,32 +24,32 @@ struct SettingsView: View {
 
                 VStack(spacing: AppSpacing.md) {
                     SettingsSection(title: "核心设置") {
-                        SettingsLinkRow(icon: "key.fill", color: .pastelBlue, title: "API 设置", subtitle: "Base URL · 模型 · 连接测试", destination: .api)
+                        SettingsLinkRow(icon: "key.fill", color: .pastelBlue, title: "API 设置", destination: .api)
                         Divider().padding(.leading, 48)
-                        SettingsLinkRow(icon: "lock.shield.fill", color: .pastelOrange, title: "系统权限", subtitle: "健康 / 提醒 / 日历 / 相册…", destination: .permissions)
+                        SettingsLinkRow(icon: "lock.shield.fill", color: .pastelOrange, title: "系统权限", destination: .permissions)
                         Divider().padding(.leading, 48)
-                        SettingsLinkRow(icon: "text.quote", color: .pastelPurple, title: "自定义系统提示", subtitle: "塑造助手语气与偏好", destination: .customPrompt)
+                        SettingsLinkRow(icon: "text.quote", color: .pastelPurple, title: "自定义系统提示", destination: .customPrompt)
                         Divider().padding(.leading, 48)
-                        SettingsLinkRow(icon: "brain.fill", color: .pastelTeal, title: "技能中心", subtitle: "搜索 / 安装 GitHub 技能", destination: .skills)
+                        SettingsLinkRow(icon: "brain.fill", color: .pastelTeal, title: "技能中心", destination: .skills)
                     }
 
                     SettingsSection(title: "应用") {
                         Button { showClearCacheAlert = true } label: {
-                            SettingsLinkRow(icon: "trash.fill", color: .pastelPink, title: "清除缓存", subtitle: "清理生成的临时文件与附件", showChevron: false)
+                            SettingsLinkRow(icon: "trash.fill", color: .pastelPink, title: "清除缓存", showChevron: false)
                         }
                         .buttonStyle(.plain)
                     }
 
                     SettingsSection(title: "协议与声明") {
-                        SettingsLinkRow(icon: "doc.text.fill", color: .pastelTeal, title: "用户协议", subtitle: "使用条款与行为规范", destination: .legal(.userAgreement))
+                        SettingsLinkRow(icon: "doc.text.fill", color: .pastelTeal, title: "用户协议", destination: .legal(.userAgreement))
                         Divider().padding(.leading, 48)
-                        SettingsLinkRow(icon: "hand.raised.fill", color: .pastelGreen, title: "隐私政策", subtitle: "数据收集与使用说明", destination: .legal(.privacyPolicy))
+                        SettingsLinkRow(icon: "hand.raised.fill", color: .pastelGreen, title: "隐私政策", destination: .legal(.privacyPolicy))
                         Divider().padding(.leading, 48)
-                        SettingsLinkRow(icon: "exclamationmark.shield.fill", color: .pastelGray, title: "免责声明", subtitle: "能力边界与风险提示", destination: .legal(.disclaimer))
+                        SettingsLinkRow(icon: "exclamationmark.shield.fill", color: .pastelGray, title: "免责声明", destination: .legal(.disclaimer))
                     }
 
                     SettingsSection(title: "关于") {
-                        SettingsLinkRow(icon: "info.circle.fill", color: .pastelGray, title: "关于 同步", subtitle: "版本与链接", destination: .about)
+                        SettingsLinkRow(icon: "info.circle.fill", color: .pastelGray, title: "关于 同步", destination: .about)
                     }
                 }
                 .padding(.horizontal, AppSpacing.lg)
@@ -130,7 +130,6 @@ struct SettingsLinkRow: View {
     let icon: String
     let color: Color
     let title: String
-    let subtitle: String
     var showChevron: Bool = true
     var destination: SettingsRoute?
 
@@ -139,14 +138,14 @@ struct SettingsLinkRow: View {
             NavigationLink(value: destination) {
                 rowContent
                     .padding(.horizontal, AppSpacing.md)
-                    .padding(.vertical, AppSpacing.sm)
+                    .padding(.vertical, AppSpacing.md)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
         } else {
             rowContent
                 .padding(.horizontal, AppSpacing.md)
-                .padding(.vertical, AppSpacing.sm)
+                .padding(.vertical, AppSpacing.md)
                 .contentShape(Rectangle())
         }
     }
@@ -162,14 +161,10 @@ struct SettingsLinkRow: View {
                     .foregroundStyle(color)
             }
 
-            VStack(alignment: .leading, spacing: AppSpacing.xs) {
-                Text(title)
-                    .font(.appSubheadline().weight(.semibold))
-                    .foregroundStyle(Color.appPrimaryText)
-                Text(subtitle)
-                    .font(.appCaption())
-                    .foregroundStyle(Color.appSecondaryText)
-            }
+            Text(title)
+                .font(.appBody().weight(.semibold))
+                .foregroundStyle(Color.appPrimaryText)
+                .lineLimit(1)
 
             Spacer(minLength: 0)
 
@@ -410,23 +405,23 @@ struct PermissionsView: View {
 
                 VStack(spacing: AppSpacing.md) {
                     SettingsSection(title: "系统能力") {
-                        CapabilityToggleRow(key: "notifications", icon: "alarm.fill", color: .pastelOrange, title: "闹钟 / 计时器", subtitle: "本地通知，到点响铃")
+                        CapabilityToggleRow(key: "notifications", icon: "alarm.fill", color: .pastelOrange, title: "闹钟 / 计时器")
                         Divider().padding(.leading, 44)
-                        CapabilityToggleRow(key: "reminders", icon: "checkmark.square.fill", color: .pastelBlue, title: "提醒事项", subtitle: "读写系统提醒事项")
+                        CapabilityToggleRow(key: "reminders", icon: "checkmark.square.fill", color: .pastelBlue, title: "提醒事项")
                         Divider().padding(.leading, 44)
-                        CapabilityToggleRow(key: "calendar", icon: "calendar.badge.plus", color: .pastelPink, title: "日历", subtitle: "读写系统日历")
+                        CapabilityToggleRow(key: "calendar", icon: "calendar.badge.plus", color: .pastelPink, title: "日历")
                         Divider().padding(.leading, 44)
-                        CapabilityToggleRow(key: "health", icon: "heart.fill", color: .pastelPink, title: "健康", subtitle: "读取步数/心率/睡眠等")
+                        CapabilityToggleRow(key: "health", icon: "heart.fill", color: .pastelPink, title: "健康")
                         Divider().padding(.leading, 44)
-                        CapabilityToggleRow(key: "contacts", icon: "person.2.fill", color: .pastelGreen, title: "通讯录", subtitle: "搜索联系人")
+                        CapabilityToggleRow(key: "contacts", icon: "person.2.fill", color: .pastelGreen, title: "通讯录")
                         Divider().padding(.leading, 44)
-                        CapabilityToggleRow(key: "location", icon: "location.fill", color: .pastelPurple, title: "位置", subtitle: "获取当前位置")
+                        CapabilityToggleRow(key: "location", icon: "location.fill", color: .pastelPurple, title: "位置")
                         Divider().padding(.leading, 44)
-                        CapabilityToggleRow(key: "clipboard", icon: "doc.on.clipboard", color: .pastelOrange, title: "剪贴板", subtitle: "读取/写入剪贴板")
+                        CapabilityToggleRow(key: "clipboard", icon: "doc.on.clipboard", color: .pastelOrange, title: "剪贴板")
                         Divider().padding(.leading, 44)
-                        CapabilityToggleRow(key: "photos", icon: "photo.fill", color: .pastelPurple, title: "相册", subtitle: "枚举最近照片")
+                        CapabilityToggleRow(key: "photos", icon: "photo.fill", color: .pastelPurple, title: "相册")
                         Divider().padding(.leading, 44)
-                        CapabilityToggleRow(key: "device", icon: "iphone", color: .pastelGray, title: "设备信息", subtitle: "型号/电量/系统版本")
+                        CapabilityToggleRow(key: "device", icon: "iphone", color: .pastelGray, title: "设备信息")
                         Divider().padding(.leading, 44)
                         Button("刷新授权状态") { settings.refreshAuthStatuses() }
                             .font(.appSubheadline().weight(.semibold))
@@ -669,17 +664,11 @@ struct AboutView: View {
 
                 VStack(spacing: AppSpacing.md) {
                     SettingsSection(title: "版本信息") {
-                        HStack {
-                            Text("版本")
-                                .font(.appSubheadline().weight(.semibold))
-                                .foregroundStyle(Color.appPrimaryText)
-                            Spacer()
-                            Text(appVersion)
-                                .font(.appCaption())
-                                .foregroundStyle(Color.appSecondaryText)
-                        }
-                        .padding(.horizontal, AppSpacing.md)
-                        .padding(.vertical, AppSpacing.sm)
+                        InfoRow(title: "名称", value: "同步 - 移动AI Agent客户端")
+
+                        Divider().padding(.leading, AppSpacing.md)
+
+                        InfoRow(title: "版本", value: appVersion)
 
                         Divider().padding(.leading, AppSpacing.md)
 
@@ -688,13 +677,6 @@ struct AboutView: View {
                         Divider().padding(.leading, AppSpacing.md)
 
                         LinkRow(title: "仓库", value: "https://github.com/chirens/iOSAgent", url: "https://github.com/chirens/iOSAgent")
-                    }
-
-                    SettingsSection(title: "介绍") {
-                        Text("同步 · 运行在 iPhone 上的本地 AI Agent")
-                            .font(.appCaption())
-                            .foregroundStyle(Color.appSecondaryText)
-                            .padding(AppSpacing.md)
                     }
                 }
             }
@@ -710,6 +692,25 @@ struct AboutView: View {
     }
 }
 
+struct InfoRow: View {
+    let title: String
+    let value: String
+
+    var body: some View {
+        HStack {
+            Text(title)
+                .font(.appBody().weight(.semibold))
+                .foregroundStyle(Color.appPrimaryText)
+            Spacer()
+            Text(value)
+                .font(.appCaption())
+                .foregroundStyle(Color.appSecondaryText)
+        }
+        .padding(.horizontal, AppSpacing.md)
+        .padding(.vertical, AppSpacing.md)
+    }
+}
+
 struct LinkRow: View {
     let title: String
     let value: String
@@ -719,7 +720,7 @@ struct LinkRow: View {
         Link(destination: URL(string: url)!) {
             HStack(spacing: AppSpacing.sm) {
                 Text(title)
-                    .font(.appSubheadline().weight(.semibold))
+                    .font(.appBody().weight(.semibold))
                     .foregroundStyle(Color.appPrimaryText)
                 Spacer()
                 Text(value)
@@ -759,6 +760,7 @@ struct SkillsView: View {
     @State private var ghLoading = false
     @State private var ghError: String?
     @State private var installingIDs: Set<String> = []
+    @State private var searchCache: [String: [SkillGitHubSearchResult]] = [:]
 
     var body: some View {
         ScrollView {
@@ -806,7 +808,6 @@ struct SkillsView: View {
                         .padding(.leading, AppSpacing.md)
                     HStack(spacing: AppSpacing.sm) {
                         AppTextField(placeholder: "粘贴 skill 的 .md 链接 或 仓库地址（支持 github blob / 仓库链接）", text: $installURL, keyboard: .URL)
-                            .padding(.leading, 2)
                         Button {
                             installTapped()
                         } label: {
@@ -824,8 +825,8 @@ struct SkillsView: View {
                             }
                         }
                         .disabled(installing || installURL.trimmingCharacters(in: .whitespaces).isEmpty)
-                        .padding(.trailing, 2)
                     }
+                    .padding(.horizontal, AppSpacing.sm)
                     if let message {
                         Text(message)
                             .font(.appCaption())
@@ -870,10 +871,21 @@ struct SkillsView: View {
             guard searchMode == .github else { return }
             ghResults = []
             ghError = nil
+            let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard q.count >= 2 else {
+                ghLoading = false
+                return
+            }
+            if let cached = searchCache[q] {
+                ghResults = cached
+                return
+            }
             do {
-                try await Task.sleep(nanoseconds: 400_000_000)
+                try await Task.sleep(nanoseconds: 1_000_000_000)
                 ghLoading = true
-                ghResults = try await SkillInstaller.searchGitHub(query: query)
+                let results = try await SkillInstaller.searchGitHub(query: q)
+                searchCache[q] = results
+                ghResults = results
             } catch {
                 ghError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
             }
@@ -896,15 +908,28 @@ struct SkillsView: View {
             .padding(.horizontal, AppSpacing.md)
 
             if let ghError {
-                Text(ghError)
-                    .font(.appCaption())
-                    .foregroundStyle(Color.appError)
-                    .padding(.horizontal, AppSpacing.md)
+                HStack(spacing: AppSpacing.sm) {
+                    Text(ghError)
+                        .font(.appCaption())
+                        .foregroundStyle(Color.appError)
+                    Spacer(minLength: 0)
+                    Button("重试") {
+                        searchCache.removeValue(forKey: query.trimmingCharacters(in: .whitespacesAndNewlines))
+                        let old = query
+                        query = ""
+                        query = old
+                    }
+                    .font(.appCaption().weight(.semibold))
+                    .foregroundStyle(Color.brandAccent)
+                }
+                .padding(.horizontal, AppSpacing.md)
             }
 
             VStack(spacing: 0) {
                 if ghResults.isEmpty && !ghLoading && ghError == nil {
-                    Text("输入关键词搜索 GitHub 上的 skill 文件")
+                    Text(query.trimmingCharacters(in: .whitespacesAndNewlines).count < 2
+                         ? "输入至少 2 个字符开始搜索"
+                         : "未找到匹配的 skill 文件")
                         .font(.appSubheadline())
                         .foregroundStyle(Color.appSecondaryText)
                         .padding(AppSpacing.md)
@@ -1072,7 +1097,6 @@ struct CapabilityToggleRow: View {
     let icon: String
     let color: Color
     let title: String
-    let subtitle: String
 
     var body: some View {
         HStack(spacing: AppSpacing.md) {
@@ -1084,14 +1108,10 @@ struct CapabilityToggleRow: View {
                     .font(.system(size: 14, weight: .semibold, design: .rounded))
                     .foregroundStyle(color)
             }
-            VStack(alignment: .leading, spacing: AppSpacing.xs) {
-                Text(title)
-                    .font(.appSubheadline().weight(.semibold))
-                    .foregroundStyle(Color.appPrimaryText)
-                Text(subtitle + " · " + settings.status(key).rawValue)
-                    .font(.appCaption())
-                    .foregroundStyle(Color.appSecondaryText)
-            }
+            Text(title)
+                .font(.appBody().weight(.semibold))
+                .foregroundStyle(Color.appPrimaryText)
+                .lineLimit(1)
             Spacer(minLength: 0)
             Toggle("", isOn: Binding(
                 get: { settings.isEnabled(key) },

@@ -411,22 +411,17 @@ struct SideMenuOverlay: View {
 
     private var sideMenuHeader: some View {
         HStack(spacing: AppSpacing.md) {
-            ZStack {
-                RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous)
-                    .fill(Color.brandAccent)
-                    .frame(width: 44, height: 44)
-                Image(systemName: "sparkles")
-                    .font(.system(size: 20, weight: .bold, design: .rounded))
-                    .foregroundStyle(.white)
-            }
-            VStack(alignment: .leading, spacing: AppSpacing.xs) {
-                Text("同步")
-                    .font(.appTitle3().weight(.bold))
-                    .foregroundStyle(Color.appPrimaryText)
-                Text("本地 AI Agent · 可操作 iPhone")
-                    .font(.appCaption())
-                    .foregroundStyle(Color.appSecondaryText)
-            }
+            Image(uiImage: UIImage(named: "AppIcon") ?? UIImage(systemName: "square.grid.2x2") ?? UIImage())
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 44, height: 44)
+                .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
+
+            Text("同步 - 移动AI Agent客户端")
+                .font(.appTitle3().weight(.bold))
+                .foregroundStyle(Color.appPrimaryText)
+                .lineLimit(1)
+
             Spacer(minLength: 0)
         }
         .padding(.horizontal, AppSpacing.lg)
