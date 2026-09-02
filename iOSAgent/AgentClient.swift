@@ -91,8 +91,9 @@ final class AgentClient {
             guard let http = resp as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
                 var data = Data()
                 for try await byte in stream { data.append(byte) }
-                let msg = String(data: data, encoding: .utf8) ?? "HTTP \(http?.statusCode ?? 0)"
-                throw AgentError.http(http?.statusCode ?? 0, msg)
+                let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
+                let msg = String(data: data, encoding: .utf8) ?? "HTTP \(code)"
+                throw AgentError.http(code, msg)
             }
 
             var streamingMsg = StoredMessage(role: "assistant", content: "", isStreaming: true, status: "模型思考中…")
