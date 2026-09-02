@@ -740,13 +740,25 @@ struct LinkRow: View {
 
 // MARK: - 技能中心（搜索 + 从 GitHub 安装 + 删除）
 
+enum SkillSearchMode: String, CaseIterable {
+    case local = "已安装"
+    case github = "GitHub"
+}
+
 struct SkillsView: View {
     @ObservedObject private var router = SkillRouter.shared
     @State private var query = ""
+    @State private var searchMode: SkillSearchMode = .local
     @State private var installURL = ""
     @State private var installing = false
     @State private var message: String?
     @State private var errorText: String?
+
+    // GitHub 搜索状态
+    @State private var ghResults: [SkillGitHubSearchResult] = []
+    @State private var ghLoading = false
+    @State private var ghError: String?
+    @State private var installingIDs: Set<String> = []
 
     var body: some View {
         ScrollView {
@@ -755,12 +767,22 @@ struct SkillsView: View {
                     .font(.appTitle1())
                     .foregroundStyle(Color.appPrimaryText)
 
+                // 搜索来源切换
+                Picker("搜索来源", selection: $searchMode) {
+                    ForEach(SkillSearchMode.allCases, id: \.self) { mode in
+                        Text(mode.rawValue).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .tint(Color.brandAccent)
+
                 // 搜索框
                 HStack(spacing: AppSpacing.sm) {
                     Image(systemName: "magnifyingglass")
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundStyle(Color.appSecondaryText)
-                    TextField("搜索技能名称 / 描述 / 触发词", text: $query)
+                    TextField(searchMode == .local ? "搜索技能名称 / 描述 / 触发词" : "搜索 GitHub 上的 skill 文件",
+                              text: $query)
                         .font(.appBody())
                         .foregroundStyle(Color.appPrimaryText)
                         .autocapitalization(.none)
@@ -771,14 +793,20 @@ struct SkillsView: View {
                 .background(Color.appInputFill)
                 .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
 
-                // 从 GitHub 安装
+                // GitHub 搜索结果
+                if searchMode == .github {
+                    githubResultsSection
+                }
+
+                // 从 GitHub 安装（单文件 / 仓库）
                 VStack(alignment: .leading, spacing: AppSpacing.sm) {
                     Text("从 GitHub 安装技能")
                         .font(.appCaption2().weight(.semibold))
                         .foregroundStyle(Color.appSecondaryText)
                         .padding(.leading, AppSpacing.md)
                     HStack(spacing: AppSpacing.sm) {
-                        AppTextField(placeholder: "粘贴 skill 的 .md 链接（支持 github blob 链接）", text: $installURL, keyboard: .URL)
+                        AppTextField(placeholder: "粘贴 skill 的 .md 链接 或 仓库地址（支持 github blob / 仓库链接）", text: $installURL, keyboard: .URL)
+                            .padding(.leading, 2)
                         Button {
                             installTapped()
                         } label: {
@@ -796,6 +824,7 @@ struct SkillsView: View {
                             }
                         }
                         .disabled(installing || installURL.trimmingCharacters(in: .whitespaces).isEmpty)
+                        .padding(.trailing, 2)
                     }
                     if let message {
                         Text(message)
@@ -816,16 +845,16 @@ struct SkillsView: View {
                 .appCardShadow()
 
                 // 已安装技能列表
-                SettingsSection(title: "已安装技能（\(filtered.count)）") {
-                    if filtered.isEmpty {
-                        Text("没有匹配的技能")
+                SettingsSection(title: "已安装技能（\(router.allSkills.count)）") {
+                    if localFiltered.isEmpty {
+                        Text(searchMode == .local && !query.isEmpty ? "没有匹配的技能" : "暂无已安装技能")
                             .font(.appSubheadline())
                             .foregroundStyle(Color.appSecondaryText)
                             .padding(AppSpacing.md)
                     } else {
-                        ForEach(filtered) { skill in
+                        ForEach(localFiltered) { skill in
                             skillRow(skill)
-                            if skill.id != filtered.last?.id {
+                            if skill.id != localFiltered.last?.id {
                                 Divider().padding(.leading, 44)
                             }
                         }
@@ -837,9 +866,110 @@ struct SkillsView: View {
             .padding(.bottom, AppSpacing.xl)
         }
         .background(Color.appBackground)
+        .task(id: query + searchMode.rawValue) {
+            guard searchMode == .github else { return }
+            ghResults = []
+            ghError = nil
+            do {
+                try await Task.sleep(nanoseconds: 400_000_000)
+                ghLoading = true
+                ghResults = try await SkillInstaller.searchGitHub(query: query)
+            } catch {
+                ghError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            }
+            ghLoading = false
+        }
     }
 
-    private var filtered: [Skill] {
+    private var githubResultsSection: some View {
+        VStack(alignment: .leading, spacing: AppSpacing.sm) {
+            HStack {
+                Text("GitHub 搜索结果")
+                    .font(.appCaption2().weight(.semibold))
+                    .foregroundStyle(Color.appSecondaryText)
+                Spacer()
+                if ghLoading {
+                    ProgressView()
+                        .scaleEffect(0.8)
+                }
+            }
+            .padding(.horizontal, AppSpacing.md)
+
+            if let ghError {
+                Text(ghError)
+                    .font(.appCaption())
+                    .foregroundStyle(Color.appError)
+                    .padding(.horizontal, AppSpacing.md)
+            }
+
+            VStack(spacing: 0) {
+                if ghResults.isEmpty && !ghLoading && ghError == nil {
+                    Text("输入关键词搜索 GitHub 上的 skill 文件")
+                        .font(.appSubheadline())
+                        .foregroundStyle(Color.appSecondaryText)
+                        .padding(AppSpacing.md)
+                } else {
+                    ForEach(ghResults) { result in
+                        githubResultRow(result)
+                        if result.id != ghResults.last?.id {
+                            Divider().padding(.leading, 44)
+                        }
+                    }
+                }
+            }
+            .background(Color.appSurface)
+            .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
+            .appCardShadow()
+        }
+    }
+
+    private func githubResultRow(_ result: SkillGitHubSearchResult) -> some View {
+        HStack(spacing: AppSpacing.md) {
+            ZStack {
+                RoundedRectangle(cornerRadius: AppRadius.sm, style: .continuous)
+                    .fill(Color.brandAccent.opacity(0.18))
+                    .frame(width: 32, height: 32)
+                Image(systemName: "sparkles")
+                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                    .foregroundStyle(Color.brandAccent)
+            }
+            VStack(alignment: .leading, spacing: AppSpacing.xs) {
+                Text(result.fullName)
+                    .font(.appSubheadline().weight(.semibold))
+                    .foregroundStyle(Color.appPrimaryText)
+                    .lineLimit(1)
+                Text(result.path)
+                    .font(.appCaption())
+                    .foregroundStyle(Color.appSecondaryText)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 0)
+            Button {
+                installSearchResult(result)
+            } label: {
+                if installingIDs.contains(result.id.uuidString) {
+                    ProgressView()
+                        .scaleEffect(0.8)
+                        .frame(width: 56, height: 32)
+                } else {
+                    Text("安装")
+                        .font(.appCaption().weight(.bold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 14)
+                        .frame(height: 32)
+                        .background(Color.brandAccent)
+                        .clipShape(RoundedRectangle(cornerRadius: AppRadius.sm, style: .continuous))
+                }
+            }
+            .disabled(installingIDs.contains(result.id.uuidString))
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, AppSpacing.md)
+        .padding(.vertical, AppSpacing.sm)
+        .contentShape(Rectangle())
+    }
+
+    private var localFiltered: [Skill] {
         let q = query.trimmingCharacters(in: .whitespaces).lowercased()
         guard !q.isEmpty else { return router.allSkills }
         return router.allSkills.filter {
@@ -910,6 +1040,22 @@ struct SkillsView: View {
                 errorText = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
             }
             installing = false
+        }
+    }
+
+    private func installSearchResult(_ result: SkillGitHubSearchResult) {
+        let id = result.id.uuidString
+        installingIDs.insert(id)
+        message = nil
+        errorText = nil
+        Task {
+            do {
+                let installed = try await router.install(from: result.htmlURL)
+                message = "已安装 \(installed.count) 个技能：\(installed.map { $0.name }.joined(separator: "、"))"
+            } catch {
+                errorText = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+            }
+            installingIDs.remove(id)
         }
     }
 

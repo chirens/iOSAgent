@@ -192,7 +192,7 @@ struct ChatView: View {
                                 onFinish: { Task { await finishVoice() } })
                 }
                 .background(Color.appInputFill)
-                .clipShape(Capsule())
+                .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
 
                 Button(action: send) {
                     Image(systemName: "arrow.up.circle.fill")

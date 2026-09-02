@@ -566,27 +566,74 @@ enum SkillInstallError: Error, LocalizedError {
     case downloadFailed
     case noSkillFound
     case parseFailed
+    case githubAPIError(String)
+    case rateLimited
     var errorDescription: String? {
         switch self {
         case .invalidURL: return "链接无效，请输入 http(s) 开头的技能文件地址"
         case .downloadFailed: return "下载失败，请检查链接与网络"
         case .noSkillFound: return "未能从该链接解析出有效技能（需要含 name 的 markdown 或纯文本）"
         case .parseFailed: return "文件内容无法解析"
+        case .githubAPIError(let msg): return "GitHub API 错误：\(msg)"
+        case .rateLimited: return "GitHub API 请求过于频繁，请稍后再试"
         }
     }
 }
 
-/// 从 GitHub / 任意 http(s) 链接安装单个 skill markdown 到沙盒。
+/// GitHub 上搜到的 skill 文件结果
+struct SkillGitHubSearchResult: Identifiable {
+    let id = UUID()
+    let fullName: String
+    let path: String
+    let htmlURL: String
+    let rawURL: String
+    let fileName: String
+}
+
+/// 从 GitHub / 任意 http(s) 链接安装 skill markdown 到沙盒；支持单文件或整个仓库。
 struct SkillInstaller {
     static func install(urlString: String, into dir: URL) async throws -> [Skill] {
         let trimmed = urlString.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let url = URL(string: trimmed), let scheme = url.scheme, scheme.hasPrefix("http") else {
             throw SkillInstallError.invalidURL
         }
+
+        // 整个 GitHub 仓库 -> 自动扫描并安装其下所有 SKILL.md / skill.md
+        if let repo = parseGitHubRepo(url), !url.pathExtension.lowercased().hasSuffix("md") {
+            return try await installRepo(repo, into: dir)
+        }
+
+        // 单个 skill markdown 文件
         let target = normalizeGitHub(url)
         let skill = try await downloadAndSave(target, into: dir)
         return [skill]
     }
+
+    /// GitHub 搜索 skill 文件（filename:SKILL.md）。
+    static func searchGitHub(query: String) async throws -> [SkillGitHubSearchResult] {
+        var q = "filename:SKILL.md"
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty {
+            q += "+\(trimmed.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? trimmed)"
+        }
+        let url = URL(string: "https://api.github.com/search/code?q=\(q)&per_page=20")!
+        var req = URLRequest(url: url)
+        req.timeoutInterval = 30
+        req.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        if let http = resp as? HTTPURLResponse {
+            if http.statusCode == 403 || http.statusCode == 429 {
+                throw SkillInstallError.rateLimited
+            }
+            if !(200...299).contains(http.statusCode) {
+                let msg = String(data: data, encoding: .utf8) ?? "status \(http.statusCode)"
+                throw SkillInstallError.githubAPIError(msg)
+            }
+        }
+        return try parseSearchResults(data)
+    }
+
+    // MARK: - Private
 
     /// github.com blob 链接转 raw.githubusercontent.com
     private static func normalizeGitHub(_ url: URL) -> URL {
@@ -596,6 +643,66 @@ struct SkillInstaller {
             s = s.replacingOccurrences(of: "/blob/", with: "/")
         }
         return URL(string: s) ?? url
+    }
+
+    /// 解析 GitHub 仓库地址，返回 (owner, repo, branch, subpath)
+    private static func parseGitHubRepo(_ url: URL) -> (owner: String, repo: String, branch: String, subpath: String)? {
+        guard url.host?.lowercased() == "github.com" else { return nil }
+        var comps = url.pathComponents.filter { $0 != "/" }
+        guard comps.count >= 2 else { return nil }
+        let owner = comps[0]
+        var repo = comps[1]
+        if repo.hasSuffix(".git") { repo = String(repo.dropLast(4)) }
+
+        var branch = "main"
+        var subpath = ""
+        if comps.count >= 4, comps[2] == "tree" || comps[2] == "blob" {
+            branch = comps[3]
+            if comps.count > 4 {
+                subpath = comps[4...].joined(separator: "/")
+            }
+        }
+        return (owner, repo, branch, subpath)
+    }
+
+    private static func installRepo(_ repo: (owner: String, repo: String, branch: String, subpath: String),
+                                    into dir: URL) async throws -> [Skill] {
+        var q = "repo:\(repo.owner)/\(repo.repo) filename:SKILL.md"
+        if !repo.subpath.isEmpty {
+            q += " path:\(repo.subpath)"
+        }
+        let url = URL(string: "https://api.github.com/search/code?q=\(q.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? q)&per_page=100")!
+        var req = URLRequest(url: url)
+        req.timeoutInterval = 30
+        req.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        if let http = resp as? HTTPURLResponse {
+            if http.statusCode == 403 || http.statusCode == 429 {
+                throw SkillInstallError.rateLimited
+            }
+            if !(200...299).contains(http.statusCode) {
+                let msg = String(data: data, encoding: .utf8) ?? "status \(http.statusCode)"
+                throw SkillInstallError.githubAPIError(msg)
+            }
+        }
+        let results = try parseSearchResults(data)
+        guard !results.isEmpty else { throw SkillInstallError.noSkillFound }
+
+        var installed: [Skill] = []
+        for r in results {
+            guard let raw = URL(string: r.rawURL) else { continue }
+            do {
+                let skill = try await downloadAndSave(raw, into: dir)
+                if !installed.contains(where: { $0.id == skill.id }) {
+                    installed.append(skill)
+                }
+            } catch {
+                // 单文件失败继续安装其它
+                continue
+            }
+        }
+        guard !installed.isEmpty else { throw SkillInstallError.downloadFailed }
+        return installed
     }
 
     private static func downloadAndSave(_ url: URL, into dir: URL) async throws -> Skill {
@@ -614,6 +721,30 @@ struct SkillInstaller {
         let file = dir.appendingPathComponent("\(skill.id).md")
         try text.write(to: file, atomically: true, encoding: .utf8)
         return skill
+    }
+
+    private static func parseSearchResults(_ data: Data) throws -> [SkillGitHubSearchResult] {
+        struct Resp: Decodable {
+            struct Item: Decodable {
+                let name: String
+                let path: String
+                let html_url: String
+                let repository: Repository
+            }
+            struct Repository: Decodable {
+                let full_name: String
+            }
+            let items: [Item]
+        }
+        let resp = try JSONDecoder().decode(Resp.self, from: data)
+        return resp.items.map { item in
+            let raw = normalizeGitHub(URL(string: item.html_url)!).absoluteString
+            return SkillGitHubSearchResult(fullName: item.repository.full_name,
+                                           path: item.path,
+                                           htmlURL: item.html_url,
+                                           rawURL: raw,
+                                           fileName: item.name)
+        }
     }
 }
 
