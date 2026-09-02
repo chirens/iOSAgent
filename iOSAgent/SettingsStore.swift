@@ -50,6 +50,8 @@ class SettingsStore: ObservableObject {
     @AppStorage("apiKey") var apiKey: String = ""
     @AppStorage("modelName") var modelName: String = "deepseek-chat"
     @AppStorage("sttModelName") var sttModelName: String = "whisper-1"
+    /// GitHub 访问令牌（可选）：用于提升 GitHub 搜索 / 安装接口限额（未认证仅 10 次/分钟，带令牌 30 次/分钟）。
+    @AppStorage("githubToken") var githubToken: String = ""
     @AppStorage("systemPrompt") var systemPrompt: String = ""
     @AppStorage("hasSeenWelcome") var hasSeenWelcome: Bool = false
 

@@ -567,7 +567,7 @@ enum SkillInstallError: Error, LocalizedError {
     case noSkillFound
     case parseFailed
     case githubAPIError(String)
-    case rateLimited
+    case rateLimited(seconds: Int)
     var errorDescription: String? {
         switch self {
         case .invalidURL: return "链接无效，请输入 http(s) 开头的技能文件地址"
@@ -575,7 +575,9 @@ enum SkillInstallError: Error, LocalizedError {
         case .noSkillFound: return "未能从该链接解析出有效技能（需要含 name 的 markdown 或纯文本）"
         case .parseFailed: return "文件内容无法解析"
         case .githubAPIError(let msg): return "GitHub API 错误：\(msg)"
-        case .rateLimited: return "GitHub API 请求过于频繁，请稍后再试"
+        case .rateLimited(let seconds):
+            let s = max(seconds, 10)
+            return "GitHub API 请求过于频繁，请于约 \(s) 秒后再试（可在“技能中心”填入 GitHub 令牌提升限额）"
         }
     }
 }
@@ -592,6 +594,26 @@ struct SkillGitHubSearchResult: Identifiable {
 
 /// 从 GitHub / 任意 http(s) 链接安装 skill markdown 到沙盒；支持单文件或整个仓库。
 struct SkillInstaller {
+    /// 从 UserDefaults 读取可选的 GitHub 令牌（设置页配置）；带令牌可显著提升 Search API 限额。
+    private static var authToken: String {
+        (UserDefaults.standard.string(forKey: "githubToken") ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// 根据响应头解析限流剩余秒数（Retry-After 优先，其次 X-RateLimit-Reset）；无法解析时返回 60。
+    private static func rateLimitSeconds(from resp: URLResponse) -> Int {
+        guard let http = resp as? HTTPURLResponse else { return 60 }
+        if let retryAfter = http.allHeaderFields["Retry-After"] as? String,
+           let sec = Int(retryAfter), sec > 0 {
+            return sec
+        }
+        if let reset = http.allHeaderFields["X-RateLimit-Reset"] as? String,
+           let epoch = Double(reset) {
+            let wait = Int(epoch - Date().timeIntervalSince1970)
+            if wait > 0 { return wait }
+        }
+        return 60
+    }
+
     static func install(urlString: String, into dir: URL) async throws -> [Skill] {
         let trimmed = urlString.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let url = URL(string: trimmed), let scheme = url.scheme, scheme.hasPrefix("http") else {
@@ -621,10 +643,12 @@ struct SkillInstaller {
         req.timeoutInterval = 30
         req.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         req.setValue("iOSAgent/8.4.1", forHTTPHeaderField: "User-Agent")
+        let token = Self.authToken
+        if !token.isEmpty { req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
         let (data, resp) = try await URLSession.shared.data(for: req)
         if let http = resp as? HTTPURLResponse {
             if http.statusCode == 403 || http.statusCode == 429 {
-                throw SkillInstallError.rateLimited
+                throw SkillInstallError.rateLimited(seconds: Self.rateLimitSeconds(from: resp))
             }
             if !(200...299).contains(http.statusCode) {
                 let msg = String(data: data, encoding: .utf8) ?? "status \(http.statusCode)"
@@ -677,10 +701,12 @@ struct SkillInstaller {
         req.timeoutInterval = 30
         req.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         req.setValue("iOSAgent/8.4.1", forHTTPHeaderField: "User-Agent")
+        let token = Self.authToken
+        if !token.isEmpty { req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
         let (data, resp) = try await URLSession.shared.data(for: req)
         if let http = resp as? HTTPURLResponse {
             if http.statusCode == 403 || http.statusCode == 429 {
-                throw SkillInstallError.rateLimited
+                throw SkillInstallError.rateLimited(seconds: Self.rateLimitSeconds(from: resp))
             }
             if !(200...299).contains(http.statusCode) {
                 let msg = String(data: data, encoding: .utf8) ?? "status \(http.statusCode)"

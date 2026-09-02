@@ -219,18 +219,27 @@ struct APISettingsView: View {
     private var inputCard: some View {
         VStack(alignment: .leading, spacing: AppSpacing.sm) {
             SectionHeader("当前编辑的配置")
-            VStack(spacing: AppSpacing.xs) {
-                AppTextField(placeholder: "配置名称（如 DeepSeek / OpenAI）", text: $draftName)
-                AppTextField(placeholder: "Base URL", text: $draftBase, keyboard: .URL)
-                AppSecureField(placeholder: "API Key", text: $draftKey)
-                AppTextField(placeholder: "模型名", text: $draftModel)
-                AppTextField(placeholder: "语音模型（默认 whisper-1）", text: $draftSTT)
+            VStack(spacing: AppSpacing.md) {
+                labeledField("配置名称") { AppTextField(placeholder: "如 DeepSeek / OpenAI", text: $draftName) }
+                labeledField("API 地址") { AppTextField(placeholder: "https://api.deepseek.com", text: $draftBase, keyboard: .URL) }
+                labeledField("API 密钥") { AppSecureField(placeholder: "sk-...", text: $draftKey) }
+                labeledField("模型名称") { AppTextField(placeholder: "deepseek-chat", text: $draftModel) }
+                labeledField("语音模型") { AppTextField(placeholder: "whisper-1", text: $draftSTT) }
             }
         }
         .padding(AppSpacing.md)
         .background(Color.appSurface)
         .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
         .appCardShadow()
+    }
+
+    private func labeledField(_ title: String, @ViewBuilder field: () -> some View) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.appCaption2().weight(.semibold))
+                .foregroundStyle(Color.appSecondaryText)
+            field()
+        }
     }
 
     private var actionCard: some View {
@@ -295,52 +304,70 @@ struct APISettingsView: View {
     private var profilesCard: some View {
         VStack(alignment: .leading, spacing: AppSpacing.sm) {
             SectionHeader("已保存的配置")
-            VStack(spacing: 0) {
-                ForEach(Array(settings.profiles.enumerated()), id: \.element.id) { idx, p in
-                    Button {
-                        settings.setActiveProfile(p.id)
-                        loadProfile(p)
-                    } label: {
-                        HStack(spacing: AppSpacing.md) {
-                            ZStack {
-                                Circle()
-                                    .fill(Color.brandAccent.opacity(0.12))
-                                    .frame(width: 24, height: 24)
-                                Text("\(idx + 1)")
-                                    .font(.appMicro())
-                                    .foregroundStyle(Color.brandAccent)
+            if settings.profiles.isEmpty {
+                Text("还没有保存的配置")
+                    .font(.appSubheadline())
+                    .foregroundStyle(Color.appSecondaryText)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(AppSpacing.md)
+                    .background(Color.appSurface)
+                    .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
+                    .appCardShadow()
+            } else {
+                List {
+                    ForEach(Array(settings.profiles.enumerated()), id: \.element.id) { idx, p in
+                        profileRow(p)
+                            .listRowSeparator(.hidden)
+                            .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+                            .listRowBackground(Color.appSurface)
+                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                Button(role: .destructive) { settings.deleteProfile(p.id) } label: { Label("删除", systemImage: "trash") }
                             }
-                            VStack(alignment: .leading, spacing: AppSpacing.xs) {
-                                Text(p.name.isEmpty ? "未命名" : p.name)
-                                    .font(.appSubheadline().weight(.semibold))
-                                    .foregroundStyle(Color.appPrimaryText)
-                                Text("\(p.modelName) · \(shortURL(p.baseURL))")
-                                    .font(.appCaption())
-                                    .foregroundStyle(Color.appSecondaryText)
-                            }
-                            Spacer(minLength: 0)
-                            if settings.activeProfile.id == p.id {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .foregroundStyle(Color.appSuccess)
-                            }
-                        }
-                        .padding(.horizontal, AppSpacing.md)
-                        .padding(.vertical, AppSpacing.sm)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    if idx != settings.profiles.count - 1 {
-                        Divider()
-                            .padding(.leading, 44)
                     }
                 }
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
+                .frame(height: max(CGFloat(settings.profiles.count) * 56, 1))
+                .background(Color.appSurface)
+                .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
+                .appCardShadow()
             }
-            .padding(.bottom, AppSpacing.xs)
         }
-        .padding(.top, AppSpacing.md)
-        .background(Color.appSurface)
-        .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
-        .appCardShadow()
+    }
+
+    private func profileRow(_ p: APIProfile) -> some View {
+        Button {
+            settings.setActiveProfile(p.id)
+            loadProfile(p)
+        } label: {
+            HStack(spacing: AppSpacing.md) {
+                ZStack {
+                    Circle()
+                        .fill(Color.brandAccent.opacity(0.12))
+                        .frame(width: 24, height: 24)
+                    Text("\(settings.profiles.firstIndex(where: { $0.id == p.id }).map { String($0 + 1) } ?? "")")
+                        .font(.appMicro())
+                        .foregroundStyle(Color.brandAccent)
+                }
+                VStack(alignment: .leading, spacing: AppSpacing.xs) {
+                    Text(p.name.isEmpty ? "未命名" : p.name)
+                        .font(.appSubheadline().weight(.semibold))
+                        .foregroundStyle(Color.appPrimaryText)
+                    Text("\(p.modelName) · \(shortURL(p.baseURL))")
+                        .font(.appCaption())
+                        .foregroundStyle(Color.appSecondaryText)
+                }
+                Spacer(minLength: 0)
+                if settings.activeProfile.id == p.id {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(Color.appSuccess)
+                }
+            }
+            .padding(.horizontal, AppSpacing.md)
+            .padding(.vertical, AppSpacing.sm)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     private func shortURL(_ s: String) -> String {
@@ -748,6 +775,7 @@ enum SkillSearchMode: String, CaseIterable {
 
 struct SkillsView: View {
     @ObservedObject private var router = SkillRouter.shared
+    @EnvironmentObject var settings: SettingsStore
     @State private var query = ""
     @State private var searchMode: SkillSearchMode = .local
     @State private var installURL = ""
@@ -761,6 +789,10 @@ struct SkillsView: View {
     @State private var ghError: String?
     @State private var installingIDs: Set<String> = []
     @State private var searchCache: [String: [SkillGitHubSearchResult]] = [:]
+    // 限流防护：令牌（与设置同步）+ 冷却截止时间 + 显式搜索计数
+    @State private var ghToken: String = ""
+    @State private var ghCooldownUntil: Date = .distantPast
+    @State private var searchNonce: Int = 0
 
     var body: some View {
         ScrollView {
@@ -789,11 +821,67 @@ struct SkillsView: View {
                         .foregroundStyle(Color.appPrimaryText)
                         .autocapitalization(.none)
                         .disableAutocorrection(true)
+                    if ghLoading {
+                        ProgressView()
+                            .scaleEffect(0.8)
+                    } else if Date() < ghCooldownUntil {
+                        Text("限流中")
+                            .font(.appCaption())
+                            .foregroundStyle(Color.appSecondaryText)
+                    }
+                    Button {
+                        let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
+                        guard q.count >= 2 else { return }
+                        searchCache.removeValue(forKey: q)
+                        searchNonce += 1
+                    } label: {
+                        Text("搜索")
+                            .font(.appBody().weight(.semibold))
+                            .foregroundStyle(Color.appPrimaryText)
+                            .padding(.horizontal, AppSpacing.md)
+                            .padding(.vertical, 8)
+                            .background(Color.appInputFill)
+                            .clipShape(RoundedRectangle(cornerRadius: AppRadius.sm, style: .continuous))
+                    }
+                    .disabled(query.trimmingCharacters(in: .whitespacesAndNewlines).count < 2)
                 }
                 .padding(.horizontal, AppSpacing.md)
                 .padding(.vertical, AppSpacing.sm)
                 .background(Color.appInputFill)
                 .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
+
+                // GitHub 访问令牌（可选，用于提升限额）
+                VStack(alignment: .leading, spacing: AppSpacing.sm) {
+                    HStack(spacing: AppSpacing.sm) {
+                        Image(systemName: "key.fill")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(Color.appSecondaryText)
+                        Text("GitHub 访问令牌（可选）")
+                            .font(.appCaption2().weight(.semibold))
+                            .foregroundStyle(Color.appSecondaryText)
+                        Spacer(minLength: 0)
+                        if !ghToken.isEmpty {
+                            Text("已配置")
+                                .font(.appMicro())
+                                .foregroundStyle(Color.appSuccess)
+                        }
+                    }
+                    .padding(.leading, AppSpacing.md)
+                    AppSecureField(placeholder: "ghp_xxx 或 github_pat_xxx（提升限额）", text: $ghToken)
+                        .padding(.horizontal, AppSpacing.md)
+                    Text("未认证时搜索 / 安装接口限流约 10 次/分钟，填入令牌可显著提升限额（30 次/分钟）。可在 GitHub → Settings → Developer settings → Personal access tokens 生成只读令牌。")
+                        .font(.appCaption())
+                        .foregroundStyle(Color.appSecondaryText)
+                        .lineLimit(nil)
+                        .padding(.horizontal, AppSpacing.md)
+                        .padding(.bottom, AppSpacing.sm)
+                }
+                .padding(.vertical, AppSpacing.sm)
+                .background(Color.appSurface)
+                .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
+                .appCardShadow()
+                .onAppear { ghToken = settings.githubToken }
+                .onChange(of: ghToken) { settings.githubToken = ghToken }
 
                 // GitHub 搜索结果
                 if searchMode == .github {
@@ -845,20 +933,42 @@ struct SkillsView: View {
                 .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
                 .appCardShadow()
 
-                // 已安装技能列表
-                SettingsSection(title: "已安装技能（\(router.allSkills.count)）") {
+                // 已安装技能列表（用 List 以启用系统级左滑删除）
+                VStack(alignment: .leading, spacing: AppSpacing.xs) {
+                    Text("已安装技能（\(router.allSkills.count)）")
+                        .font(.appCaption2().weight(.semibold))
+                        .foregroundStyle(Color.appSecondaryText)
+                        .padding(.leading, AppSpacing.md)
+
                     if localFiltered.isEmpty {
                         Text(searchMode == .local && !query.isEmpty ? "没有匹配的技能" : "暂无已安装技能")
                             .font(.appSubheadline())
                             .foregroundStyle(Color.appSecondaryText)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(AppSpacing.md)
+                            .background(Color.appSurface)
+                            .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
+                            .appCardShadow()
                     } else {
-                        ForEach(localFiltered) { skill in
-                            skillRow(skill)
-                            if skill.id != localFiltered.last?.id {
-                                Divider().padding(.leading, 44)
+                        List {
+                            ForEach(localFiltered) { skill in
+                                skillRow(skill)
+                                    .listRowSeparator(.hidden)
+                                    .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+                                    .listRowBackground(Color.appSurface)
+                                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                        if !skill.isBuiltIn {
+                                            Button(role: .destructive) { deleteSkill(skill) } label: { Label("删除", systemImage: "trash") }
+                                        }
+                                    }
                             }
                         }
+                        .listStyle(.plain)
+                        .scrollContentBackground(.hidden)
+                        .frame(height: max(CGFloat(localFiltered.count) * 72, 1))
+                        .background(Color.appSurface)
+                        .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
+                        .appCardShadow()
                     }
                 }
             }
@@ -867,7 +977,7 @@ struct SkillsView: View {
             .padding(.bottom, AppSpacing.xl)
         }
         .background(Color.appBackground)
-        .task(id: query + searchMode.rawValue) {
+        .task(id: query + searchMode.rawValue + "\(searchNonce)") {
             guard searchMode == .github else { return }
             ghResults = []
             ghError = nil
@@ -876,18 +986,27 @@ struct SkillsView: View {
                 ghLoading = false
                 return
             }
+            if Date() < ghCooldownUntil {
+                ghError = "GitHub 限流中，请稍后再试"
+                return
+            }
             if let cached = searchCache[q] {
                 ghResults = cached
                 return
             }
             do {
-                try await Task.sleep(nanoseconds: 1_000_000_000)
+                try await Task.sleep(nanoseconds: 1_200_000_000)
                 ghLoading = true
                 let results = try await SkillInstaller.searchGitHub(query: q)
                 searchCache[q] = results
                 ghResults = results
             } catch {
-                ghError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+                if let err = error as? SkillInstallError, case .rateLimited(let sec) = err {
+                    ghCooldownUntil = Date().addingTimeInterval(Double(max(sec, 10)))
+                    ghError = err.errorDescription
+                } else {
+                    ghError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+                }
             }
             ghLoading = false
         }
@@ -1014,11 +1133,12 @@ struct SkillsView: View {
                     .font(.system(size: 14, weight: .semibold, design: .rounded))
                     .foregroundStyle(Color.brandAccent)
             }
-            VStack(alignment: .leading, spacing: AppSpacing.xs) {
+            VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Text(skill.name)
                         .font(.appSubheadline().weight(.semibold))
                         .foregroundStyle(Color.appPrimaryText)
+                        .lineLimit(1)
                     if !skill.isBuiltIn {
                         Text("用户")
                             .font(.appMicro())
@@ -1032,23 +1152,14 @@ struct SkillsView: View {
                 Text(skill.description)
                     .font(.appCaption())
                     .foregroundStyle(Color.appSecondaryText)
-                if !skill.triggers.isEmpty {
-                    Text(skill.triggers.prefix(6).joined(separator: "、"))
-                        .font(.appMicro())
-                        .foregroundStyle(Color.appSecondaryText)
-                        .lineLimit(1)
-                }
+                    .lineLimit(2)
+                    .truncationMode(.tail)
             }
             Spacer(minLength: 0)
         }
         .padding(.horizontal, AppSpacing.md)
         .padding(.vertical, AppSpacing.sm)
         .contentShape(Rectangle())
-        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-            if !skill.isBuiltIn {
-                Button(role: .destructive) { deleteSkill(skill) } label: { Label("删除", systemImage: "trash") }
-            }
-        }
     }
 
     private func installTapped() {
@@ -1062,7 +1173,12 @@ struct SkillsView: View {
                 message = "已安装 \(installed.count) 个技能：\(installed.map { $0.name }.joined(separator: "、"))"
                 installURL = ""
             } catch {
-                errorText = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+                if let err = error as? SkillInstallError, case .rateLimited(let sec) = err {
+                    ghCooldownUntil = Date().addingTimeInterval(Double(max(sec, 10)))
+                    errorText = err.errorDescription
+                } else {
+                    errorText = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+                }
             }
             installing = false
         }
@@ -1078,7 +1194,12 @@ struct SkillsView: View {
                 let installed = try await router.install(from: result.htmlURL)
                 message = "已安装 \(installed.count) 个技能：\(installed.map { $0.name }.joined(separator: "、"))"
             } catch {
-                errorText = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+                if let err = error as? SkillInstallError, case .rateLimited(let sec) = err {
+                    ghCooldownUntil = Date().addingTimeInterval(Double(max(sec, 10)))
+                    errorText = err.errorDescription
+                } else {
+                    errorText = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+                }
             }
             installingIDs.remove(id)
         }
