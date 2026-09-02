@@ -485,8 +485,6 @@ struct SideMenuOverlay: View {
 
     private var sideMenuFooter: some View {
         VStack(spacing: 0) {
-            Divider()
-                .padding(.horizontal, AppSpacing.lg)
             Button {
                 isPresented = false
                 onSettings()

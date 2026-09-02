@@ -132,17 +132,20 @@ struct SettingsLinkRow: View {
     var destination: SettingsRoute?
 
     var body: some View {
-        rowContent
-            .padding(.horizontal, AppSpacing.md)
-            .padding(.vertical, AppSpacing.sm)
-            .contentShape(Rectangle())
-            .background(
-                NavigationLink(value: destination) {
-                    EmptyView()
-                }
-                .opacity(0)
-                .disabled(destination == nil)
-            )
+        if let destination = destination {
+            NavigationLink(value: destination) {
+                rowContent
+                    .padding(.horizontal, AppSpacing.md)
+                    .padding(.vertical, AppSpacing.sm)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+        } else {
+            rowContent
+                .padding(.horizontal, AppSpacing.md)
+                .padding(.vertical, AppSpacing.sm)
+                .contentShape(Rectangle())
+        }
     }
 
     private var rowContent: some View {
