@@ -410,17 +410,23 @@ struct SideMenuOverlay: View {
     }
 
     private var sideMenuHeader: some View {
-        HStack(spacing: AppSpacing.md) {
-            Image(uiImage: UIImage(named: "AppIcon") ?? UIImage(systemName: "square.grid.2x2") ?? UIImage())
+        HStack(alignment: .top, spacing: AppSpacing.md) {
+            Image(uiImage: UIImage(named: "AppLogo") ?? UIImage(systemName: "square.grid.2x2") ?? UIImage())
                 .resizable()
                 .aspectRatio(contentMode: .fit)
-                .frame(width: 44, height: 44)
-                .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
+                .frame(width: 46, height: 46)
+                .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
 
-            Text("同步 - 移动AI Agent客户端")
-                .font(.appTitle3().weight(.bold))
-                .foregroundStyle(Color.appPrimaryText)
-                .lineLimit(1)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("同步")
+                    .font(.appTitle2().weight(.bold))
+                    .foregroundStyle(Color.appPrimaryText)
+                    .lineLimit(1)
+                Text("移动AI Agent客户端")
+                    .font(.appCaption())
+                    .foregroundStyle(Color.appSecondaryText)
+                    .lineLimit(1)
+            }
 
             Spacer(minLength: 0)
         }
