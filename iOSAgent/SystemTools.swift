@@ -245,6 +245,18 @@ final class SystemTools {
                 "slides": ParameterSpec(type: "array", description: "幻灯片数组，每项为对象：{title: 本页标题, bullets: [要点1, 要点2, ...]}")
             ],
             required: ["title", "slides"]
+        )),
+        ToolSpec(type: "function", function: FunctionSpec(
+            name: "web_request",
+            description: "向任意 HTTP(S) 接口发起请求并返回结果，用于调用外部服务（如 dashi-ppt、图像/视频/音频生成 API、Webhook 等）。返回状态码与响应体；若响应为二进制文件（或指定 save_as），自动保存到 App 文档并可在聊天中打开/分享。仅在用户明确要求调用某外部服务时使用，密钥放 headers，不要写进回复文本。",
+            parameters: [
+                "method": ParameterSpec(type: "string", description: "请求方法 GET/POST/PUT/DELETE/PATCH，默认 GET。"),
+                "url": ParameterSpec(type: "string", description: "完整请求地址，必须 http(s) 开头。"),
+                "headers": ParameterSpec(type: "string", description: "请求头 JSON 字符串，如 {\"Authorization\":\"Bearer xxx\",\"Content-Type\":\"application/json\"}，可省略。"),
+                "body": ParameterSpec(type: "string", description: "请求体，通常为 JSON 字符串；GET 一般省略。"),
+                "save_as": ParameterSpec(type: "string", description: "可选，保存为文件的文件名（含扩展名，如 result.pptx / img.png / clip.mp3）。指定后即使返回文本也会存为文件；不指定时按 Content-Type 自动判断二进制并保存。")
+            ],
+            required: ["url"]
         ))
     ]
 
@@ -271,6 +283,7 @@ final class SystemTools {
             case "device_info": return try await deviceInfo(call)
             case "create_file": return try await createFile(call)
             case "create_ppt": return try await createPPT(call)
+            case "web_request": return try await webRequest(call)
             default: return ToolResult(success: false, message: "未知工具 \(name)", data: nil)
             }
         } catch {
@@ -706,6 +719,102 @@ final class SystemTools {
         return ToolResult(success: true, message: "已生成 PPT：\(url.lastPathComponent)，可在聊天中点击分享。",
                           data: ["path": AnyCodable(url.path), "filename": AnyCodable(url.lastPathComponent)],
                           fileURL: url)
+    }
+
+    // MARK: - 通用 HTTP 请求（类 Manus 连接器，可编排任意外部服务）
+
+    private static let webSession: URLSession = {
+        let cfg = URLSessionConfiguration.default
+        cfg.timeoutIntervalForRequest = 180
+        cfg.timeoutIntervalForResource = 300
+        cfg.waitsForConnectivity = true
+        return URLSession(configuration: cfg)
+    }()
+
+    private static func webRequest(_ call: [String: AnyCodable]) async throws -> ToolResult {
+        guard let rawURL = string(call, "url"),
+              let u = URL(string: rawURL.trimmingCharacters(in: .whitespacesAndNewlines)),
+              let scheme = u.scheme, scheme == "http" || scheme == "https" else {
+            return ToolResult(success: false, message: "url 无效，必须是 http(s) 开头", data: nil)
+        }
+
+        let method = (string(call, "method") ?? "GET").trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        var req = URLRequest(url: u)
+        req.httpMethod = ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD"].contains(method) ? method : "GET"
+
+        if let hStr = string(call, "headers"),
+           let hData = hStr.data(using: .utf8),
+           let hDict = try? JSONSerialization.jsonObject(with: hData) as? [String: Any] {
+            for (k, v) in hDict {
+                req.setValue("\(v)", forHTTPHeaderField: k)
+            }
+        }
+
+        if let bStr = string(call, "body"), !bStr.isEmpty {
+            req.httpBody = Data(bStr.utf8)
+            if req.value(forHTTPHeaderField: "Content-Type") == nil {
+                req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            }
+        }
+
+        let saveAs = string(call, "save_as")?.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        do {
+            let (data, resp) = try await webSession.data(for: req)
+            let status = (resp as? HTTPURLResponse)?.statusCode ?? 0
+            let contentType = ((resp as? HTTPURLResponse)?.allHeaderFields["Content-Type"] as? String) ?? ""
+
+            let forceFile = (saveAs != nil)
+            let isBinary = forceFile ? !Self.isLikelyText(contentType) : Self.isBinaryContent(contentType)
+
+            if isBinary || forceFile {
+                let filename = saveAs ?? Self.defaultFilename(from: u, contentType: contentType)
+                let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+                let fileURL = docs.appendingPathComponent(filename)
+                try data.write(to: fileURL, options: .atomic)
+                return ToolResult(success: true,
+                                  message: "HTTP \(status)，已保存文件：\(filename)（\(data.count) 字节），可在聊天中打开/分享。",
+                                  data: ["status": AnyCodable(status), "filename": AnyCodable(filename), "bytes": AnyCodable(data.count)],
+                                  fileURL: fileURL)
+            }
+
+            let text = String(data: data, encoding: .utf8) ?? data.base64EncodedString()
+            let shown = String(text.prefix(4000))
+            return ToolResult(success: true,
+                              message: "HTTP \(status)，响应体已返回（\(data.count) 字节）。",
+                              data: ["status": AnyCodable(status), "body": AnyCodable(shown)])
+        } catch {
+            return ToolResult(success: false, message: "请求失败：\(error.localizedDescription)", data: nil)
+        }
+    }
+
+    private static func isBinaryContent(_ ct: String) -> Bool {
+        let lower = ct.lowercased()
+        if lower.contains("text/") || lower.contains("application/json") || lower.contains("application/xml")
+            || lower.contains("application/javascript") || lower.contains("+xml") { return false }
+        if lower.contains("application/") || lower.contains("image/") || lower.contains("audio/")
+            || lower.contains("video/") || lower.contains("font/") || lower.contains("zip")
+            || lower.contains("octet-stream") { return true }
+        return false
+    }
+
+    private static func isLikelyText(_ ct: String) -> Bool {
+        let lower = ct.lowercased()
+        return lower.contains("text/") || lower.contains("json") || lower.contains("xml")
+    }
+
+    private static func defaultFilename(from url: URL, contentType ct: String) -> String {
+        let ext: String
+        if ct.contains("pptx") { ext = "pptx" }
+        else if ct.contains("pdf") { ext = "pdf" }
+        else if ct.contains("image/png") { ext = "png" }
+        else if ct.contains("image/jpeg") { ext = "jpg" }
+        else if ct.contains("image/") { ext = "img" }
+        else if ct.contains("audio/") { ext = "audio" }
+        else if ct.contains("video/") { ext = "mp4" }
+        else { ext = "bin" }
+        let ts = Int(Date().timeIntervalSince1970)
+        return "web_\(ts).\(ext)"
     }
 
     // MARK: - Helpers

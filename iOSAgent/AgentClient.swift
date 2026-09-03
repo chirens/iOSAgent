@@ -393,6 +393,7 @@ final class AgentClient {
         6. 工具执行后，根据结果用一句话向用户确认，不要暴露内部 ID、路径或 JSON。
         7. 如果某个能力未开启，引导用户到设置页开启，不要重复尝试调用失败工具。
         8. 当用户要求生成文件、PPT、写报告、整理数据时，使用 create_file（文本/md/csv）或 create_ppt（PPT）。先自己规划内容结构，再调用工具生成；生成后用一句话告诉用户文件已保存，可点击分享按钮导出。
+        9. 当用户要求调用外部 HTTP 服务（如 dashi-ppt、图像/视频/音频生成 API、Webhook、查询任意 REST 接口）时，使用 web_request 工具发起请求；鉴权令牌放在 headers 的 Authorization 字段，不要把密钥明文写进回复；若服务返回文件（如 .pptx/.pdf/图片/音频/视频），模型会在聊天中收到可打开/分享的文件。
 
         示例：
         用户：5分钟后提醒我喝水
@@ -738,7 +739,7 @@ struct SkillInstaller {
         var req = URLRequest(url: url)
         req.timeoutInterval = 30
         req.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
-        req.setValue("iOSAgent/8.4.1", forHTTPHeaderField: "User-Agent")
+        req.setValue("iOSAgent/8.7.0", forHTTPHeaderField: "User-Agent")
         let token = Self.authToken
         if !token.isEmpty { req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
         let (data, resp) = try await URLSession.shared.data(for: req)
@@ -796,7 +797,7 @@ struct SkillInstaller {
         var req = URLRequest(url: url)
         req.timeoutInterval = 30
         req.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
-        req.setValue("iOSAgent/8.4.1", forHTTPHeaderField: "User-Agent")
+        req.setValue("iOSAgent/8.7.0", forHTTPHeaderField: "User-Agent")
         let token = Self.authToken
         if !token.isEmpty { req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
         let (data, resp) = try await URLSession.shared.data(for: req)
