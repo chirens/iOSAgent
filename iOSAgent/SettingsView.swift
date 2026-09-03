@@ -882,6 +882,43 @@ struct SkillsView: View {
                 .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
                 .appCardShadow()
 
+                // 远程 dashi-ppt 渲染服务（服务器中继）
+                VStack(alignment: .leading, spacing: AppSpacing.sm) {
+                    HStack(spacing: AppSpacing.sm) {
+                        Image(systemName: "server.rack")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(Color.appSecondaryText)
+                        Text("远程 dashi-ppt 服务（服务器渲染）")
+                            .font(.appCaption2().weight(.semibold))
+                            .foregroundStyle(Color.appSecondaryText)
+                        Spacer(minLength: 0)
+                        if !settings.connectorEndpoint.trimmingCharacters(in: .whitespaces).isEmpty {
+                            Text("已配置")
+                                .font(.appMicro())
+                                .foregroundStyle(Color.appSuccess)
+                        }
+                    }
+                    .padding(.leading, AppSpacing.md)
+                    AppTextField(placeholder: "服务器地址，如 https://dashi.chen.cm/render",
+                                 text: Binding(get: { settings.connectorEndpoint },
+                                               set: { settings.connectorEndpoint = $0 }))
+                        .padding(.horizontal, AppSpacing.md)
+                    AppSecureField(placeholder: "API 密钥（与服务器 DASHI_API_KEY 一致）",
+                                   text: Binding(get: { settings.connectorApiKey },
+                                                set: { settings.connectorApiKey = $0 }))
+                        .padding(.horizontal, AppSpacing.md)
+                    Text("在服务器部署 dashi-relay 后填写。开启后，对话里说「用 dashi-ppt 生成 PPT」会经 web_request 调此服务渲染真实图文 .pptx（部署方式见 dashi-relay/README.md）。")
+                        .font(.appCaption())
+                        .foregroundStyle(Color.appSecondaryText)
+                        .lineLimit(nil)
+                        .padding(.horizontal, AppSpacing.md)
+                        .padding(.bottom, AppSpacing.sm)
+                }
+                .padding(.vertical, AppSpacing.sm)
+                .background(Color.appSurface)
+                .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
+                .appCardShadow()
+
                 // GitHub 搜索结果
                 if searchMode == .github {
                     githubResultsSection

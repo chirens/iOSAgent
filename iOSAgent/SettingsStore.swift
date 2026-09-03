@@ -52,6 +52,10 @@ class SettingsStore: ObservableObject {
     @AppStorage("sttModelName") var sttModelName: String = "whisper-1"
     /// GitHub 访问令牌（可选）：用于提升 GitHub 搜索 / 安装接口限额（未认证仅 10 次/分钟，带令牌 30 次/分钟）。
     @AppStorage("githubToken") var githubToken: String = ""
+    /// 远程 dashi-ppt 渲染服务地址（服务器部署 dashi-relay 后填入，如 https://dashi.chen.cm/render）。
+    @AppStorage("connectorEndpoint") var connectorEndpoint: String = ""
+    /// 远程 dashi-ppt 渲染服务鉴权密钥（与服务器 DASHI_API_KEY 一致）。
+    @AppStorage("connectorApiKey") var connectorApiKey: String = ""
     @AppStorage("systemPrompt") var systemPrompt: String = ""
     @AppStorage("hasSeenWelcome") var hasSeenWelcome: Bool = false
 
