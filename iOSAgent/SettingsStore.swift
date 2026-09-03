@@ -60,6 +60,12 @@ class SettingsStore: ObservableObject {
     @AppStorage("authToken") var authToken: String = ""
     /// 当前登录用户名（仅展示用）。
     @AppStorage("authUser") var authUser: String = ""
+    /// 当前登录用户邮箱（服务器登录标识，也用于展示）。
+    @AppStorage("authEmail") var authEmail: String = ""
+    /// 当前登录用户的显示昵称（可编辑，默认取自邮箱前缀）。
+    @AppStorage("authDisplayName") var authDisplayName: String = ""
+    /// 头像图片数据（JPEG/PNG），本地存储；登录态展示与侧边栏使用。
+    @AppStorage("authAvatarData") var authAvatarData: Data = Data()
     @AppStorage("systemPrompt") var systemPrompt: String = ""
     @AppStorage("hasSeenWelcome") var hasSeenWelcome: Bool = false
 
@@ -450,6 +456,90 @@ class SettingsStore: ObservableObject {
         setStatus("notifications", status)
         return status
     }
+
+    // MARK: - 账户（远程执行服务，邮箱 + 密码）
+
+    enum AccountAuthMode { case login, register }
+
+    /// 登录或注册远程执行服务（多租户后端）。邮箱作为登录标识，成功后保存每用户 token。
+    /// 返回 nil 表示成功，否则返回错误文案。
+    func accountAuth(endpoint: String, email: String, password: String, displayName: String, mode: AccountAuthMode) async -> String? {
+        let ep = endpoint.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let base = URL(string: ep), !ep.isEmpty else { return "服务器地址无效" }
+        let path = mode == .login ? "auth/login" : "auth/register"
+        guard let u = URL(string: base.absoluteString + (ep.hasSuffix("/") ? "" : "/") + path) else { return "服务器地址无效" }
+        let mail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard mail.contains("@"), password.count >= 6 else {
+            return mode == .login ? "请输入邮箱与密码（密码≥6）" : "请输入有效邮箱，密码≥6 字符"
+        }
+        var req = URLRequest(url: u)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        var payload: [String: Any] = ["email": mail, "password": password]
+        if mode == .register, !displayName.trimmingCharacters(in: .whitespaces).isEmpty {
+            payload["displayName"] = displayName.trimmingCharacters(in: .whitespaces)
+        }
+        req.httpBody = try? JSONSerialization.data(withJSONObject: payload)
+        do {
+            let (data, resp) = try await URLSession.shared.data(for: req)
+            let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
+            struct Resp: Decodable { let token: String?; let email: String?; let username: String?; let error: String? }
+            let r = try? JSONDecoder().decode(Resp.self, from: data)
+            guard code == 200, let t = r?.token else {
+                return "失败（\(code)）：" + (r?.error ?? "未知错误")
+            }
+            authToken = t
+            authEmail = r?.email ?? mail
+            let name = r?.username ?? displayName.trimmingCharacters(in: .whitespaces)
+            authUser = name
+            authDisplayName = name
+            return nil
+        } catch {
+            return "网络错误：\(error.localizedDescription)"
+        }
+    }
+
+    /// 更新昵称（displayName），同步到服务器；失败返回错误文案，成功返回 nil。
+    func updateAccountProfile(displayName: String) async -> String? {
+        let ep = connectorEndpoint.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !authToken.isEmpty, !ep.isEmpty,
+              let base = URL(string: ep),
+              let u = URL(string: base.absoluteString + (ep.hasSuffix("/") ? "" : "/") + "auth/profile") else {
+            return "未登录或服务器地址未设置"
+        }
+        let dn = displayName.trimmingCharacters(in: .whitespaces)
+        guard !dn.isEmpty, dn.count <= 24 else { return "昵称需为 1–24 字符" }
+        var req = URLRequest(url: u)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue("Bearer \(authToken)", forHTTPHeaderField: "Authorization")
+        req.httpBody = try? JSONSerialization.data(withJSONObject: ["displayName": dn])
+        do {
+            let (data, resp) = try await URLSession.shared.data(for: req)
+            let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
+            struct Resp: Decodable { let ok: Bool?; let username: String?; let error: String? }
+            let r = try? JSONDecoder().decode(Resp.self, from: data)
+            guard code == 200 else {
+                return "失败（\(code)）：" + (r?.error ?? "未知错误")
+            }
+            authDisplayName = dn
+            authUser = dn
+            return nil
+        } catch {
+            return "网络错误：\(error.localizedDescription)"
+        }
+    }
+
+    /// 退出登录（清掉 token 与本地身份信息，含头像）。
+    func logoutAccount() {
+        authToken = ""
+        authUser = ""
+        authEmail = ""
+        authDisplayName = ""
+        authAvatarData = Data()
+    }
+
+    var isLoggedIn: Bool { !authToken.isEmpty }
 }
 
 /// 一次性 CoreLocation 授权委托

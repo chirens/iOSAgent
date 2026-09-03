@@ -13,6 +13,7 @@ struct ContentView: View {
     @EnvironmentObject var settings: SettingsStore
     @State private var showSideMenu = false
     @State private var showSettings = false
+    @State private var showAccount = false
     @State private var path = NavigationPath()
 
     var body: some View {
@@ -24,11 +25,17 @@ struct ContentView: View {
                     .zIndex(2)
                     .transition(.asymmetric(insertion: .move(edge: .trailing), removal: .move(edge: .trailing)))
             }
+
+            if showAccount {
+                AccountRootView(onBack: { withAnimation(.spring()) { showAccount = false } })
+                    .zIndex(2)
+                    .transition(.asymmetric(insertion: .move(edge: .trailing), removal: .move(edge: .trailing)))
+            }
         }
         .animation(.spring(response: 0.45, dampingFraction: 0.85), value: showSettings)
         .overlay {
             if showSideMenu {
-                SideMenuOverlay(isPresented: $showSideMenu, path: $path, onSettings: { showSettings = true })
+                SideMenuOverlay(isPresented: $showSideMenu, path: $path, onSettings: { showSettings = true }, onAccount: { showAccount = true; isPresented = false })
                     .zIndex(3)
                     .transition(.move(edge: .leading))
             }
@@ -430,7 +437,9 @@ struct SideMenuOverlay: View {
     @Binding var isPresented: Bool
     @Binding var path: NavigationPath
     var onSettings: () -> Void
+    var onAccount: () -> Void
     @EnvironmentObject var store: ChatStore
+    @EnvironmentObject var settings: SettingsStore
 
     var body: some View {
         GeometryReader { geo in
@@ -466,29 +475,43 @@ struct SideMenuOverlay: View {
     }
 
     private var sideMenuHeader: some View {
-        HStack(alignment: .top, spacing: AppSpacing.md) {
-            Image(uiImage: UIImage(named: "AppLogo") ?? UIImage(systemName: "square.grid.2x2") ?? UIImage())
-                .resizable()
-                .aspectRatio(contentMode: .fit)
-                .frame(width: 46, height: 46)
-                .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+        Button {
+            onAccount()
+        } label: {
+            HStack(alignment: .center, spacing: AppSpacing.md) {
+                AccountAvatarView(size: 46)
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text("velos")
-                    .font(.appTitle2().weight(.bold))
-                    .foregroundStyle(Color.appPrimaryText)
-                    .lineLimit(1)
-                Text("移动AI Agent客户端")
-                    .font(.appCaption())
+                VStack(alignment: .leading, spacing: 2) {
+                    if settings.isLoggedIn {
+                        Text(settings.authDisplayName.isEmpty ? settings.authEmail : settings.authDisplayName)
+                            .font(.appTitle3().weight(.bold))
+                            .foregroundStyle(Color.appPrimaryText)
+                            .lineLimit(1)
+                        Text("已登录")
+                            .font(.appCaption())
+                            .foregroundStyle(Color.appSecondaryText)
+                    } else {
+                        Text("未登录")
+                            .font(.appTitle3().weight(.bold))
+                            .foregroundStyle(Color.appPrimaryText)
+                        Text("点击登录 / 注册")
+                            .font(.appCaption())
+                            .foregroundStyle(Color.appSecondaryText)
+                    }
+                }
+
+                Spacer(minLength: 0)
+
+                Image(systemName: "chevron.forward")
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
                     .foregroundStyle(Color.appSecondaryText)
-                    .lineLimit(1)
             }
-
-            Spacer(minLength: 0)
+            .padding(.horizontal, AppSpacing.lg)
+            .padding(.top, AppSpacing.xl)
+            .padding(.bottom, AppSpacing.md)
+            .contentShape(Rectangle())
         }
-        .padding(.horizontal, AppSpacing.lg)
-        .padding(.top, AppSpacing.xl)
-        .padding(.bottom, AppSpacing.md)
+        .buttonStyle(.plain)
     }
 
     private var sideMenuList: some View {
@@ -753,6 +776,7 @@ struct SettingsRootView: View {
                     case .legal(let type): LegalView(type: type)
                     case .about: AboutView()
                     case .skills: SkillsView()
+                    case .account: AccountView()
                     }
                 }
                 .toolbar {
