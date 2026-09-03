@@ -372,8 +372,27 @@ final class AgentClient {
         let customBlock = custom.isEmpty ? "" : "\n\n用户自定义补充：\(custom)"
         let skillBlock = buildSkillBlock(activeSkills)
 
+        let connectorEP = SettingsStore.shared.connectorEndpoint.trimmingCharacters(in: .whitespacesAndNewlines)
+        let connectorBlock: String
+        if connectorEP.isEmpty {
+            connectorBlock = ""
+        } else {
+            let connectorKey = SettingsStore.shared.connectorApiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+            connectorBlock = """
+
+            【远程 dashi-ppt 渲染服务（已配置）】
+            你已接入用户部署的远程 dashi-ppt 渲染服务，地址：\(connectorEP)。
+            当用户要求用 dashi-ppt / 生成图文 PPT / 演示文稿 / 幻灯片时，将需求整理为结构 {title: 标题, theme: 主题(默认 theme02), slides: [{title: 页标题, bullets: [要点...]}]}，然后用 web_request 以 POST 发送：
+            - url: \(connectorEP)
+            - method: POST
+            - headers: {"Authorization": "Bearer \(connectorKey)", "Content-Type": "application/json"}
+            - body: 上面结构的 JSON 字符串
+            服务直接返回 .pptx 文件，你会在聊天中收到可预览/分享的文件。绝不要声称缺少连接器或无法生成图文 PPT。
+            """
+        }
+
         return """
-        \(skillBlock)
+        \(skillBlock)\(connectorBlock)
 
         你是 同步，一个运行在 iPhone 上的本地 AI Agent。你可以调用系统工具帮用户完成操作。
 
@@ -739,7 +758,7 @@ struct SkillInstaller {
         var req = URLRequest(url: url)
         req.timeoutInterval = 30
         req.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
-        req.setValue("iOSAgent/8.7.1", forHTTPHeaderField: "User-Agent")
+        req.setValue("iOSAgent/8.8.0", forHTTPHeaderField: "User-Agent")
         let token = Self.authToken
         if !token.isEmpty { req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
         let (data, resp) = try await URLSession.shared.data(for: req)
@@ -797,7 +816,7 @@ struct SkillInstaller {
         var req = URLRequest(url: url)
         req.timeoutInterval = 30
         req.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
-        req.setValue("iOSAgent/8.7.1", forHTTPHeaderField: "User-Agent")
+        req.setValue("iOSAgent/8.8.0", forHTTPHeaderField: "User-Agent")
         let token = Self.authToken
         if !token.isEmpty { req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
         let (data, resp) = try await URLSession.shared.data(for: req)
@@ -929,6 +948,22 @@ enum SkillRegistry {
             4. 输出格式：序号、域名、后缀、长度、估值理由、风险提醒。
             5. 注意 Whoxy 免费列表存在到期日续费误区，提醒用户以注册商数据为准。
             如需保存候选列表，调用 create_file 输出 csv/md。
+            """
+        ),
+        Skill(
+            id: "dashi-ppt-remote",
+            name: "dashi-ppt(远程)",
+            icon: "doc.richtext",
+            description: "经服务器 web_request 渲染真实图文 PPT",
+            triggers: ["dashi-ppt", "dashi", "ppt", "演示", "幻灯片", "图文ppt", "图文"],
+            tools: ["web_request"],
+            prompt: """
+            当用户要求生成 PPT / 演示文稿 / 幻灯片，尤其提到 dashi-ppt 时，使用远程 dashi-ppt 渲染服务：
+            1. 把用户需求整理成结构：{title: 标题, theme: 主题(默认 theme02), slides: [{title: 页标题, bullets: [要点...]}]}。
+            2. 用 web_request 工具以 POST 发送到系统提示中「远程 dashi-ppt 渲染服务」给定的地址，headers 带 Authorization: Bearer <密钥>、Content-Type: application/json，body 为该结构的 JSON 字符串。
+            3. 服务返回 .pptx 文件，直接告诉用户已生成、可在聊天中点击打开/分享，不要复述内部路径或 JSON。
+            4. 用户未指定主题时默认 theme02；页数按内容需要，通常 5-10 页。
+            5. 除非用户明确说要纯文字版且不要 dashi-ppt 渲染，否则优先用远程渲染服务而非 create_ppt 纯文字版。
             """
         )
     ]
