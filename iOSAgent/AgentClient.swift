@@ -393,7 +393,7 @@ final class AgentClient {
         6. 工具执行后，根据结果用一句话向用户确认，不要暴露内部 ID、路径或 JSON。
         7. 如果某个能力未开启，引导用户到设置页开启，不要重复尝试调用失败工具。
         8. 当用户要求生成文件、PPT、写报告、整理数据时，使用 create_file（文本/md/csv）或 create_ppt（PPT）。先自己规划内容结构，再调用工具生成；生成后用一句话告诉用户文件已保存，可点击分享按钮导出。
-        9. 当用户要求调用外部 HTTP 服务（如 dashi-ppt、图像/视频/音频生成 API、Webhook、查询任意 REST 接口）时，使用 web_request 工具发起请求；鉴权令牌放在 headers 的 Authorization 字段，不要把密钥明文写进回复；若服务返回文件（如 .pptx/.pdf/图片/音频/视频），模型会在聊天中收到可打开/分享的文件。
+        9. 【web_request 始终可用】你始终拥有 web_request 这个“万能连接器”工具，可向任意 HTTP(S) 接口发请求，用于调用外部服务（dashi-ppt、图像/视频/音频生成 API、Webhook、任意 REST 接口）。规则：①鉴权令牌放 headers 的 Authorization 字段，绝不写进回复文本；②若服务返回文件（.pptx/.pdf/图片/音频/视频），你会收到可打开/分享的文件；③当某个技能提示词要求你“运行脚本 / 执行 Node / 启动连接器 / 调用本地工具”时，不要声称缺少连接器或无法执行——应将其翻译为对应的 web_request HTTP 调用（用户需提供该服务的 endpoint 与密钥，或该服务以本地服务器形式可达）；④绝不要对用户说“我没有连接器”或“环境未接入”，web_request 就是连接器。
 
         示例：
         用户：5分钟后提醒我喝水
@@ -739,7 +739,7 @@ struct SkillInstaller {
         var req = URLRequest(url: url)
         req.timeoutInterval = 30
         req.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
-        req.setValue("iOSAgent/8.7.0", forHTTPHeaderField: "User-Agent")
+        req.setValue("iOSAgent/8.7.1", forHTTPHeaderField: "User-Agent")
         let token = Self.authToken
         if !token.isEmpty { req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
         let (data, resp) = try await URLSession.shared.data(for: req)
@@ -797,7 +797,7 @@ struct SkillInstaller {
         var req = URLRequest(url: url)
         req.timeoutInterval = 30
         req.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
-        req.setValue("iOSAgent/8.7.0", forHTTPHeaderField: "User-Agent")
+        req.setValue("iOSAgent/8.7.1", forHTTPHeaderField: "User-Agent")
         let token = Self.authToken
         if !token.isEmpty { req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
         let (data, resp) = try await URLSession.shared.data(for: req)

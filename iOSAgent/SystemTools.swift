@@ -94,13 +94,74 @@ struct AnyCodable: Codable {
 @MainActor
 final class SystemTools {
 
-    static let allTools: [ToolSpec] = [
+    // MARK: - 工具清单
+    // 核心工具：生成 / 连接类，不触碰隐私权限，始终下发给模型（含 web_request 万能连接器）
+    // 核心工具：生成 / 连接类，不触碰隐私权限，始终下发给模型（含 web_request 万能连接器）
+    static let coreTools: [ToolSpec] = [
         ToolSpec(type: "function", function: FunctionSpec(
             name: "get_current_time",
             description: "获取当前系统时间和日期。当用户提到相对时间（如“5分钟后”“明天”）而你又需要确认时间基准时调用。",
             parameters: [:],
             required: []
         )),
+        ToolSpec(type: "function", function: FunctionSpec(
+            name: "create_file",
+            description: "在 App 文档目录创建一个文本文件（txt/md/html/csv/json）。",
+            parameters: [
+                "filename": ParameterSpec(type: "string", description: "文件名，必须包含扩展名，如 notes.md、data.csv。"),
+                "content": ParameterSpec(type: "string", description: "文件内容。")
+            ],
+            required: ["filename", "content"]
+        )),
+        ToolSpec(type: "function", function: FunctionSpec(
+            name: "create_ppt",
+            description: "根据标题和每页要点生成 .pptx 文件并保存到 App 文档目录，可在聊天中分享。",
+            parameters: [
+                "title": ParameterSpec(type: "string", description: "PPT 标题，也会作为文件名（无需 .pptx 后缀）。"),
+                "slides": ParameterSpec(type: "array", description: "幻灯片数组，每项为对象：{title: 本页标题, bullets: [要点1, 要点2, ...]}")
+            ],
+            required: ["title", "slides"]
+        )),
+        ToolSpec(type: "function", function: FunctionSpec(
+            name: "web_request",
+            description: "向任意 HTTP(S) 接口发起请求并返回结果，用于调用外部服务（如 dashi-ppt、图像/视频/音频生成 API、Webhook 等）。返回状态码与响应体；若响应为二进制文件（或指定 save_as），自动保存到 App 文档并可在聊天中打开/分享。这是【始终可用】的“万能连接器”：无论是否开启系统权限都能调用。仅在用户明确要求调用某外部服务时使用，密钥放 headers，不要写进回复文本。",
+            parameters: [
+                "method": ParameterSpec(type: "string", description: "请求方法 GET/POST/PUT/DELETE/PATCH，默认 GET。"),
+                "url": ParameterSpec(type: "string", description: "完整请求地址，必须 http(s) 开头。"),
+                "headers": ParameterSpec(type: "string", description: "请求头 JSON 字符串，如 {\"Authorization\":\"Bearer xxx\",\"Content-Type\":\"application/json\"}，可省略。"),
+                "body": ParameterSpec(type: "string", description: "请求体，通常为 JSON 字符串；GET 一般省略。"),
+                "save_as": ParameterSpec(type: "string", description: "可选，保存为文件的文件名（含扩展名，如 result.pptx / img.png / clip.mp3）。指定后即使返回文本也会存为文件；不指定时按 Content-Type 自动判断二进制并保存。")
+            ],
+            required: ["url"]
+        )),
+        ToolSpec(type: "function", function: FunctionSpec(
+            name: "open_url",
+            description: "用系统打开一个 URL 或启动支持 URL Scheme 的 App。",
+            parameters: ["url": ParameterSpec(type: "string", description: "URL 或 scheme，如 weixin://、https://example.com、tel://10086")],
+            required: ["url"]
+        )),
+        ToolSpec(type: "function", function: FunctionSpec(
+            name: "get_clipboard",
+            description: "读取剪贴板文本。",
+            parameters: [:],
+            required: []
+        )),
+        ToolSpec(type: "function", function: FunctionSpec(
+            name: "set_clipboard",
+            description: "写入文本到剪贴板。",
+            parameters: ["text": ParameterSpec(type: "string", description: "要写入的文本。")],
+            required: ["text"]
+        )),
+        ToolSpec(type: "function", function: FunctionSpec(
+            name: "device_info",
+            description: "获取设备信息：型号、系统版本、电量、存储等。",
+            parameters: [:],
+            required: []
+        ))
+    ]
+
+    // 隐私 / 系统权限类工具：仅在用户于设置中开启任一系统能力后下发（anyToolEnabled）
+    static let systemTools: [ToolSpec] = [
         ToolSpec(type: "function", function: FunctionSpec(
             name: "set_alarm",
             description: "设置一个闹钟，到点以本地通知响铃/弹窗。用户说“叫我起床”“N分钟后叫我”“明早7点叫我”时使用。不会写入系统提醒事项。",
@@ -199,66 +260,21 @@ final class SystemTools {
             required: []
         )),
         ToolSpec(type: "function", function: FunctionSpec(
-            name: "get_clipboard",
-            description: "读取剪贴板文本。",
-            parameters: [:],
-            required: []
-        )),
-        ToolSpec(type: "function", function: FunctionSpec(
-            name: "set_clipboard",
-            description: "写入文本到剪贴板。",
-            parameters: ["text": ParameterSpec(type: "string", description: "要写入的文本。")],
-            required: ["text"]
-        )),
-        ToolSpec(type: "function", function: FunctionSpec(
             name: "list_photos",
             description: "获取相册最近 N 张图片。",
             parameters: ["limit": ParameterSpec(type: "integer", description: "最多返回条数，默认5。")],
             required: []
-        )),
-        ToolSpec(type: "function", function: FunctionSpec(
-            name: "open_url",
-            description: "用系统打开一个 URL 或启动支持 URL Scheme 的 App。",
-            parameters: ["url": ParameterSpec(type: "string", description: "URL 或 scheme，如 weixin://、https://example.com、tel://10086")],
-            required: ["url"]
-        )),
-        ToolSpec(type: "function", function: FunctionSpec(
-            name: "device_info",
-            description: "获取设备信息：型号、系统版本、电量、存储等。",
-            parameters: [:],
-            required: []
-        )),
-        ToolSpec(type: "function", function: FunctionSpec(
-            name: "create_file",
-            description: "在 App 文档目录创建一个文本文件（txt/md/html/csv/json）。",
-            parameters: [
-                "filename": ParameterSpec(type: "string", description: "文件名，必须包含扩展名，如 notes.md、data.csv。"),
-                "content": ParameterSpec(type: "string", description: "文件内容。")
-            ],
-            required: ["filename", "content"]
-        )),
-        ToolSpec(type: "function", function: FunctionSpec(
-            name: "create_ppt",
-            description: "根据标题和每页要点生成 .pptx 文件并保存到 App 文档目录，可在聊天中分享。",
-            parameters: [
-                "title": ParameterSpec(type: "string", description: "PPT 标题，也会作为文件名（无需 .pptx 后缀）。"),
-                "slides": ParameterSpec(type: "array", description: "幻灯片数组，每项为对象：{title: 本页标题, bullets: [要点1, 要点2, ...]}")
-            ],
-            required: ["title", "slides"]
-        )),
-        ToolSpec(type: "function", function: FunctionSpec(
-            name: "web_request",
-            description: "向任意 HTTP(S) 接口发起请求并返回结果，用于调用外部服务（如 dashi-ppt、图像/视频/音频生成 API、Webhook 等）。返回状态码与响应体；若响应为二进制文件（或指定 save_as），自动保存到 App 文档并可在聊天中打开/分享。仅在用户明确要求调用某外部服务时使用，密钥放 headers，不要写进回复文本。",
-            parameters: [
-                "method": ParameterSpec(type: "string", description: "请求方法 GET/POST/PUT/DELETE/PATCH，默认 GET。"),
-                "url": ParameterSpec(type: "string", description: "完整请求地址，必须 http(s) 开头。"),
-                "headers": ParameterSpec(type: "string", description: "请求头 JSON 字符串，如 {\"Authorization\":\"Bearer xxx\",\"Content-Type\":\"application/json\"}，可省略。"),
-                "body": ParameterSpec(type: "string", description: "请求体，通常为 JSON 字符串；GET 一般省略。"),
-                "save_as": ParameterSpec(type: "string", description: "可选，保存为文件的文件名（含扩展名，如 result.pptx / img.png / clip.mp3）。指定后即使返回文本也会存为文件；不指定时按 Content-Type 自动判断二进制并保存。")
-            ],
-            required: ["url"]
         ))
     ]
+
+    /// 实际下发给模型的工具清单：核心工具始终包含；隐私 / 系统权限类工具需用户授权后追加
+    static var activeTools: [ToolSpec] {
+        var t = coreTools
+        if SettingsStore.shared.anyToolEnabled {
+            t.append(contentsOf: systemTools)
+        }
+        return t
+    }
 
     static func execute(tool name: String, call: [String: AnyCodable]) async -> ToolResult {
         do {

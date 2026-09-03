@@ -494,7 +494,7 @@ struct ChatView: View {
                 let (updated, _) = try await AgentClient.shared.run(
                     messages: trimmed,
                     image: nil,
-                    tools: SettingsStore.shared.anyToolEnabled ? SystemTools.allTools : [],
+                    tools: SystemTools.activeTools,
                     activeSkills: activeSkills
                 ) { partial in
                     store.update(conversationId, messages: partial)
@@ -605,7 +605,7 @@ struct ChatView: View {
                 let (updated, _) = try await AgentClient.shared.run(
                     messages: msgs,
                     image: imageToSend,
-                    tools: SettingsStore.shared.anyToolEnabled ? SystemTools.allTools : [],
+                    tools: SystemTools.activeTools,
                     activeSkills: activeSkills
                 ) { partial in
                     store.update(conversationId, messages: partial)
