@@ -960,7 +960,7 @@ struct SkillsView: View {
                                     .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
                             }
                         }
-                        .disabled(relayBusy || connectorEndpoint.trimmingCharacters(in: .whitespaces).isEmpty || relayUser.trimmingCharacters(in: .whitespaces).isEmpty || relayPass.isEmpty)
+                        .disabled(relayBusy || settings.connectorEndpoint.trimmingCharacters(in: .whitespaces).isEmpty || relayUser.trimmingCharacters(in: .whitespaces).isEmpty || relayPass.isEmpty)
                         .padding(.horizontal, AppSpacing.md)
                     }
 
@@ -1285,7 +1285,7 @@ struct SkillsView: View {
 
     /// 登录 / 注册远程执行服务，成功后保存每用户 token（自动附加到匹配 endpoint 的请求）。
     private func relayAuth() {
-        let ep = connectorEndpoint.trimmingCharacters(in: .whitespacesAndNewlines)
+        let ep = settings.connectorEndpoint.trimmingCharacters(in: .whitespacesAndNewlines)
         let user = relayUser.trimmingCharacters(in: .whitespaces)
         let pass = relayPass
         guard let base = URL(string: ep), let u = URL(string: base.absoluteString + (ep.hasSuffix("/") ? "" : "/") + (relayMode == 0 ? "auth/login" : "auth/register")) else {
