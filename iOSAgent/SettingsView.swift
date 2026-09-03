@@ -1,4 +1,6 @@
 import SwiftUI
+import PhotosUI
+import UniformTypeIdentifiers
 
 enum SettingsRoute: Hashable {
     case api
@@ -7,6 +9,7 @@ enum SettingsRoute: Hashable {
     case legal(LegalType)
     case about
     case skills
+    case account
 }
 
 struct SettingsView: View {
@@ -20,6 +23,9 @@ struct SettingsView: View {
                 Text("设置")
                     .font(.appTitle1())
                     .foregroundStyle(Color.appPrimaryText)
+                    .padding(.horizontal, AppSpacing.lg)
+
+                accountTopCard
                     .padding(.horizontal, AppSpacing.lg)
 
                 VStack(spacing: AppSpacing.md) {
@@ -100,6 +106,45 @@ struct SettingsView: View {
         let formatter = ByteCountFormatter()
         formatter.countStyle = .binary
         return formatter.string(fromByteCount: Int64(bytes))
+    }
+
+    /// 设置页最上方的账户卡：展示登录态，点击进入账户页。
+    private var accountTopCard: some View {
+        NavigationLink(value: SettingsRoute.account) {
+            HStack(spacing: AppSpacing.md) {
+                AccountAvatarView(size: 44)
+                VStack(alignment: .leading, spacing: 2) {
+                    if settings.isLoggedIn {
+                        Text(settings.authDisplayName.isEmpty ? settings.authEmail : settings.authDisplayName)
+                            .font(.appSubheadline().weight(.semibold))
+                            .foregroundStyle(Color.appPrimaryText)
+                            .lineLimit(1)
+                        Text(settings.authEmail)
+                            .font(.appCaption())
+                            .foregroundStyle(Color.appSecondaryText)
+                            .lineLimit(1)
+                    } else {
+                        Text("未登录")
+                            .font(.appSubheadline().weight(.semibold))
+                            .foregroundStyle(Color.appPrimaryText)
+                        Text("点击登录 / 注册账户")
+                            .font(.appCaption())
+                            .foregroundStyle(Color.appSecondaryText)
+                    }
+                }
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundStyle(Color.appSecondaryText)
+            }
+            .padding(.horizontal, AppSpacing.md)
+            .padding(.vertical, AppSpacing.md)
+            .background(Color.appSurface)
+            .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
+            .appCardShadow()
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -792,11 +837,6 @@ struct SkillsView: View {
     // 限流防护：冷却截止时间 + 显式搜索计数（令牌直接绑定 settings.githubToken）
     @State private var ghCooldownUntil: Date = .distantPast
     @State private var searchNonce: Int = 0
-    @State private var relayUser: String = ""
-    @State private var relayPass: String = ""
-    @State private var relayMsg: String?
-    @State private var relayBusy: Bool = false
-    @State private var relayMode: Int = 0   // 0 = 登录, 1 = 注册
 
     var body: some View {
         ScrollView {
@@ -887,100 +927,7 @@ struct SkillsView: View {
                 .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
                 .appCardShadow()
 
-                // 远程执行服务（多租户后端：登录拿每用户 token）
-                VStack(alignment: .leading, spacing: AppSpacing.sm) {
-                    HStack(spacing: AppSpacing.sm) {
-                        Image(systemName: "server.rack")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(Color.appSecondaryText)
-                        Text("远程执行服务（账户）")
-                            .font(.appCaption2().weight(.semibold))
-                            .foregroundStyle(Color.appSecondaryText)
-                        Spacer(minLength: 0)
-                        if !settings.connectorEndpoint.trimmingCharacters(in: .whitespaces).isEmpty {
-                            Text(settings.authToken.isEmpty ? "已填地址" : "已登录")
-                                .font(.appMicro())
-                                .foregroundStyle(Color.appSuccess)
-                        }
-                    }
-                    .padding(.leading, AppSpacing.md)
-                    AppTextField(placeholder: "服务器地址，如 https://velos.chen.cm",
-                                 text: Binding(get: { settings.connectorEndpoint },
-                                               set: { settings.connectorEndpoint = $0 }))
-                        .padding(.horizontal, AppSpacing.md)
-
-                    if !settings.authToken.isEmpty {
-                        HStack(spacing: AppSpacing.sm) {
-                            Image(systemName: "checkmark.seal.fill")
-                                .foregroundStyle(Color.appSuccess)
-                            Text("已登录：\(settings.authUser)")
-                                .font(.appBody())
-                                .foregroundStyle(Color.appPrimaryText)
-                            Spacer(minLength: 0)
-                            Button {
-                                settings.authToken = ""
-                                settings.authUser = ""
-                                relayMsg = "已退出登录"
-                            } label: {
-                                Text("退出登录")
-                                    .font(.appBody().weight(.bold))
-                                    .foregroundStyle(.white)
-                                    .padding(.horizontal, AppSpacing.md)
-                                    .padding(.vertical, 6)
-                                    .background(Color.appError)
-                                    .clipShape(RoundedRectangle(cornerRadius: AppRadius.sm, style: .continuous))
-                            }
-                        }
-                        .padding(.horizontal, AppSpacing.md)
-                    } else {
-                        AppTextField(placeholder: "用户名（至少 3 字符）",
-                                     text: $relayUser)
-                            .padding(.horizontal, AppSpacing.md)
-                        AppSecureField(placeholder: "密码（至少 6 字符）",
-                                       text: $relayPass)
-                            .padding(.horizontal, AppSpacing.md)
-                        Picker("模式", selection: $relayMode) {
-                            Text("登录").tag(0)
-                            Text("注册").tag(1)
-                        }
-                        .pickerStyle(.segmented)
-                        .padding(.horizontal, AppSpacing.md)
-                        Button {
-                            relayAuth()
-                        } label: {
-                            if relayBusy {
-                                ProgressView().frame(height: 40)
-                            } else {
-                                Text(relayMode == 0 ? "登录" : "注册并登录")
-                                    .font(.appBody().weight(.bold))
-                                    .foregroundStyle(.white)
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 10)
-                                    .background(Color.brandAccent)
-                                    .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
-                            }
-                        }
-                        .disabled(relayBusy || settings.connectorEndpoint.trimmingCharacters(in: .whitespaces).isEmpty || relayUser.trimmingCharacters(in: .whitespaces).isEmpty || relayPass.isEmpty)
-                        .padding(.horizontal, AppSpacing.md)
-                    }
-
-                    if let msg = relayMsg {
-                        Text(msg)
-                            .font(.appCaption())
-                            .foregroundStyle(Color.appSecondaryText)
-                            .padding(.horizontal, AppSpacing.md)
-                    }
-                    Text("登录后，对话里用 web_request 调此服务器（/exec、/render）会自动带上你的 token，无需手动填密钥；服务器按你的账户隔离沙箱并限速。部署方式见 dashi-relay/README.md。")
-                        .font(.appCaption())
-                        .foregroundStyle(Color.appSecondaryText)
-                        .lineLimit(nil)
-                        .padding(.horizontal, AppSpacing.md)
-                        .padding(.bottom, AppSpacing.sm)
-                }
-                .padding(.vertical, AppSpacing.sm)
-                .background(Color.appSurface)
-                .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
-                .appCardShadow()
+                // 远程执行服务（账户）入口已移到「账户」页：侧边栏头像或设置页顶部均可进入。
 
                 // GitHub 搜索结果
                 if searchMode == .github {
@@ -1283,48 +1230,6 @@ struct SkillsView: View {
         }
     }
 
-    /// 登录 / 注册远程执行服务，成功后保存每用户 token（自动附加到匹配 endpoint 的请求）。
-    private func relayAuth() {
-        let ep = settings.connectorEndpoint.trimmingCharacters(in: .whitespacesAndNewlines)
-        let user = relayUser.trimmingCharacters(in: .whitespaces)
-        let pass = relayPass
-        guard let base = URL(string: ep), let u = URL(string: base.absoluteString + (ep.hasSuffix("/") ? "" : "/") + (relayMode == 0 ? "auth/login" : "auth/register")) else {
-            relayMsg = "服务器地址无效"; return
-        }
-        guard user.count >= 3, pass.count >= 6 else {
-            relayMsg = relayMode == 0 ? "请输入用户名与密码" : "用户名≥3、密码≥6"; return
-        }
-        relayBusy = true
-        relayMsg = nil
-        var req = URLRequest(url: u)
-        req.httpMethod = "POST"
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.httpBody = try? JSONEncoder().encode(["username": user, "password": pass])
-        Task {
-            do {
-                let (data, resp) = try await URLSession.shared.data(for: req)
-                let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
-                struct Resp: Decodable { let token: String?; let username: String?; let error: String? }
-                let r = try? JSONDecoder().decode(Resp.self, from: data)
-                await MainActor.run {
-                    if code == 200, let t = r?.token, let un = r?.username {
-                        settings.authToken = t
-                        settings.authUser = un
-                        relayPass = ""
-                        relayMsg = "登录成功：\(un)"
-                    } else {
-                        relayMsg = "失败（\(code)）：" + (r?.error ?? "未知错误")
-                    }
-                    relayBusy = false
-                }
-            } catch {
-                await MainActor.run {
-                    relayMsg = "网络错误：\(error.localizedDescription)"; relayBusy = false
-                }
-            }
-        }
-    }
-
     private func installSearchResult(_ result: SkillGitHubSearchResult) {
         let id = result.id.uuidString
         installingIDs.insert(id)
@@ -1442,5 +1347,326 @@ struct AppSecureField: View {
             .padding(.vertical, AppSpacing.md)
             .background(Color.appInputFill)
             .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
+    }
+}
+
+// MARK: - 账户页（醒目入口：侧边栏头像 / 设置顶卡片均可进入）
+
+/// 头像视图：优先显示已保存头像，否则显示占位人形。
+struct AccountAvatarView: View {
+    let size: CGFloat
+    @EnvironmentObject var settings: SettingsStore
+
+    var body: some View {
+        avatarBody
+            .frame(width: size, height: size)
+            .clipShape(Circle())
+            .overlay(Circle().stroke(Color.appSeparator, lineWidth: 1))
+    }
+
+    @ViewBuilder
+    private var avatarBody: some View {
+        if let data = settings.authAvatarData, let img = UIImage(data: data) {
+            Image(uiImage: img)
+                .resizable()
+                .scaledToFill()
+        } else {
+            Image(systemName: "person.crop.circle.fill")
+                .resizable()
+                .scaledToFill()
+                .foregroundStyle(Color.appSecondaryText)
+                .background(Color.appInputFill)
+        }
+    }
+}
+
+struct AccountView: View {
+    @EnvironmentObject var settings: SettingsStore
+    @State private var email = ""
+    @State private var password = ""
+    @State private var displayName = ""
+    @State private var mode: Int = 0          // 0 登录, 1 注册
+    @State private var busy = false
+    @State private var message: String?
+    @State private var draftName = ""
+    @State private var savingName = false
+    @State private var nameMsg: String?
+    @State private var photoItem: PhotosPickerItem?
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: AppSpacing.md) {
+                Text("账户")
+                    .font(.appTitle1())
+                    .foregroundStyle(Color.appPrimaryText)
+
+                if settings.isLoggedIn {
+                    loggedInCard
+                } else {
+                    loggedOutCard
+                }
+            }
+            .padding(.horizontal, AppSpacing.lg)
+            .padding(.top, AppSpacing.md)
+            .padding(.bottom, AppSpacing.xl)
+        }
+        .background(Color.appBackground)
+        .onAppear {
+            if settings.isLoggedIn {
+                draftName = settings.authDisplayName.isEmpty ? settings.authEmail : settings.authDisplayName
+            }
+        }
+    }
+
+    // MARK: 已登录
+    private var loggedInCard: some View {
+        VStack(alignment: .leading, spacing: AppSpacing.md) {
+            VStack(spacing: AppSpacing.md) {
+                HStack(spacing: AppSpacing.md) {
+                    PhotosPicker(selection: Binding(
+                        get: { photoItem },
+                        set: { newItem in
+                            photoItem = newItem
+                            if let newItem {
+                                Task { if let data = await loadImageData(newItem) { await MainActor.run { settings.authAvatarData = data } } }
+                            }
+                        }
+                    ), matching: .images) {
+                        AccountAvatarView(size: 72)
+                            .overlay(alignment: .bottomTrailing) {
+                                Image(systemName: "pencil.circle.fill")
+                                    .font(.system(size: 22))
+                                    .foregroundStyle(Color.brandAccent)
+                                    .background(Circle().fill(Color.appSurface))
+                            }
+                    }
+                    .buttonStyle(.plain)
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(settings.authDisplayName.isEmpty ? settings.authEmail : settings.authDisplayName)
+                            .font(.appTitle3().weight(.bold))
+                            .foregroundStyle(Color.appPrimaryText)
+                            .lineLimit(1)
+                        Text(settings.authEmail)
+                            .font(.appCaption())
+                            .foregroundStyle(Color.appSecondaryText)
+                    }
+                    Spacer(minLength: 0)
+                }
+                .padding(AppSpacing.md)
+            }
+            .background(Color.appSurface)
+            .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
+            .appCardShadow()
+
+            VStack(alignment: .leading, spacing: AppSpacing.sm) {
+                SectionHeader("昵称")
+                HStack(spacing: AppSpacing.md) {
+                    AppTextField(placeholder: "设置显示昵称（1–24 字）", text: $draftName)
+                    Button { saveName() } label: {
+                        if savingName {
+                            ProgressView().frame(width: 56, height: 40)
+                        } else {
+                            Text("保存")
+                                .font(.appBody().weight(.bold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, AppSpacing.lg)
+                                .frame(height: 40)
+                                .background(Color.brandAccent)
+                                .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
+                        }
+                    }
+                    .disabled(savingName || draftName.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+                .padding(.horizontal, AppSpacing.md)
+                if let nameMsg {
+                    Text(nameMsg)
+                        .font(.appCaption())
+                        .foregroundStyle(Color.appSecondaryText)
+                        .padding(.horizontal, AppSpacing.md)
+                }
+            }
+            .padding(.vertical, AppSpacing.sm)
+            .background(Color.appSurface)
+            .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
+            .appCardShadow()
+
+            serverCard
+
+            Button {
+                settings.logoutAccount()
+            } label: {
+                HStack {
+                    Spacer()
+                    Text("退出登录")
+                        .font(.appBody().weight(.bold))
+                        .foregroundStyle(.white)
+                        .padding(.vertical, 12)
+                    Spacer()
+                }
+                .background(Color.appError)
+                .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    // MARK: 未登录
+    private var loggedOutCard: some View {
+        VStack(alignment: .leading, spacing: AppSpacing.md) {
+            VStack(alignment: .leading, spacing: AppSpacing.sm) {
+                SectionHeader("远程执行服务（账户）")
+                Text("登录后，对话里用 web_request 调此服务器（/exec、/render）会自动带上你的 token；服务器按账户隔离沙箱并限速。")
+                    .font(.appCaption())
+                    .foregroundStyle(Color.appSecondaryText)
+                    .lineLimit(nil)
+                    .padding(.horizontal, AppSpacing.md)
+                    .padding(.bottom, AppSpacing.sm)
+            }
+            .padding(.vertical, AppSpacing.sm)
+            .background(Color.appSurface)
+            .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
+            .appCardShadow()
+
+            serverCard
+
+            VStack(alignment: .leading, spacing: AppSpacing.sm) {
+                SectionHeader(mode == 0 ? "登录" : "注册新账户")
+                AppTextField(placeholder: "邮箱", text: $email, keyboard: .emailAddress)
+                    .padding(.horizontal, AppSpacing.md)
+                if mode == 1 {
+                    AppTextField(placeholder: "昵称（可选，默认邮箱前缀）", text: $displayName)
+                        .padding(.horizontal, AppSpacing.md)
+                }
+                AppSecureField(placeholder: "密码（至少 6 字符）", text: $password)
+                    .padding(.horizontal, AppSpacing.md)
+                Picker("模式", selection: $mode) {
+                    Text("登录").tag(0)
+                    Text("注册").tag(1)
+                }
+                .pickerStyle(.segmented)
+                .padding(.horizontal, AppSpacing.md)
+                Button { submit() } label: {
+                    if busy {
+                        ProgressView().frame(height: 44)
+                    } else {
+                        Text(mode == 0 ? "登录" : "注册并登录")
+                            .font(.appBody().weight(.bold))
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(Color.brandAccent)
+                            .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
+                    }
+                }
+                .disabled(busy || settings.connectorEndpoint.trimmingCharacters(in: .whitespaces).isEmpty || email.trimmingCharacters(in: .whitespaces).isEmpty || password.isEmpty)
+                .padding(.horizontal, AppSpacing.md)
+
+                if let message {
+                    Text(message)
+                        .font(.appCaption())
+                        .foregroundStyle(Color.appSecondaryText)
+                        .padding(.horizontal, AppSpacing.md)
+                        .padding(.bottom, AppSpacing.sm)
+                }
+            }
+            .padding(.vertical, AppSpacing.sm)
+            .background(Color.appSurface)
+            .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
+            .appCardShadow()
+        }
+    }
+
+    private var serverCard: some View {
+        VStack(alignment: .leading, spacing: AppSpacing.sm) {
+            SectionHeader("服务器地址")
+            AppTextField(placeholder: "如 https://velos.chen.cm", text: Binding(
+                get: { settings.connectorEndpoint },
+                set: { settings.connectorEndpoint = $0 }
+            ))
+            .padding(.horizontal, AppSpacing.md)
+            if settings.isLoggedIn {
+                HStack(spacing: AppSpacing.sm) {
+                    Image(systemName: "checkmark.seal.fill").foregroundStyle(Color.appSuccess)
+                    Text("已连接到：\(settings.connectorEndpoint)")
+                        .font(.appCaption())
+                        .foregroundStyle(Color.appSecondaryText)
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, AppSpacing.md)
+                .padding(.bottom, AppSpacing.sm)
+            }
+        }
+        .padding(.vertical, AppSpacing.sm)
+        .background(Color.appSurface)
+        .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
+        .appCardShadow()
+    }
+
+    private func submit() {
+        busy = true; message = nil
+        Task {
+            let err = await settings.accountAuth(
+                endpoint: settings.connectorEndpoint,
+                email: email,
+                password: password,
+                displayName: displayName,
+                mode: mode == 0 ? .login : .register
+            )
+            await MainActor.run {
+                busy = false
+                if let err {
+                    message = err
+                } else {
+                    message = mode == 0 ? "登录成功" : "注册成功"
+                    password = ""
+                }
+            }
+        }
+    }
+
+    private func saveName() {
+        savingName = true; nameMsg = nil
+        Task {
+            let err = await settings.updateAccountProfile(displayName: draftName)
+            await MainActor.run {
+                savingName = false
+                nameMsg = err ?? "已保存"
+            }
+        }
+    }
+
+    /// 从 PhotosPickerItem 读取图片 Data（iOS 16 安全：走 itemProvider，不使用 loadTransferable）。
+    private func loadImageData(_ item: PhotosPickerItem) async -> Data? {
+        await withCheckedContinuation { cont in
+            item.itemProvider.loadDataRepresentation(forTypeIdentifier: UTType.image.identifier) { data, _ in
+                cont.resume(returning: data)
+            }
+        }
+    }
+}
+
+struct AccountRootView: View {
+    let onBack: () -> Void
+    var body: some View {
+        NavigationStack {
+            AccountView()
+                .toolbar {
+                    ToolbarItem(placement: .navigationBarLeading) {
+                        Button {
+                            onBack()
+                        } label: {
+                            Image(systemName: "chevron.left")
+                                .font(.system(size: 19, weight: .semibold, design: .rounded))
+                                .foregroundStyle(Color.brandAccent)
+                                .frame(width: 34, height: 34)
+                                .contentShape(Rectangle())
+                        }
+                    }
+                }
+        }
+        .background(Color.appBackground)
+        .toolbarBackground(Color.appBackground, for: .navigationBar)
+        .toolbarColorScheme(.dark, for: .navigationBar)
     }
 }
