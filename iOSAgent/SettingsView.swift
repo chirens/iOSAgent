@@ -792,6 +792,11 @@ struct SkillsView: View {
     // 限流防护：冷却截止时间 + 显式搜索计数（令牌直接绑定 settings.githubToken）
     @State private var ghCooldownUntil: Date = .distantPast
     @State private var searchNonce: Int = 0
+    @State private var relayUser: String = ""
+    @State private var relayPass: String = ""
+    @State private var relayMsg: String?
+    @State private var relayBusy: Bool = false
+    @State private var relayMode: Int = 0   // 0 = 登录, 1 = 注册
 
     var body: some View {
         ScrollView {
@@ -882,32 +887,90 @@ struct SkillsView: View {
                 .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
                 .appCardShadow()
 
-                // 远程 dashi-ppt 渲染服务（服务器中继）
+                // 远程执行服务（多租户后端：登录拿每用户 token）
                 VStack(alignment: .leading, spacing: AppSpacing.sm) {
                     HStack(spacing: AppSpacing.sm) {
                         Image(systemName: "server.rack")
                             .font(.system(size: 13, weight: .semibold))
                             .foregroundStyle(Color.appSecondaryText)
-                        Text("远程 dashi-ppt 服务（服务器渲染）")
+                        Text("远程执行服务（账户）")
                             .font(.appCaption2().weight(.semibold))
                             .foregroundStyle(Color.appSecondaryText)
                         Spacer(minLength: 0)
                         if !settings.connectorEndpoint.trimmingCharacters(in: .whitespaces).isEmpty {
-                            Text("已配置")
+                            Text(settings.authToken.isEmpty ? "已填地址" : "已登录")
                                 .font(.appMicro())
                                 .foregroundStyle(Color.appSuccess)
                         }
                     }
                     .padding(.leading, AppSpacing.md)
-                    AppTextField(placeholder: "服务器地址，如 https://dashi.chen.cm/render",
+                    AppTextField(placeholder: "服务器地址，如 https://relay.chen.cm",
                                  text: Binding(get: { settings.connectorEndpoint },
                                                set: { settings.connectorEndpoint = $0 }))
                         .padding(.horizontal, AppSpacing.md)
-                    AppSecureField(placeholder: "API 密钥（与服务器 DASHI_API_KEY 一致）",
-                                   text: Binding(get: { settings.connectorApiKey },
-                                                set: { settings.connectorApiKey = $0 }))
+
+                    if !settings.authToken.isEmpty {
+                        HStack(spacing: AppSpacing.sm) {
+                            Image(systemName: "checkmark.seal.fill")
+                                .foregroundStyle(Color.appSuccess)
+                            Text("已登录：\(settings.authUser)")
+                                .font(.appBody())
+                                .foregroundStyle(Color.appPrimaryText)
+                            Spacer(minLength: 0)
+                            Button {
+                                settings.authToken = ""
+                                settings.authUser = ""
+                                relayMsg = "已退出登录"
+                            } label: {
+                                Text("退出登录")
+                                    .font(.appBody().weight(.bold))
+                                    .foregroundStyle(.white)
+                                    .padding(.horizontal, AppSpacing.md)
+                                    .padding(.vertical, 6)
+                                    .background(Color.appError)
+                                    .clipShape(RoundedRectangle(cornerRadius: AppRadius.sm, style: .continuous))
+                            }
+                        }
                         .padding(.horizontal, AppSpacing.md)
-                    Text("在服务器部署 dashi-relay 后填写。开启后，对话里说「用 dashi-ppt 生成 PPT」会经 web_request 调此服务渲染真实图文 .pptx（部署方式见 dashi-relay/README.md）。")
+                    } else {
+                        AppTextField(placeholder: "用户名（至少 3 字符）",
+                                     text: $relayUser)
+                            .padding(.horizontal, AppSpacing.md)
+                        AppSecureField(placeholder: "密码（至少 6 字符）",
+                                       text: $relayPass)
+                            .padding(.horizontal, AppSpacing.md)
+                        Picker("模式", selection: $relayMode) {
+                            Text("登录").tag(0)
+                            Text("注册").tag(1)
+                        }
+                        .pickerStyle(.segmented)
+                        .padding(.horizontal, AppSpacing.md)
+                        Button {
+                            relayAuth()
+                        } label: {
+                            if relayBusy {
+                                ProgressView().frame(height: 40)
+                            } else {
+                                Text(relayMode == 0 ? "登录" : "注册并登录")
+                                    .font(.appBody().weight(.bold))
+                                    .foregroundStyle(.white)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 10)
+                                    .background(Color.brandAccent)
+                                    .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
+                            }
+                        }
+                        .disabled(relayBusy || connectorEndpoint.trimmingCharacters(in: .whitespaces).isEmpty || relayUser.trimmingCharacters(in: .whitespaces).isEmpty || relayPass.isEmpty)
+                        .padding(.horizontal, AppSpacing.md)
+                    }
+
+                    if let msg = relayMsg {
+                        Text(msg)
+                            .font(.appCaption())
+                            .foregroundStyle(Color.appSecondaryText)
+                            .padding(.horizontal, AppSpacing.md)
+                    }
+                    Text("登录后，对话里用 web_request 调此服务器（/exec、/render）会自动带上你的 token，无需手动填密钥；服务器按你的账户隔离沙箱并限速。部署方式见 dashi-relay/README.md。")
                         .font(.appCaption())
                         .foregroundStyle(Color.appSecondaryText)
                         .lineLimit(nil)
@@ -1217,6 +1280,48 @@ struct SkillsView: View {
                 }
             }
             installing = false
+        }
+    }
+
+    /// 登录 / 注册远程执行服务，成功后保存每用户 token（自动附加到匹配 endpoint 的请求）。
+    private func relayAuth() {
+        let ep = connectorEndpoint.trimmingCharacters(in: .whitespacesAndNewlines)
+        let user = relayUser.trimmingCharacters(in: .whitespaces)
+        let pass = relayPass
+        guard let base = URL(string: ep), let u = URL(string: base.absoluteString + (ep.hasSuffix("/") ? "" : "/") + (relayMode == 0 ? "auth/login" : "auth/register")) else {
+            relayMsg = "服务器地址无效"; return
+        }
+        guard user.count >= 3, pass.count >= 6 else {
+            relayMsg = relayMode == 0 ? "请输入用户名与密码" : "用户名≥3、密码≥6"; return
+        }
+        relayBusy = true
+        relayMsg = nil
+        var req = URLRequest(url: u)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try? JSONEncoder().encode(["username": user, "password": pass])
+        Task {
+            do {
+                let (data, resp) = try await URLSession.shared.data(for: req)
+                let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
+                struct Resp: Decodable { let token: String?; let username: String?; let error: String? }
+                let r = try? JSONDecoder().decode(Resp.self, from: data)
+                await MainActor.run {
+                    if code == 200, let t = r?.token, let un = r?.username {
+                        settings.authToken = t
+                        settings.authUser = un
+                        relayPass = ""
+                        relayMsg = "登录成功：\(un)"
+                    } else {
+                        relayMsg = "失败（\(code)）：" + (r?.error ?? "未知错误")
+                    }
+                    relayBusy = false
+                }
+            } catch {
+                await MainActor.run {
+                    relayMsg = "网络错误：\(error.localizedDescription)"; relayBusy = false
+                }
+            }
         }
     }
 

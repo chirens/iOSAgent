@@ -52,10 +52,14 @@ class SettingsStore: ObservableObject {
     @AppStorage("sttModelName") var sttModelName: String = "whisper-1"
     /// GitHub 访问令牌（可选）：用于提升 GitHub 搜索 / 安装接口限额（未认证仅 10 次/分钟，带令牌 30 次/分钟）。
     @AppStorage("githubToken") var githubToken: String = ""
-    /// 远程 dashi-ppt 渲染服务地址（服务器部署 dashi-relay 后填入，如 https://dashi.chen.cm/render）。
+    /// 远程执行服务地址（多租户后端，如 https://relay.chen.cm）。
     @AppStorage("connectorEndpoint") var connectorEndpoint: String = ""
-    /// 远程 dashi-ppt 渲染服务鉴权密钥（与服务器 DASHI_API_KEY 一致）。
+    /// 远程执行服务静态 API 密钥（BYOS 模式：服务器 REQUIRE_AUTH=false 时使用的简单密钥；与服务器 RELAY_SECRET 无关）。
     @AppStorage("connectorApiKey") var connectorApiKey: String = ""
+    /// 登录后由服务器签发的每用户 JWT（Bearer token）。仅在 connectorEndpoint 匹配的请求上自动附加。
+    @AppStorage("authToken") var authToken: String = ""
+    /// 当前登录用户名（仅展示用）。
+    @AppStorage("authUser") var authUser: String = ""
     @AppStorage("systemPrompt") var systemPrompt: String = ""
     @AppStorage("hasSeenWelcome") var hasSeenWelcome: Bool = false
 

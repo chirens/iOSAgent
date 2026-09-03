@@ -766,6 +766,24 @@ final class SystemTools {
             }
         }
 
+        // 自动鉴权：仅当请求主机与配置的远程执行服务一致时，附加用户 token（或 BYOS 静态密钥）。
+        // 这样密钥不进模型上下文、不进聊天，且用户换任意 skill 都自动带上自己的凭证。
+        if let ep = URL(string: SettingsStore.shared.connectorEndpoint.trimmingCharacters(in: .whitespacesAndNewlines)),
+           let epHost = ep.host, epHost == u.host {
+            let existing = req.value(forHTTPHeaderField: "Authorization")
+            if existing == nil || existing?.isEmpty == true {
+                let token = SettingsStore.shared.authToken.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !token.isEmpty {
+                    req.setValue("Bearer " + token, forHTTPHeaderField: "Authorization")
+                } else {
+                    let key = SettingsStore.shared.connectorApiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !key.isEmpty {
+                        req.setValue("Bearer " + key, forHTTPHeaderField: "Authorization")
+                    }
+                }
+            }
+        }
+
         if let bStr = string(call, "body"), !bStr.isEmpty {
             req.httpBody = Data(bStr.utf8)
             if req.value(forHTTPHeaderField: "Content-Type") == nil {
