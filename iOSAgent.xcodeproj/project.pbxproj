@@ -281,17 +281,17 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSAppTransportSecurity_NSAllowsArbitraryLoads = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = "同步";
+				INFOPLIST_KEY_CFBundleDisplayName = "velos";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "需要读取相册截图以进行视觉识别";
 				INFOPLIST_KEY_NSRemindersUsageDescription = "需要访问提醒事项，以创建和列出提醒";
 				INFOPLIST_KEY_NSCalendarsUsageDescription = "需要访问日历，以创建日历事件";
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "需要读取健康数据（步数、心率、睡眠等）";
-				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "同步 预留写入健康数据权限";
-				INFOPLIST_KEY_NSContactsUsageDescription = "同步 需要搜索通讯录联系人";
-				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "同步 需要获取当前位置";
-				INFOPLIST_KEY_NSUserNotificationsUsageDescription = "同步 需要发送闹钟、计时器和提醒通知";
-				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "同步 需要语音识别权限，以便在对话框中通过麦克风输入文字";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "同步 需要麦克风权限，以便进行语音输入";
+				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "velos 预留写入健康数据权限";
+				INFOPLIST_KEY_NSContactsUsageDescription = "velos 需要搜索通讯录联系人";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "velos 需要获取当前位置";
+				INFOPLIST_KEY_NSUserNotificationsUsageDescription = "velos 需要发送闹钟、计时器和提醒通知";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "velos 需要语音识别权限，以便在对话框中通过麦克风输入文字";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "velos 需要麦克风权限，以便进行语音输入";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -302,7 +302,7 @@
 				"$(inherited)",
 				"@executable_path/Frameworks",
 			);
-			MARKETING_VERSION = 8.9.0;
+			MARKETING_VERSION = 8.9.1;
 			PRODUCT_BUNDLE_IDENTIFIER = com.chen.iOSAgent;
 			PRODUCT_NAME = "$(TARGET_NAME)";
 			SWIFT_EMIT_LOC_STRINGS = YES;
@@ -322,17 +322,17 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSAppTransportSecurity_NSAllowsArbitraryLoads = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = "同步";
+				INFOPLIST_KEY_CFBundleDisplayName = "velos";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "需要读取相册截图以进行视觉识别";
 				INFOPLIST_KEY_NSRemindersUsageDescription = "需要访问提醒事项，以创建和列出提醒";
 				INFOPLIST_KEY_NSCalendarsUsageDescription = "需要访问日历，以创建日历事件";
 				INFOPLIST_KEY_NSHealthShareUsageDescription = "需要读取健康数据（步数、心率、睡眠等）";
-				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "同步 预留写入健康数据权限";
-				INFOPLIST_KEY_NSContactsUsageDescription = "同步 需要搜索通讯录联系人";
-				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "同步 需要获取当前位置";
-				INFOPLIST_KEY_NSUserNotificationsUsageDescription = "同步 需要发送闹钟、计时器和提醒通知";
-				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "同步 需要语音识别权限，以便在对话框中通过麦克风输入文字";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "同步 需要麦克风权限，以便进行语音输入";
+				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "velos 预留写入健康数据权限";
+				INFOPLIST_KEY_NSContactsUsageDescription = "velos 需要搜索通讯录联系人";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "velos 需要获取当前位置";
+				INFOPLIST_KEY_NSUserNotificationsUsageDescription = "velos 需要发送闹钟、计时器和提醒通知";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "velos 需要语音识别权限，以便在对话框中通过麦克风输入文字";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "velos 需要麦克风权限，以便进行语音输入";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -343,7 +343,7 @@
 				"$(inherited)",
 				"@executable_path/Frameworks",
 			);
-			MARKETING_VERSION = 8.9.0;
+			MARKETING_VERSION = 8.9.1;
 			PRODUCT_BUNDLE_IDENTIFIER = com.chen.iOSAgent;
 			PRODUCT_NAME = "$(TARGET_NAME)";
 			SWIFT_EMIT_LOC_STRINGS = YES;

@@ -395,7 +395,7 @@ final class AgentClient {
         return """
         \(skillBlock)\(connectorBlock)
 
-        你是 同步，一个运行在 iPhone 上的本地 AI Agent。你可以调用系统工具帮用户完成操作。
+        你是 velos，一个运行在 iPhone 上的本地 AI Agent。你可以调用系统工具帮用户完成操作。
 
         当前时间：\(nowStr)（东八区，北京时间）。系统时间已直接提供给你，不要向用户询问现在几点或今天几号，直接用当前时间计算。
         已开启的系统能力：\(capabilities)
@@ -404,7 +404,7 @@ final class AgentClient {
         1. 当用户请求设置闹钟、提醒、日程、倒计时等时间相关操作时，必须使用对应的工具函数，不要只回答文字。
         2. 工具选择必须精确：
            - “闹钟”“叫我起床”“N分钟后叫我” → 用 set_alarm（本地通知响铃）。
-           - “提醒”“提醒我N分钟后做某事”“提醒事项” → 用 create_reminder（写入系统“提醒事项”App，会在锁屏/通知中心弹窗，即使 同步 被划掉也能收到）。
+           - “提醒”“提醒我N分钟后做某事”“提醒事项” → 用 create_reminder（写入系统“提醒事项”App，会在锁屏/通知中心弹窗，即使 velos 被划掉也能收到）。
            - “日程”“会议”“约会” → 用 create_calendar_event（写入系统“日历”App）。
            - “计时”“倒计时” → 用 set_timer。
         3. 对于相对时间如“5分钟后”“半小时后”“明天早上9点”，直接使用 fire_in_minutes / due_in_minutes / duration_minutes；对于绝对时间使用 fire_at / due_at / start_at（ISO8601 格式，如 2026-08-26T09:00:00+08:00）。
@@ -759,7 +759,7 @@ struct SkillInstaller {
         var req = URLRequest(url: url)
         req.timeoutInterval = 30
         req.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
-        req.setValue("iOSAgent/8.9.0", forHTTPHeaderField: "User-Agent")
+        req.setValue("iOSAgent/8.9.1", forHTTPHeaderField: "User-Agent")
         let token = Self.authToken
         if !token.isEmpty { req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
         let (data, resp) = try await URLSession.shared.data(for: req)
@@ -817,7 +817,7 @@ struct SkillInstaller {
         var req = URLRequest(url: url)
         req.timeoutInterval = 30
         req.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
-        req.setValue("iOSAgent/8.9.0", forHTTPHeaderField: "User-Agent")
+        req.setValue("iOSAgent/8.9.1", forHTTPHeaderField: "User-Agent")
         let token = Self.authToken
         if !token.isEmpty { req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
         let (data, resp) = try await URLSession.shared.data(for: req)

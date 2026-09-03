@@ -222,7 +222,7 @@ struct ChatView: View {
         .alert("麦克风/语音识别未授权", isPresented: $showMicError) {
             Button("确定", role: .cancel) {}
         } message: {
-            Text("请在系统设置中为 同步 开启麦克风和语音识别权限。")
+            Text("请在系统设置中为 velos 开启麦克风和语音识别权限。")
         }
         .photosPicker(isPresented: $showPhotoPicker, selection: $photoItem, matching: .images)
         .onChange(of: photoItem) { item in
@@ -538,7 +538,7 @@ struct ChatView: View {
             } catch {
                 if speech.authorizationStatus != .authorized {
                     showMicError = true
-                    errorText = "语音识别需要授权：请在系统设置中为「同步」开启“语音识别”权限。另外，当前云端 API（如 DeepSeek）通常不支持音频转写，建议改用支持 /audio/transcriptions 的接口（如 OpenAI）以获得更好效果。"
+                    errorText = "语音识别需要授权：请在系统设置中为「velos」开启“语音识别”权限。另外，当前云端 API（如 DeepSeek）通常不支持音频转写，建议改用支持 /audio/transcriptions 的接口（如 OpenAI）以获得更好效果。"
                 } else {
                     errorText = "语音识别失败：\(error.localizedDescription)"
                 }
@@ -745,7 +745,7 @@ struct MessageBubble: View {
                     HStack(spacing: 4) {
                         Image(systemName: "sparkle")
                             .font(.appCaption2())
-                        Text("同步")
+                        Text("velos")
                             .font(.appCaption2().weight(.medium))
                     }
                     .foregroundStyle(Color.appSecondaryText)

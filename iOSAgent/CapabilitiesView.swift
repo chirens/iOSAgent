@@ -26,7 +26,7 @@ struct CapabilitiesView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: AppSpacing.md) {
-                Text("同步 能做什么")
+                Text("velos 能做什么")
                     .font(.appTitle1())
                     .foregroundStyle(Color.appPrimaryText)
                     .padding(.horizontal, AppSpacing.md)
