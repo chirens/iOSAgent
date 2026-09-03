@@ -280,6 +280,7 @@
 				CURRENT_PROJECT_VERSION = 5;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSAppTransportSecurity_NSAllowsArbitraryLoads = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "同步";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "需要读取相册截图以进行视觉识别";
 				INFOPLIST_KEY_NSRemindersUsageDescription = "需要访问提醒事项，以创建和列出提醒";
@@ -301,7 +302,7 @@
 				"$(inherited)",
 				"@executable_path/Frameworks",
 			);
-			MARKETING_VERSION = 8.6.1;
+			MARKETING_VERSION = 8.7.0;
 			PRODUCT_BUNDLE_IDENTIFIER = com.chen.iOSAgent;
 			PRODUCT_NAME = "$(TARGET_NAME)";
 			SWIFT_EMIT_LOC_STRINGS = YES;
@@ -320,6 +321,7 @@
 				CURRENT_PROJECT_VERSION = 5;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSAppTransportSecurity_NSAllowsArbitraryLoads = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "同步";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "需要读取相册截图以进行视觉识别";
 				INFOPLIST_KEY_NSRemindersUsageDescription = "需要访问提醒事项，以创建和列出提醒";
@@ -341,7 +343,7 @@
 				"$(inherited)",
 				"@executable_path/Frameworks",
 			);
-			MARKETING_VERSION = 8.6.1;
+			MARKETING_VERSION = 8.7.0;
 			PRODUCT_BUNDLE_IDENTIFIER = com.chen.iOSAgent;
 			PRODUCT_NAME = "$(TARGET_NAME)";
 			SWIFT_EMIT_LOC_STRINGS = YES;
