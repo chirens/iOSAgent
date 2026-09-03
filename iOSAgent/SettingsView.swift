@@ -1366,7 +1366,7 @@ struct AccountAvatarView: View {
 
     @ViewBuilder
     private var avatarBody: some View {
-        if let data = settings.authAvatarData, let img = UIImage(data: data) {
+        if !settings.authAvatarData.isEmpty, let img = UIImage(data: settings.authAvatarData) {
             Image(uiImage: img)
                 .resizable()
                 .scaledToFill()
@@ -1636,13 +1636,9 @@ struct AccountView: View {
         }
     }
 
-    /// 从 PhotosPickerItem 读取图片 Data（iOS 16 安全：走 itemProvider，不使用 loadTransferable）。
+    /// 从 PhotosPickerItem 读取图片 Data（iOS 16 安全：走 loadTransferable，Data 符合 Transferable）。
     private func loadImageData(_ item: PhotosPickerItem) async -> Data? {
-        await withCheckedContinuation { cont in
-            item.itemProvider.loadDataRepresentation(forTypeIdentifier: UTType.image.identifier) { data, _ in
-                cont.resume(returning: data)
-            }
-        }
+        try? await item.loadTransferable(type: Data.self)
     }
 }
 
