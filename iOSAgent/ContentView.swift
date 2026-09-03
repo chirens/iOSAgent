@@ -35,7 +35,7 @@ struct ContentView: View {
         .animation(.spring(response: 0.45, dampingFraction: 0.85), value: showSettings)
         .overlay {
             if showSideMenu {
-                SideMenuOverlay(isPresented: $showSideMenu, path: $path, onSettings: { showSettings = true }, onAccount: { showAccount = true; isPresented = false })
+                SideMenuOverlay(isPresented: $showSideMenu, path: $path, onSettings: { showSettings = true }, onAccount: { showAccount = true; showSideMenu = false })
                     .zIndex(3)
                     .transition(.move(edge: .leading))
             }
