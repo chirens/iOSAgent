@@ -53,7 +53,7 @@ struct ChatRootView: View {
     var body: some View {
         NavigationStack(path: $path) {
             ChatRootList(path: $path)
-                .navigationTitle("同步")
+                .navigationTitle("velos")
                 .navigationBarTitleDisplayMode(.large)
                 .toolbar {
                     ToolbarItem(placement: .navigationBarLeading) {
@@ -474,7 +474,7 @@ struct SideMenuOverlay: View {
                 .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
 
             VStack(alignment: .leading, spacing: 2) {
-                Text("同步")
+                Text("velos")
                     .font(.appTitle2().weight(.bold))
                     .foregroundStyle(Color.appPrimaryText)
                     .lineLimit(1)

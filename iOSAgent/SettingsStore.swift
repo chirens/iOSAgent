@@ -52,7 +52,7 @@ class SettingsStore: ObservableObject {
     @AppStorage("sttModelName") var sttModelName: String = "whisper-1"
     /// GitHub 访问令牌（可选）：用于提升 GitHub 搜索 / 安装接口限额（未认证仅 10 次/分钟，带令牌 30 次/分钟）。
     @AppStorage("githubToken") var githubToken: String = ""
-    /// 远程执行服务地址（多租户后端，如 https://relay.chen.cm）。
+    /// 远程执行服务地址（多租户后端，如 https://velos.chen.cm）。
     @AppStorage("connectorEndpoint") var connectorEndpoint: String = ""
     /// 远程执行服务静态 API 密钥（BYOS 模式：服务器 REQUIRE_AUTH=false 时使用的简单密钥；与服务器 RELAY_SECRET 无关）。
     @AppStorage("connectorApiKey") var connectorApiKey: String = ""
