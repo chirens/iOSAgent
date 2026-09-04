@@ -44,6 +44,8 @@ extension Color {
     static let appSuccess = dynamicColor(dark: "10B981", light: "059669")
     /// 错误红
     static let appError = dynamicColor(dark: "FF453A", light: "DC2626")
+    /// 微信品牌绿（两种模式同色）
+    static let appWechat = Color(uiColor: UIColor(hex: "07C160"))
 
     /// 品牌强调色：WorkBuddy 绿
     static let brandAccent = Color(uiColor: UIColor(hex: "10B981"))

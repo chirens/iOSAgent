@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import PhotosUI
 import UniformTypeIdentifiers
 
@@ -142,16 +143,19 @@ struct SettingsView: View {
                 AccountAvatarView(size: 44)
                 VStack(alignment: .leading, spacing: 2) {
                     if settings.isLoggedIn {
-                        Text(settings.authDisplayName.isEmpty ? settings.authEmail : settings.authDisplayName)
-                            .font(.appSubheadline().weight(.semibold))
-                            .foregroundStyle(Color.appPrimaryText)
-                            .lineLimit(1)
-                        Text(settings.authEmail)
+                        HStack(spacing: 6) {
+                            if settings.accountProvider == .wechat { WechatBadge(size: 15) }
+                            Text(settings.authDisplayName.isEmpty ? settings.authEmail : settings.authDisplayName)
+                                .font(.appSubheadline().weight(.semibold))
+                                .foregroundStyle(Color.appPrimaryText)
+                                .lineLimit(1)
+                        }
+                        Text(settings.accountProvider == .wechat ? "微信账号" : settings.authEmail)
                             .font(.appCaption())
                             .foregroundStyle(Color.appSecondaryText)
                             .lineLimit(1)
                     } else {
-                        Text("未登录")
+                        Text("未注册")
                             .font(.appSubheadline().weight(.semibold))
                             .foregroundStyle(Color.appPrimaryText)
                         Text("点击登录 / 注册账户")
@@ -1416,31 +1420,107 @@ struct AccountAvatarView: View {
     }
 }
 
+// MARK: - 微信标识 / 登录输入组件
+
+/// 微信标识小图标（Assets: WechatMark，缺失时回落到 SF 双气泡）
+struct WechatBadge: View {
+    var size: CGFloat = 15
+
+    var body: some View {
+        Group {
+            if let ui = UIImage(named: "WechatMark") {
+                Image(uiImage: ui)
+                    .resizable()
+                    .scaledToFit()
+            } else {
+                Image(systemName: "bubble.left.and.bubble.right.fill")
+                    .resizable()
+                    .scaledToFit()
+                    .foregroundStyle(Color.appWechat)
+            }
+        }
+        .frame(width: size, height: size)
+    }
+}
+
+/// 带左侧图标的输入行（密码支持明文切换）
+struct AuthIconField: View {
+    let icon: String
+    let placeholder: String
+    @Binding var text: String
+    var isSecure: Bool = false
+    var keyboard: UIKeyboardType = .default
+
+    @State private var revealed = false
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: icon)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(Color.appSecondaryText)
+                .frame(width: 20)
+
+            Group {
+                if isSecure && !revealed {
+                    SecureField(placeholder, text: $text)
+                } else {
+                    TextField(placeholder, text: $text)
+                        .keyboardType(keyboard)
+                        .autocapitalization(.none)
+                        .disableAutocorrection(true)
+                }
+            }
+            .font(.appBody())
+            .foregroundStyle(Color.appPrimaryText)
+
+            if isSecure {
+                Button { revealed.toggle() } label: {
+                    Image(systemName: revealed ? "eye.slash.fill" : "eye.fill")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(Color.appSecondaryText)
+                        .frame(width: 26, height: 26)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, AppSpacing.md)
+        .padding(.vertical, 13)
+        .background(Color.appInputFill)
+        .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
+    }
+}
+
 struct AccountView: View {
     @EnvironmentObject var settings: SettingsStore
+
+    // 邮箱登录 / 注册
     @State private var email = ""
     @State private var password = ""
     @State private var displayName = ""
+    @State private var agreed = false
     @State private var mode: Int = 0          // 0 登录, 1 注册
     @State private var busy = false
     @State private var message: String?
+    @State private var messageIsError = false
+
+    // 已登录
     @State private var draftName = ""
-    @State private var savingName = false
-    @State private var nameMsg: String?
+    @State private var showNameEditor = false
     @State private var photoItem: PhotosPickerItem?
+    @State private var showDeleteConfirm = false
+    @State private var deleting = false
+
+    // 微信授权登录
+    @State private var wechatState = ""
+    @State private var wechatWaiting = false
+    @State private var wechatPolling = false
+    @State private var wechatMsg: String?
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: AppSpacing.md) {
-                Text("账户")
-                    .font(.appTitle1())
-                    .foregroundStyle(Color.appPrimaryText)
-
-                if settings.isLoggedIn {
-                    loggedInCard
-                } else {
-                    loggedOutCard
-                }
+            VStack(spacing: AppSpacing.lg) {
+                if settings.isLoggedIn { profileSection } else { authSection }
             }
             .padding(.horizontal, AppSpacing.lg)
             .padding(.top, AppSpacing.md)
@@ -1448,94 +1528,120 @@ struct AccountView: View {
         }
         .background(Color.appBackground)
         .onAppear {
-            if settings.isLoggedIn {
-                draftName = settings.authDisplayName.isEmpty ? settings.authEmail : settings.authDisplayName
+            draftName = settings.authDisplayName.isEmpty
+                ? (settings.authUser.isEmpty ? settings.authEmail : settings.authUser)
+                : settings.authDisplayName
+        }
+        // 从 Safari/微信授权页返回时自动确认一次（iOS 16 兼容写法，不用 onChange(of:)）
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
+            if wechatWaiting { pollWechat() }
+        }
+        .alert("修改用户名", isPresented: $showNameEditor) {
+            TextField("1–8 个字符", text: $draftName)
+            Button("取消", role: .cancel) {
+                draftName = settings.authDisplayName
             }
+            Button("保存") { saveName() }
+        } message: {
+            Text("用户名最长 8 个字符，保存后会同步到服务器。")
+        }
+        .alert("注销账号", isPresented: $showDeleteConfirm) {
+            Button("取消", role: .cancel) {}
+            Button("注销", role: .destructive) { deleteAccount() }
+        } message: {
+            Text("注销后将永久删除服务器上的账号与该文件，且无法恢复。确定继续吗？")
         }
     }
 
-    // MARK: 已登录
-    private var loggedInCard: some View {
-        VStack(alignment: .leading, spacing: AppSpacing.md) {
-            VStack(spacing: AppSpacing.md) {
-                HStack(spacing: AppSpacing.md) {
-                    PhotosPicker(selection: Binding(
-                        get: { photoItem },
-                        set: { newItem in
-                            photoItem = newItem
-                            if let newItem {
-                                Task { if let data = await loadImageData(newItem) { await MainActor.run { settings.authAvatarData = data } } }
+    // MARK: 已登录 —— 头像居中 + 用户名 / 邮箱 / 注销账号 + 红色退出登录
+
+    private var profileSection: some View {
+        VStack(spacing: AppSpacing.lg) {
+            VStack(spacing: 0) {
+                PhotosPicker(selection: Binding(
+                    get: { photoItem },
+                    set: { newItem in
+                        photoItem = newItem
+                        if let newItem {
+                            Task {
+                                if let data = await loadImageData(newItem) {
+                                    await MainActor.run { settings.authAvatarData = data }
+                                }
                             }
                         }
-                    ), matching: .images) {
-                        AccountAvatarView(size: 72)
-                            .overlay(alignment: .bottomTrailing) {
-                                Image(systemName: "pencil.circle.fill")
-                                    .font(.system(size: 22))
+                    }
+                ), matching: .images) {
+                    AccountAvatarView(size: 96)
+                        .overlay(alignment: .bottomTrailing) {
+                            ZStack {
+                                Circle()
+                                    .fill(Color.appSurface)
+                                    .frame(width: 30, height: 30)
+                                Image(systemName: "camera.fill")
+                                    .font(.system(size: 13, weight: .semibold))
                                     .foregroundStyle(Color.brandAccent)
-                                    .background(Circle().fill(Color.appSurface))
                             }
-                    }
-                    .buttonStyle(.plain)
-
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(settings.authDisplayName.isEmpty ? settings.authEmail : settings.authDisplayName)
-                            .font(.appTitle3().weight(.bold))
-                            .foregroundStyle(Color.appPrimaryText)
-                            .lineLimit(1)
-                        Text(settings.authEmail)
-                            .font(.appCaption())
-                            .foregroundStyle(Color.appSecondaryText)
-                    }
-                    Spacer(minLength: 0)
-                }
-                .padding(AppSpacing.md)
-            }
-            .background(Color.appSurface)
-            .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
-            .appCardShadow()
-
-            VStack(alignment: .leading, spacing: AppSpacing.sm) {
-                SectionHeader("用户名")
-                HStack(spacing: AppSpacing.md) {
-                    AppTextField(placeholder: "设置用户名（1–8 字）", text: $draftName)
-                    Button { saveName() } label: {
-                        if savingName {
-                            ProgressView().frame(width: 56, height: 40)
-                        } else {
-                            Text("保存")
-                                .font(.appBody().weight(.bold))
-                                .foregroundStyle(.white)
-                                .padding(.horizontal, AppSpacing.lg)
-                                .frame(height: 40)
-                                .background(Color.brandAccent)
-                                .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
+                            .offset(x: 2, y: 2)
                         }
-                    }
-                    .disabled(savingName || draftName.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
-                .padding(.horizontal, AppSpacing.md)
-                if let nameMsg {
-                    Text(nameMsg)
-                        .font(.appCaption())
-                        .foregroundStyle(Color.appSecondaryText)
-                        .padding(.horizontal, AppSpacing.md)
-                }
+                .buttonStyle(.plain)
+                .padding(.top, AppSpacing.md)
+                .padding(.bottom, AppSpacing.lg)
             }
-            .padding(.vertical, AppSpacing.sm)
+            .frame(maxWidth: .infinity)
+
+            VStack(spacing: 0) {
+                profileRow(
+                    title: "用户名",
+                    value: settings.authDisplayName.isEmpty ? settings.authUser : settings.authDisplayName,
+                    showWechat: settings.accountProvider == .wechat,
+                    chevron: true
+                ) { showNameEditor = true }
+
+                Divider().padding(.leading, AppSpacing.md)
+
+                profileRow(
+                    title: "邮箱",
+                    value: settings.accountProvider == .wechat ? "未绑定邮箱" : settings.authEmail,
+                    showWechat: false,
+                    chevron: false
+                ) {}
+
+                Divider().padding(.leading, AppSpacing.md)
+
+                Button { showDeleteConfirm = true } label: {
+                    HStack(spacing: AppSpacing.sm) {
+                        Text("注销账号")
+                            .font(.appBody().weight(.semibold))
+                            .foregroundStyle(Color.appError)
+                        Spacer(minLength: 0)
+                        if deleting { ProgressView().scaleEffect(0.8) }
+                    }
+                    .padding(.horizontal, AppSpacing.md)
+                    .padding(.vertical, 15)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .disabled(deleting)
+            }
             .background(Color.appSurface)
             .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
             .appCardShadow()
 
-            Button {
-                settings.logoutAccount()
-            } label: {
+            if let message {
+                Text(message)
+                    .font(.appCaption())
+                    .foregroundStyle(messageIsError ? Color.appError : Color.appSuccess)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            Button { settings.logoutAccount() } label: {
                 HStack {
                     Spacer()
                     Text("退出登录")
                         .font(.appBody().weight(.bold))
                         .foregroundStyle(.white)
-                        .padding(.vertical, 12)
+                        .padding(.vertical, 13)
                     Spacer()
                 }
                 .background(Color.appError)
@@ -1545,58 +1651,183 @@ struct AccountView: View {
         }
     }
 
-    // MARK: 未登录
-    private var loggedOutCard: some View {
-        VStack(alignment: .leading, spacing: AppSpacing.md) {
-            VStack(alignment: .leading, spacing: AppSpacing.sm) {
-                SectionHeader(mode == 0 ? "登录" : "注册新账户")
-                AppTextField(placeholder: "邮箱", text: $email, keyboard: .emailAddress)
-                    .padding(.horizontal, AppSpacing.md)
+    private func profileRow(title: String, value: String, showWechat: Bool, chevron: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: AppSpacing.sm) {
+                Text(title)
+                    .font(.appBody().weight(.semibold))
+                    .foregroundStyle(Color.appPrimaryText)
+                Spacer(minLength: 0)
+                if showWechat { WechatBadge(size: 15) }
+                Text(value.isEmpty ? "未设置" : value)
+                    .font(.appSubheadline())
+                    .foregroundStyle(Color.appSecondaryText)
+                    .lineLimit(1)
+                if chevron {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                        .foregroundStyle(Color.appSecondaryText)
+                }
+            }
+            .padding(.horizontal, AppSpacing.md)
+            .padding(.vertical, 15)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(!chevron)
+    }
+
+    // MARK: 未登录 —— 大厂风格注册 / 登录页
+
+    private var authSection: some View {
+        VStack(spacing: AppSpacing.lg) {
+            VStack(spacing: 10) {
+                Group {
+                    if let ui = UIImage(named: "AppLogo") {
+                        Image(uiImage: ui)
+                            .resizable()
+                            .scaledToFit()
+                    } else {
+                        Image(systemName: "app.badge.checkmark")
+                            .resizable()
+                            .scaledToFit()
+                            .foregroundStyle(Color.brandAccent)
+                    }
+                }
+                .frame(width: 76, height: 76)
+                .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+
+                Text(mode == 0 ? "登录 velos" : "创建 velos 账号")
+                    .font(.appTitle1().weight(.bold))
+                    .foregroundStyle(Color.appPrimaryText)
+
+                Text(mode == 0 ? "登录后可同步账号、调用远程渲染与文件生成" : "邮箱 + 密码，30 秒完成注册")
+                    .font(.appCaption())
+                    .foregroundStyle(Color.appSecondaryText)
+                    .multilineTextAlignment(.center)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.top, AppSpacing.sm)
+
+            Picker("", selection: $mode) {
+                Text("邮箱登录").tag(0)
+                Text("邮箱注册").tag(1)
+            }
+            .pickerStyle(.segmented)
+            .tint(Color.brandAccent)
+
+            VStack(spacing: AppSpacing.sm) {
+                AuthIconField(icon: "envelope.fill", placeholder: "邮箱", text: $email, keyboard: .emailAddress)
                 if mode == 1 {
-                    AppTextField(placeholder: "用户名（可选，默认邮箱前缀，最长8字）", text: $displayName)
-                        .padding(.horizontal, AppSpacing.md)
+                    AuthIconField(icon: "person.fill", placeholder: "用户名（1–8 个字符）", text: $displayName)
                 }
-                AppSecureField(placeholder: "密码（至少 6 字符）", text: $password)
-                    .padding(.horizontal, AppSpacing.md)
-                Picker("模式", selection: $mode) {
-                    Text("登录").tag(0)
-                    Text("注册").tag(1)
+                AuthIconField(icon: "lock.fill", placeholder: "密码（至少 6 位）", text: $password, isSecure: true)
+            }
+
+            if mode == 1 {
+                Button { agreed.toggle() } label: {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Image(systemName: agreed ? "checkmark.square.fill" : "square")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(agreed ? Color.brandAccent : Color.appSecondaryText)
+                        Text("我已阅读并同意《用户协议》与《隐私政策》")
+                            .font(.appCaption())
+                            .foregroundStyle(Color.appSecondaryText)
+                        Spacer(minLength: 0)
+                    }
+                    .contentShape(Rectangle())
                 }
-                .pickerStyle(.segmented)
-                .padding(.horizontal, AppSpacing.md)
-                Button { submit() } label: {
+                .buttonStyle(.plain)
+            }
+
+            if let message {
+                HStack(alignment: .top, spacing: 6) {
+                    Image(systemName: messageIsError ? "exclamationmark.circle.fill" : "checkmark.circle.fill")
+                        .font(.system(size: 13, weight: .semibold))
+                    Text(message)
+                        .lineLimit(nil)
+                    Spacer(minLength: 0)
+                }
+                .font(.appCaption())
+                .foregroundStyle(messageIsError ? Color.appError : Color.appSuccess)
+            }
+
+            Button { submit() } label: {
+                ZStack {
                     if busy {
-                        ProgressView().frame(height: 44)
+                        ProgressView().tint(.white)
                     } else {
                         Text(mode == 0 ? "登录" : "注册并登录")
                             .font(.appBody().weight(.bold))
                             .foregroundStyle(.white)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 12)
-                            .background(Color.brandAccent)
-                            .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
                     }
                 }
-                .disabled(busy || settings.connectorEndpoint.trimmingCharacters(in: .whitespaces).isEmpty || email.trimmingCharacters(in: .whitespaces).isEmpty || password.isEmpty)
-                .padding(.horizontal, AppSpacing.md)
+                .frame(maxWidth: .infinity, minHeight: 48)
+                .background(canSubmit ? Color.brandAccent : Color.appSecondaryText.opacity(0.25))
+                .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .disabled(busy || !canSubmit)
 
-                if let message {
-                    Text(message)
+            HStack(spacing: AppSpacing.sm) {
+                Rectangle().fill(Color.appSeparator).frame(height: 1)
+                Text("其他登录方式")
+                    .font(.appCaption2())
+                    .foregroundStyle(Color.appSecondaryText)
+                Rectangle().fill(Color.appSeparator).frame(height: 1)
+            }
+
+            Button { startWechatLogin() } label: {
+                HStack(spacing: 8) {
+                    WechatBadge(size: 20)
+                    Text("微信登录")
+                        .font(.appBody().weight(.bold))
+                        .foregroundStyle(.white)
+                }
+                .frame(maxWidth: .infinity, minHeight: 48)
+                .background(Color.appWechat)
+                .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
+            }
+            .buttonStyle(.plain)
+
+            if wechatWaiting {
+                VStack(spacing: 8) {
+                    Text("已在浏览器中打开微信授权，完成授权后返回本页即可自动登录。")
                         .font(.appCaption())
                         .foregroundStyle(Color.appSecondaryText)
-                        .padding(.horizontal, AppSpacing.md)
-                        .padding(.bottom, AppSpacing.sm)
+                        .multilineTextAlignment(.center)
+                    Button { pollWechat() } label: {
+                        Text(wechatPolling ? "正在确认…" : "我已完成授权")
+                            .font(.appSubheadline().weight(.semibold))
+                            .foregroundStyle(Color.brandAccent)
+                    }
+                    .disabled(wechatPolling)
                 }
             }
-            .padding(.vertical, AppSpacing.sm)
-            .background(Color.appSurface)
-            .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
-            .appCardShadow()
+
+            if let wechatMsg {
+                Text(wechatMsg)
+                    .font(.appCaption())
+                    .foregroundStyle(Color.appSecondaryText)
+                    .lineLimit(nil)
+                    .multilineTextAlignment(.center)
+            }
         }
     }
 
+    private var canSubmit: Bool {
+        let mailOK = email.trimmingCharacters(in: .whitespaces).contains("@")
+        let pwOK = password.count >= 6
+        guard mode == 1 else { return mailOK && pwOK }
+        let name = displayName.trimmingCharacters(in: .whitespaces)
+        return mailOK && pwOK && !name.isEmpty && name.count <= 8 && agreed
+    }
+
+    // MARK: 动作
+
     private func submit() {
-        busy = true; message = nil
+        busy = true
+        message = nil
         Task {
             let err = await settings.accountAuth(
                 endpoint: settings.connectorEndpoint,
@@ -1609,8 +1840,10 @@ struct AccountView: View {
                 busy = false
                 if let err {
                     message = err
+                    messageIsError = true
                 } else {
                     message = mode == 0 ? "登录成功" : "注册成功"
+                    messageIsError = false
                     password = ""
                 }
             }
@@ -1618,13 +1851,81 @@ struct AccountView: View {
     }
 
     private func saveName() {
-        savingName = true; nameMsg = nil
+        let name = draftName.trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty, name.count <= 8 else {
+            message = "用户名需为 1–8 个字符"
+            messageIsError = true
+            return
+        }
         Task {
-            let err = await settings.updateAccountProfile(displayName: draftName)
+            let err = await settings.updateAccountProfile(displayName: name)
             await MainActor.run {
-                savingName = false
-                nameMsg = err ?? "已保存"
+                if let err {
+                    message = err
+                    messageIsError = true
+                } else {
+                    message = "用户名已更新"
+                    messageIsError = false
+                }
             }
+        }
+    }
+
+    private func deleteAccount() {
+        deleting = true
+        Task {
+            let err = await settings.deleteAccount()
+            await MainActor.run {
+                deleting = false
+                if let err {
+                    message = err
+                    messageIsError = true
+                } else {
+                    message = "账号已注销"
+                    messageIsError = false
+                }
+            }
+        }
+    }
+
+    private func startWechatLogin() {
+        wechatMsg = nil
+        let state = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
+        wechatState = state
+        Task {
+            let r = await settings.wechatStart(state: state)
+            await MainActor.run {
+                if r.configured, let url = r.url {
+                    UIApplication.shared.open(url, options: [:], completionHandler: nil)
+                    wechatWaiting = true
+                } else {
+                    wechatMsg = r.message ?? "微信登录暂不可用，请稍后再试。"
+                }
+            }
+        }
+    }
+
+    private func pollWechat() {
+        guard !wechatState.isEmpty, !wechatPolling else { return }
+        wechatPolling = true
+        let state = wechatState
+        Task {
+            let r = await settings.wechatPoll(state: state)
+            if r.ok, let token = r.token {
+                await settings.applyWechatLogin(token: token,
+                                                email: r.email ?? "",
+                                                username: r.username ?? "微信用户",
+                                                avatarURL: r.avatar)
+                await MainActor.run {
+                    wechatWaiting = false
+                    wechatMsg = nil
+                }
+            } else {
+                await MainActor.run {
+                    wechatMsg = "尚未检测到授权结果，请在浏览器中完成微信授权后返回本页。"
+                }
+            }
+            await MainActor.run { wechatPolling = false }
         }
     }
 

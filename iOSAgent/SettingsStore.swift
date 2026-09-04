@@ -41,6 +41,12 @@ struct APIProfile: Identifiable, Codable, Hashable {
     }
 }
 
+/// 账号登录来源
+enum AccountProvider: String, CaseIterable {
+    case email = "email"
+    case wechat = "wechat"
+}
+
 /// 应用主题模式
 enum AppColorScheme: String, CaseIterable, Identifiable {
     case light, dark, system
@@ -96,6 +102,8 @@ class SettingsStore: ObservableObject {
     @AppStorage("authDisplayName") var authDisplayName: String = ""
     /// 头像图片数据（JPEG/PNG），本地存储；登录态展示与侧边栏使用。
     @AppStorage("authAvatarData") var authAvatarData: Data = Data()
+    /// 登录来源：email（邮箱注册/登录）或 wechat（微信授权登录）。
+    @AppStorage("authProvider") var authProviderRaw: String = AccountProvider.email.rawValue
     @AppStorage("systemPrompt") var systemPrompt: String = ""
     @AppStorage("hasSeenWelcome") var hasSeenWelcome: Bool = false
 
@@ -502,12 +510,17 @@ class SettingsStore: ObservableObject {
         guard mail.contains("@"), password.count >= 6 else {
             return mode == .login ? "请输入邮箱与密码（密码≥6）" : "请输入有效邮箱，密码≥6 字符"
         }
+        let dn = displayName.trimmingCharacters(in: .whitespaces)
+        // 注册强制填写用户名（1–8 字符），避免注册后账户页还要再补一次
+        if mode == .register {
+            guard !dn.isEmpty else { return "请填写用户名（1–8 个字符）" }
+            guard dn.count <= 8 else { return "用户名最多 8 个字符" }
+        }
         var req = URLRequest(url: u)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         var payload: [String: Any] = ["email": mail, "password": password]
-        if mode == .register, !displayName.trimmingCharacters(in: .whitespaces).isEmpty {
-            let dn = displayName.trimmingCharacters(in: .whitespaces)
+        if mode == .register, !dn.isEmpty {
             payload["displayName"] = String(dn.prefix(8))
         }
         req.httpBody = try? JSONSerialization.data(withJSONObject: payload)
@@ -521,9 +534,10 @@ class SettingsStore: ObservableObject {
             }
             authToken = t
             authEmail = r?.email ?? mail
-            let name = (r?.username ?? displayName.trimmingCharacters(in: .whitespaces)).prefix(8)
+            let name = (r?.username ?? dn).prefix(8)
             authUser = String(name)
             authDisplayName = String(name)
+            authProviderRaw = AccountProvider.email.rawValue
             return nil
         } catch {
             return "网络错误：\(error.localizedDescription)"
@@ -561,6 +575,112 @@ class SettingsStore: ObservableObject {
         }
     }
 
+    /// 注销账号：删除服务端账号与云端数据，并清空本地身份。返回 nil 表示成功。
+    func deleteAccount() async -> String? {
+        let ep = connectorEndpoint.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !authToken.isEmpty, !ep.isEmpty,
+              let base = URL(string: ep),
+              let u = URL(string: base.absoluteString + (ep.hasSuffix("/") ? "" : "/") + "auth/delete") else {
+            return "未登录或服务器地址未设置"
+        }
+        var req = URLRequest(url: u)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue("Bearer \(authToken)", forHTTPHeaderField: "Authorization")
+        req.httpBody = try? JSONSerialization.data(withJSONObject: [:])
+        do {
+            let (data, resp) = try await URLSession.shared.data(for: req)
+            let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
+            struct Resp: Decodable { let ok: Bool?; let error: String? }
+            let r = try? JSONDecoder().decode(Resp.self, from: data)
+            guard code == 200 else { return "注销失败（\(code)）：" + (r?.error ?? "未知错误") }
+            logoutAccount()
+            return nil
+        } catch {
+            return "网络错误：\(error.localizedDescription)"
+        }
+    }
+
+    // MARK: - 微信授权登录（服务端公众号网页授权中转，App 侧不内置微信 SDK）
+
+    struct WechatStartResult {
+        let configured: Bool
+        let url: URL?
+        let message: String?
+    }
+
+    struct WechatPollResult {
+        let ok: Bool
+        let token: String?
+        let email: String?
+        let username: String?
+        let avatar: String?
+    }
+
+    /// 向服务端换取微信授权页地址。服务端未配置 AppID/Secret 时返回 configured=false 与说明文案。
+    func wechatStart(state: String) async -> WechatStartResult {
+        let ep = connectorEndpoint.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !ep.isEmpty, let base = URL(string: ep),
+              let u = URL(string: base.absoluteString + (ep.hasSuffix("/") ? "" : "/")
+                          + "auth/wechat/start?state=" + state) else {
+            return WechatStartResult(configured: false, url: nil, message: "服务器地址无效")
+        }
+        do {
+            let (data, resp) = try await URLSession.shared.data(for: URLRequest(url: u))
+            let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
+            struct Resp: Decodable { let configured: Bool?; let url: String?; let message: String? }
+            let r = try? JSONDecoder().decode(Resp.self, from: data)
+            guard code == 200 else {
+                return WechatStartResult(configured: false, url: nil, message: "服务不可用（\(code)）")
+            }
+            let url = r?.url.flatMap { URL(string: $0) }
+            return WechatStartResult(configured: r?.configured ?? false, url: url, message: r?.message)
+        } catch {
+            return WechatStartResult(configured: false, url: nil, message: "网络错误：\(error.localizedDescription)")
+        }
+    }
+
+    /// 轮询微信授权结果（用户在 Safari/微信中完成授权后返回 App 调用）。
+    func wechatPoll(state: String) async -> WechatPollResult {
+        let ep = connectorEndpoint.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !ep.isEmpty, let base = URL(string: ep),
+              let u = URL(string: base.absoluteString + (ep.hasSuffix("/") ? "" : "/")
+                          + "auth/wechat/poll?state=" + state) else {
+            return WechatPollResult(ok: false, token: nil, email: nil, username: nil, avatar: nil)
+        }
+        do {
+            let (data, resp) = try await URLSession.shared.data(for: URLRequest(url: u))
+            let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
+            struct Resp: Decodable { let ok: Bool?; let token: String?; let email: String?; let username: String?; let avatar: String? }
+            let r = try? JSONDecoder().decode(Resp.self, from: data)
+            guard code == 200, r?.ok == true else {
+                return WechatPollResult(ok: false, token: nil, email: nil, username: nil, avatar: nil)
+            }
+            return WechatPollResult(ok: true, token: r?.token, email: r?.email, username: r?.username, avatar: r?.avatar)
+        } catch {
+            return WechatPollResult(ok: false, token: nil, email: nil, username: nil, avatar: nil)
+        }
+    }
+
+    /// 落地微信登录结果（token + 昵称 + 头像）。
+    func applyWechatLogin(token: String, email: String, username: String, avatarURL: String?) async {
+        authToken = token
+        authEmail = email
+        let name = String(username.prefix(8))
+        authUser = name.isEmpty ? "微信用户" : name
+        authDisplayName = authUser
+        authProviderRaw = AccountProvider.wechat.rawValue
+        authAvatarData = Data()   // 先清空，等待新头像下载完成
+        if let s = avatarURL, let u = URL(string: s), let (data, _) = try? await URLSession.shared.data(from: u) {
+            authAvatarData = data
+        }
+    }
+
+    /// 当前登录来源
+    var accountProvider: AccountProvider {
+        AccountProvider(rawValue: authProviderRaw) ?? .email
+    }
+
     /// 退出登录（清掉 token 与本地身份信息，含头像）。
     func logoutAccount() {
         authToken = ""
@@ -568,6 +688,7 @@ class SettingsStore: ObservableObject {
         authEmail = ""
         authDisplayName = ""
         authAvatarData = Data()
+        authProviderRaw = AccountProvider.email.rawValue
     }
 
     var isLoggedIn: Bool { !authToken.isEmpty }
