@@ -11,10 +11,19 @@ enum ChatRoute: Hashable {
 struct ContentView: View {
     @EnvironmentObject var store: ChatStore
     @EnvironmentObject var settings: SettingsStore
+    @AppStorage("appColorScheme") private var appColorSchemeRaw: String = AppColorScheme.dark.rawValue
     @State private var showSideMenu = false
     @State private var showSettings = false
     @State private var showAccount = false
     @State private var path = NavigationPath()
+
+    private var preferredScheme: ColorScheme? {
+        switch AppColorScheme(rawValue: appColorSchemeRaw) ?? .dark {
+        case .light: return .light
+        case .dark: return .dark
+        case .system: return nil
+        }
+    }
 
     var body: some View {
         ZStack {
@@ -33,6 +42,7 @@ struct ContentView: View {
             }
         }
         .animation(.spring(response: 0.45, dampingFraction: 0.85), value: showSettings)
+        .preferredColorScheme(preferredScheme)
         .overlay {
             if showSideMenu {
                 SideMenuOverlay(isPresented: $showSideMenu, path: $path, onSettings: { showSettings = true }, onAccount: { showAccount = true; showSideMenu = false })
@@ -54,6 +64,7 @@ struct ContentView: View {
 
 struct ChatRootView: View {
     @EnvironmentObject var store: ChatStore
+    @Environment(\.colorScheme) private var colorScheme
     let onMenu: () -> Void
     @Binding var path: NavigationPath
 
@@ -116,7 +127,7 @@ struct ChatRootView: View {
         }
         .background(Color.appBackground)
         .toolbarBackground(Color.appBackground, for: .navigationBar)
-        .toolbarColorScheme(.dark, for: .navigationBar)
+        .toolbarColorScheme(colorScheme, for: .navigationBar)
     }
 }
 
@@ -144,6 +155,7 @@ struct ChatRootList: View {
                 searchBar
                 newConversationCard
                 conversationsCard
+                sectionDivider
                 remindersCard
             }
             .padding(.horizontal, AppSpacing.lg)
@@ -219,7 +231,7 @@ struct ChatRootList: View {
         VStack(alignment: .leading, spacing: AppSpacing.xs) {
             HStack {
                 Text("历史对话")
-                    .font(.appCaption2().weight(.semibold))
+                    .font(.appSubheadline().weight(.semibold))
                     .foregroundStyle(Color.appSecondaryText)
                 Spacer()
                 if !searchText.isEmpty {
@@ -274,7 +286,7 @@ struct ChatRootList: View {
             } label: {
                 HStack {
                     Text("提醒 / 待办")
-                        .font(.appCaption2().weight(.semibold))
+                        .font(.appSubheadline().weight(.semibold))
                         .foregroundStyle(Color.appSecondaryText)
                     Spacer()
                     if !reminders.isEmpty {
@@ -337,6 +349,12 @@ struct ChatRootList: View {
                 .appCardShadow()
             }
         }
+    }
+
+    private var sectionDivider: some View {
+        Divider()
+            .background(Color.appSeparator)
+            .padding(.vertical, AppSpacing.sm)
     }
 
     private func loadReminders() async {
@@ -487,16 +505,10 @@ struct SideMenuOverlay: View {
                             .font(.appTitle3().weight(.bold))
                             .foregroundStyle(Color.appPrimaryText)
                             .lineLimit(1)
-                        Text("已登录")
-                            .font(.appCaption())
-                            .foregroundStyle(Color.appSecondaryText)
                     } else {
-                        Text("未登录")
+                        Text("未注册")
                             .font(.appTitle3().weight(.bold))
                             .foregroundStyle(Color.appPrimaryText)
-                        Text("点击登录 / 注册")
-                            .font(.appCaption())
-                            .foregroundStyle(Color.appSecondaryText)
                     }
                 }
 
@@ -514,6 +526,10 @@ struct SideMenuOverlay: View {
         .buttonStyle(.plain)
     }
 
+    private var sidebarConversations: [Conversation] {
+        store.sorted.filter { !($0.title == "新对话" && $0.messages.isEmpty) }
+    }
+
     private var sideMenuList: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: AppSpacing.md) {
@@ -524,13 +540,13 @@ struct SideMenuOverlay: View {
                         path.append(ChatRoute.chat(id))
                         isPresented = false
                     }
-                    if !store.sorted.isEmpty {
-                        ForEach(store.sorted) { conversation in
+                    if !sidebarConversations.isEmpty {
+                        ForEach(sidebarConversations) { conversation in
                             SideMenuButton(icon: "bubble.left", color: .pastelPurple, title: conversation.title) {
                                 path.append(ChatRoute.chat(conversation.id))
                                 isPresented = false
                             }
-                            if conversation.id != store.sorted.last?.id {
+                            if conversation.id != sidebarConversations.last?.id {
                                 Divider().padding(.leading, 44)
                             }
                         }
@@ -604,7 +620,7 @@ struct SideMenuSection<Content: View>: View {
                 content
             }
             .padding(.vertical, AppSpacing.xs)
-            .background(Color(hex: "2C2C2E"))
+            .background(Color.appSurface)
             .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
             .appCardShadow()
         }
@@ -764,6 +780,7 @@ struct FilesHistoryView: View {
 // MARK: - 设置 Tab
 
 struct SettingsRootView: View {
+    @Environment(\.colorScheme) private var colorScheme
     let onBack: () -> Void
     var body: some View {
         NavigationStack {
@@ -809,7 +826,7 @@ struct SettingsRootView: View {
         }
         .background(Color.appBackground)
         .toolbarBackground(Color.appBackground, for: .navigationBar)
-        .toolbarColorScheme(.dark, for: .navigationBar)
+        .toolbarColorScheme(colorScheme, for: .navigationBar)
     }
 }
 

@@ -54,6 +54,7 @@ struct PPTSlide {
 struct FilePreviewView: View {
     let url: URL
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) private var colorScheme
 
     @State private var pptSlides: [PPTSlide] = []
     @State private var plainText: String = ""

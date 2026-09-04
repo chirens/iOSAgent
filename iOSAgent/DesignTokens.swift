@@ -1,52 +1,64 @@
 import SwiftUI
+import UIKit
 
 // MARK: - Design Tokens
 // 来源：swiftui-design-skill-2 (minimal/friendly) + swiftui-native-component-design-skill 的组件化规范。
 // 统一颜色、字体、间距、圆角、阴影，避免各页面硬编码。
+// v8.9.3：颜色已适配浅色/深色双模式，跟随系统或用户手动切换。
 
-extension Color {
-    /// 页面背景：纯黑
-    static let appBackground = Color(hex: "000000")
-    /// 卡片/浮层面背景：iOS 系统深灰
-    static let appSurface = Color(hex: "1C1C1E")
-    /// 输入框/浅灰填充：比卡片稍亮
-    static let appInputFill = Color(hex: "2C2C2E")
-    /// 主文字：纯白
-    static let appPrimaryText = Color(hex: "FFFFFF")
-    /// 次文字：系统灰
-    static let appSecondaryText = Color(hex: "8E8E93")
-    /// 分隔线/微弱边框：深灰
-    static let appSeparator = Color(hex: "38383A")
-    /// 成功绿（WorkBuddy 绿）
-    static let appSuccess = Color(hex: "10B981")
-    /// 错误红（暗红）
-    static let appError = Color(hex: "FF453A")
-
-    /// 品牌强调色：WorkBuddy 绿（呼应截图中的标签/同步状态绿）
-    static let brandAccent = Color(hex: "10B981")
-
-    /// 粉彩分类色（暗黑模式下降低亮度）
-    static let pastelBlue = Color(hex: "2C4A5E")
-    static let pastelGreen = Color(hex: "2D4A34")
-    static let pastelOrange = Color(hex: "5A4A2A")
-    static let pastelPurple = Color(hex: "4A4460")
-    static let pastelPink = Color(hex: "5A3A44")
-    static let pastelTeal = Color(hex: "2A4A4A")
-    static let pastelGray = Color(hex: "3A3A3C")
-
-    init(hex: String) {
+extension UIColor {
+    convenience init(hex: String) {
         let hex = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
         var int: UInt64 = 0
         Scanner(string: hex).scanHexInt64(&int)
-        let r, g, b: UInt64
-        (r, g, b) = ((int >> 16) & 0xFF, (int >> 8) & 0xFF, int & 0xFF)
-        self.init(
-            .sRGB,
-            red: Double(r) / 255,
-            green: Double(g) / 255,
-            blue: Double(b) / 255,
-            opacity: 1
-        )
+        let r = CGFloat((int >> 16) & 0xFF) / 255
+        let g = CGFloat((int >> 8) & 0xFF) / 255
+        let b = CGFloat(int & 0xFF) / 255
+        self.init(red: r, green: g, blue: b, alpha: 1.0)
+    }
+}
+
+private func dynamicColor(dark: String, light: String) -> Color {
+    Color(uiColor: UIColor(dynamicProvider: { traits in
+        switch traits.userInterfaceStyle {
+        case .dark: return UIColor(hex: dark)
+        default: return UIColor(hex: light)
+        }
+    }))
+}
+
+extension Color {
+    /// 页面背景：深色纯黑 / 浅色纯白
+    static let appBackground = dynamicColor(dark: "000000", light: "FFFFFF")
+    /// 卡片/浮层面背景
+    static let appSurface = dynamicColor(dark: "1C1C1E", light: "F2F2F7")
+    /// 输入框/浅灰填充
+    static let appInputFill = dynamicColor(dark: "2C2C2E", light: "E5E5EA")
+    /// 主文字
+    static let appPrimaryText = dynamicColor(dark: "FFFFFF", light: "000000")
+    /// 次文字
+    static let appSecondaryText = Color(uiColor: UIColor(hex: "8E8E93"))
+    /// 分隔线/微弱边框
+    static let appSeparator = dynamicColor(dark: "38383A", light: "C6C6C8")
+    /// 成功绿
+    static let appSuccess = dynamicColor(dark: "10B981", light: "059669")
+    /// 错误红
+    static let appError = dynamicColor(dark: "FF453A", light: "DC2626")
+
+    /// 品牌强调色：WorkBuddy 绿
+    static let brandAccent = Color(uiColor: UIColor(hex: "10B981"))
+
+    /// 粉彩分类色（深色模式降低亮度，浅色模式明亮）
+    static let pastelBlue = dynamicColor(dark: "2C4A5E", light: "E0F2FE")
+    static let pastelGreen = dynamicColor(dark: "2D4A34", light: "DCFCE7")
+    static let pastelOrange = dynamicColor(dark: "5A4A2A", light: "FFEDD5")
+    static let pastelPurple = dynamicColor(dark: "4A4460", light: "F3E8FF")
+    static let pastelPink = dynamicColor(dark: "5A3A44", light: "FCE7F3")
+    static let pastelTeal = dynamicColor(dark: "2A4A4A", light: "CCFBF1")
+    static let pastelGray = dynamicColor(dark: "3A3A3C", light: "E5E5EA")
+
+    init(hex: String) {
+        self.init(uiColor: UIColor(hex: hex))
     }
 }
 
@@ -93,10 +105,24 @@ enum AppRadius {
 }
 
 enum AppShadow {
-    /// 暗黑模式下卡片阴影用极淡白色勾边，避免黑底发灰
-    static let card = ShadowStyle(color: .white.opacity(0.04), radius: 6, x: 0, y: 3)
+    /// 卡片阴影：深色用极淡白色勾边，浅色用淡黑色投影
+    static var card: ShadowStyle {
+        ShadowStyle(color: Color(uiColor: UIColor(dynamicProvider: { traits in
+            switch traits.userInterfaceStyle {
+            case .dark: return UIColor.white.withAlphaComponent(0.04)
+            default: return UIColor.black.withAlphaComponent(0.06)
+            }
+        })), radius: 6, x: 0, y: 3)
+    }
     /// 浮起阴影
-    static let elevated = ShadowStyle(color: .white.opacity(0.06), radius: 10, x: 0, y: 5)
+    static var elevated: ShadowStyle {
+        ShadowStyle(color: Color(uiColor: UIColor(dynamicProvider: { traits in
+            switch traits.userInterfaceStyle {
+            case .dark: return UIColor.white.withAlphaComponent(0.06)
+            default: return UIColor.black.withAlphaComponent(0.08)
+            }
+        })), radius: 10, x: 0, y: 5)
+    }
 }
 
 struct ShadowStyle {

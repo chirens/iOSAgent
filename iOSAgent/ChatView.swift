@@ -8,6 +8,7 @@ struct ChatView: View {
     @Binding var path: NavigationPath
     @EnvironmentObject var store: ChatStore
     @EnvironmentObject var settings: SettingsStore
+    @Environment(\.colorScheme) private var colorScheme
     @StateObject private var voice = VoiceRecorder()
     @StateObject private var speech = SpeechRecognizer()
     @State private var input = ""
