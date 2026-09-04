@@ -41,6 +41,19 @@ struct APIProfile: Identifiable, Codable, Hashable {
     }
 }
 
+/// 应用主题模式
+enum AppColorScheme: String, CaseIterable, Identifiable {
+    case light, dark, system
+    var id: String { rawValue }
+    var displayName: String {
+        switch self {
+        case .light: return "浅色"
+        case .dark: return "深色"
+        case .system: return "跟随系统"
+        }
+    }
+}
+
 /// 全局设置与权限状态
 @MainActor
 class SettingsStore: ObservableObject {
@@ -52,10 +65,27 @@ class SettingsStore: ObservableObject {
     @AppStorage("sttModelName") var sttModelName: String = "whisper-1"
     /// GitHub 访问令牌（可选）：用于提升 GitHub 搜索 / 安装接口限额（未认证仅 10 次/分钟，带令牌 30 次/分钟）。
     @AppStorage("githubToken") var githubToken: String = ""
-    /// 远程执行服务地址（多租户后端，如 https://velos.chen.cm）。
-    @AppStorage("connectorEndpoint") var connectorEndpoint: String = ""
+    /// 远程执行服务地址（多租户后端，固定 https://velos.chen.cm）。
+    @AppStorage("connectorEndpoint") var connectorEndpoint: String = "https://velos.chen.cm"
     /// 远程执行服务静态 API 密钥（BYOS 模式：服务器 REQUIRE_AUTH=false 时使用的简单密钥；与服务器 RELAY_SECRET 无关）。
     @AppStorage("connectorApiKey") var connectorApiKey: String = ""
+
+    /// 主题模式：浅色 / 深色 / 跟随系统（默认深色，与 v8.9.2 之前一致）。
+    @AppStorage("appColorScheme") var appColorSchemeRaw: String = AppColorScheme.dark.rawValue
+
+    /// 当前主题偏好（供 UI 绑定）。
+    var colorSchemePreference: AppColorScheme {
+        AppColorScheme(rawValue: appColorSchemeRaw) ?? .dark
+    }
+
+    /// 用于 SwiftUI .preferredColorScheme 的值：system 返回 nil。
+    var preferredColorScheme: ColorScheme? {
+        switch colorSchemePreference {
+        case .light: return .light
+        case .dark: return .dark
+        case .system: return nil
+        }
+    }
     /// 登录后由服务器签发的每用户 JWT（Bearer token）。仅在 connectorEndpoint 匹配的请求上自动附加。
     @AppStorage("authToken") var authToken: String = ""
     /// 当前登录用户名（仅展示用）。
@@ -477,7 +507,8 @@ class SettingsStore: ObservableObject {
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         var payload: [String: Any] = ["email": mail, "password": password]
         if mode == .register, !displayName.trimmingCharacters(in: .whitespaces).isEmpty {
-            payload["displayName"] = displayName.trimmingCharacters(in: .whitespaces)
+            let dn = displayName.trimmingCharacters(in: .whitespaces)
+            payload["displayName"] = String(dn.prefix(8))
         }
         req.httpBody = try? JSONSerialization.data(withJSONObject: payload)
         do {
@@ -490,9 +521,9 @@ class SettingsStore: ObservableObject {
             }
             authToken = t
             authEmail = r?.email ?? mail
-            let name = r?.username ?? displayName.trimmingCharacters(in: .whitespaces)
-            authUser = name
-            authDisplayName = name
+            let name = (r?.username ?? displayName.trimmingCharacters(in: .whitespaces)).prefix(8)
+            authUser = String(name)
+            authDisplayName = String(name)
             return nil
         } catch {
             return "网络错误：\(error.localizedDescription)"
@@ -508,7 +539,7 @@ class SettingsStore: ObservableObject {
             return "未登录或服务器地址未设置"
         }
         let dn = displayName.trimmingCharacters(in: .whitespaces)
-        guard !dn.isEmpty, dn.count <= 24 else { return "昵称需为 1–24 字符" }
+        guard !dn.isEmpty, dn.count <= 8 else { return "用户名需为 1–8 字符" }
         var req = URLRequest(url: u)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")

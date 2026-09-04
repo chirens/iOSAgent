@@ -1,13 +1,23 @@
 {
-  "images" : [
+  "images": [
     {
-      "idiom" : "universal",
-      "scale" : "1x",
-      "filename" : "AppLogo.png"
+      "idiom": "universal",
+      "size": "1x",
+      "filename": "AppLogo@1x.png"
+    },
+    {
+      "idiom": "universal",
+      "size": "2x",
+      "filename": "AppLogo@2x.png"
+    },
+    {
+      "idiom": "universal",
+      "size": "3x",
+      "filename": "AppLogo@3x.png"
     }
   ],
-  "info" : {
-    "author" : "xcode",
-    "version" : 1
+  "info": {
+    "author": "xcode",
+    "version": 1
   }
 }

@@ -25,8 +25,14 @@ struct SettingsView: View {
                     .foregroundStyle(Color.appPrimaryText)
                     .padding(.horizontal, AppSpacing.lg)
 
-                accountTopCard
-                    .padding(.horizontal, AppSpacing.lg)
+                VStack(alignment: .leading, spacing: AppSpacing.xs) {
+                    Text("用户设置")
+                        .font(.appCaption2().weight(.semibold))
+                        .foregroundStyle(Color.appSecondaryText)
+                        .padding(.leading, AppSpacing.md)
+                    accountTopCard
+                }
+                .padding(.horizontal, AppSpacing.lg)
 
                 VStack(spacing: AppSpacing.md) {
                     SettingsSection(title: "核心设置") {
@@ -37,6 +43,27 @@ struct SettingsView: View {
                         SettingsLinkRow(icon: "text.quote", color: .pastelPurple, title: "自定义系统提示", destination: .customPrompt)
                         Divider().padding(.leading, 48)
                         SettingsLinkRow(icon: "brain.fill", color: .pastelTeal, title: "技能中心", destination: .skills)
+                    }
+
+                    SettingsSection(title: "外观") {
+                        HStack(spacing: AppSpacing.md) {
+                            Text("主题模式")
+                                .font(.appBody().weight(.semibold))
+                                .foregroundStyle(Color.appPrimaryText)
+                            Spacer(minLength: 0)
+                            Picker("主题模式", selection: Binding(
+                                get: { settings.colorSchemePreference },
+                                set: { settings.appColorSchemeRaw = $0.rawValue }
+                            )) {
+                                ForEach(AppColorScheme.allCases) { scheme in
+                                    Text(scheme.displayName).tag(scheme)
+                                }
+                            }
+                            .pickerStyle(.segmented)
+                            .frame(width: 180)
+                        }
+                        .padding(.horizontal, AppSpacing.md)
+                        .padding(.vertical, AppSpacing.sm)
                     }
 
                     SettingsSection(title: "应用") {
@@ -1352,7 +1379,7 @@ struct AppSecureField: View {
 
 // MARK: - 账户页（醒目入口：侧边栏头像 / 设置顶卡片均可进入）
 
-/// 头像视图：优先显示已保存头像，否则显示占位人形。
+/// 头像视图：优先显示已保存头像，无头像时显示 App Logo，最后 fallback 到人形占位。
 struct AccountAvatarView: View {
     let size: CGFloat
     @EnvironmentObject var settings: SettingsStore
@@ -1364,10 +1391,19 @@ struct AccountAvatarView: View {
             .overlay(Circle().stroke(Color.appSeparator, lineWidth: 1))
     }
 
+    private var appLogoImage: Image? {
+        if let ui = UIImage(named: "AppLogo") { return Image(uiImage: ui) }
+        return nil
+    }
+
     @ViewBuilder
     private var avatarBody: some View {
         if !settings.authAvatarData.isEmpty, let img = UIImage(data: settings.authAvatarData) {
             Image(uiImage: img)
+                .resizable()
+                .scaledToFill()
+        } else if let logo = appLogoImage {
+            logo
                 .resizable()
                 .scaledToFill()
         } else {
@@ -1460,9 +1496,9 @@ struct AccountView: View {
             .appCardShadow()
 
             VStack(alignment: .leading, spacing: AppSpacing.sm) {
-                SectionHeader("昵称")
+                SectionHeader("用户名")
                 HStack(spacing: AppSpacing.md) {
-                    AppTextField(placeholder: "设置显示昵称（1–24 字）", text: $draftName)
+                    AppTextField(placeholder: "设置用户名（1–8 字）", text: $draftName)
                     Button { saveName() } label: {
                         if savingName {
                             ProgressView().frame(width: 56, height: 40)
@@ -1491,8 +1527,6 @@ struct AccountView: View {
             .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
             .appCardShadow()
 
-            serverCard
-
             Button {
                 settings.logoutAccount()
             } label: {
@@ -1515,27 +1549,11 @@ struct AccountView: View {
     private var loggedOutCard: some View {
         VStack(alignment: .leading, spacing: AppSpacing.md) {
             VStack(alignment: .leading, spacing: AppSpacing.sm) {
-                SectionHeader("远程执行服务（账户）")
-                Text("登录后，对话里用 web_request 调此服务器（/exec、/render）会自动带上你的 token；服务器按账户隔离沙箱并限速。")
-                    .font(.appCaption())
-                    .foregroundStyle(Color.appSecondaryText)
-                    .lineLimit(nil)
-                    .padding(.horizontal, AppSpacing.md)
-                    .padding(.bottom, AppSpacing.sm)
-            }
-            .padding(.vertical, AppSpacing.sm)
-            .background(Color.appSurface)
-            .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
-            .appCardShadow()
-
-            serverCard
-
-            VStack(alignment: .leading, spacing: AppSpacing.sm) {
                 SectionHeader(mode == 0 ? "登录" : "注册新账户")
                 AppTextField(placeholder: "邮箱", text: $email, keyboard: .emailAddress)
                     .padding(.horizontal, AppSpacing.md)
                 if mode == 1 {
-                    AppTextField(placeholder: "昵称（可选，默认邮箱前缀）", text: $displayName)
+                    AppTextField(placeholder: "用户名（可选，默认邮箱前缀，最长8字）", text: $displayName)
                         .padding(.horizontal, AppSpacing.md)
                 }
                 AppSecureField(placeholder: "密码（至少 6 字符）", text: $password)
@@ -1575,32 +1593,6 @@ struct AccountView: View {
             .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
             .appCardShadow()
         }
-    }
-
-    private var serverCard: some View {
-        VStack(alignment: .leading, spacing: AppSpacing.sm) {
-            SectionHeader("服务器地址")
-            AppTextField(placeholder: "如 https://velos.chen.cm", text: Binding(
-                get: { settings.connectorEndpoint },
-                set: { settings.connectorEndpoint = $0 }
-            ))
-            .padding(.horizontal, AppSpacing.md)
-            if settings.isLoggedIn {
-                HStack(spacing: AppSpacing.sm) {
-                    Image(systemName: "checkmark.seal.fill").foregroundStyle(Color.appSuccess)
-                    Text("已连接到：\(settings.connectorEndpoint)")
-                        .font(.appCaption())
-                        .foregroundStyle(Color.appSecondaryText)
-                    Spacer(minLength: 0)
-                }
-                .padding(.horizontal, AppSpacing.md)
-                .padding(.bottom, AppSpacing.sm)
-            }
-        }
-        .padding(.vertical, AppSpacing.sm)
-        .background(Color.appSurface)
-        .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
-        .appCardShadow()
     }
 
     private func submit() {
@@ -1643,6 +1635,7 @@ struct AccountView: View {
 }
 
 struct AccountRootView: View {
+    @Environment(\.colorScheme) private var colorScheme
     let onBack: () -> Void
     var body: some View {
         NavigationStack {
@@ -1663,6 +1656,6 @@ struct AccountRootView: View {
         }
         .background(Color.appBackground)
         .toolbarBackground(Color.appBackground, for: .navigationBar)
-        .toolbarColorScheme(.dark, for: .navigationBar)
+        .toolbarColorScheme(colorScheme, for: .navigationBar)
     }
 }

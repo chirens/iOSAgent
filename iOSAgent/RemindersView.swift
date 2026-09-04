@@ -4,6 +4,7 @@ import EventKit
 /// 左侧分栏：展示系统提醒事项中未完成/未来的提醒。
 struct RemindersView: View {
     @EnvironmentObject var settings: SettingsStore
+    @Environment(\.colorScheme) private var colorScheme
     @State private var reminders: [EKReminder] = []
     @State private var isLoading = false
     @State private var errorText: String?
