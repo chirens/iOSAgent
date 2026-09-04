@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import EventKit
 
 // 对话导航目标（被 NavigationStack path 使用）
@@ -501,10 +502,13 @@ struct SideMenuOverlay: View {
 
                 VStack(alignment: .leading, spacing: 2) {
                     if settings.isLoggedIn {
-                        Text(settings.authDisplayName.isEmpty ? settings.authEmail : settings.authDisplayName)
-                            .font(.appTitle3().weight(.bold))
-                            .foregroundStyle(Color.appPrimaryText)
-                            .lineLimit(1)
+                        HStack(spacing: 6) {
+                            if settings.accountProvider == .wechat { WechatBadge(size: 15) }
+                            Text(settings.authDisplayName.isEmpty ? settings.authEmail : settings.authDisplayName)
+                                .font(.appTitle3().weight(.bold))
+                                .foregroundStyle(Color.appPrimaryText)
+                                .lineLimit(1)
+                        }
                     } else {
                         Text("未注册")
                             .font(.appTitle3().weight(.bold))
