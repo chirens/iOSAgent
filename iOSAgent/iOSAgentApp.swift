@@ -27,8 +27,15 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
     }
 
     func applicationDidBecomeActive(_ application: UIApplication) {
+        // 回前台重新确认常亮开关（系统会在后台重置 idle timer 行为）
+        UIApplication.shared.isIdleTimerDisabled = SettingsStore.shared.keepAwakeEnabled
         SettingsStore.shared.refreshAuthStatuses()
         NotificationsManager.shared.refreshPending()
+    }
+
+    func applicationWillResignActive(_ application: UIApplication) {
+        // 入后台释放常亮，避免系统层面被判定为异常持锁
+        UIApplication.shared.isIdleTimerDisabled = false
     }
 
     func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {

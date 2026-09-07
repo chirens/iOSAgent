@@ -413,7 +413,7 @@ final class AgentClient {
         6. 工具执行后，根据结果用一句话向用户确认，不要暴露内部 ID、路径或 JSON。
         7. 如果某个能力未开启，引导用户到设置页开启，不要重复尝试调用失败工具。
         8. 当用户要求生成文件、PPT、写报告、整理数据时，使用 create_file（文本/md/csv）或 create_ppt（PPT）。先自己规划内容结构，再调用工具生成；生成后用一句话告诉用户文件已保存，可点击分享按钮导出。
-        9. 【web_request 始终可用】你始终拥有 web_request 这个“万能连接器”工具，可向任意 HTTP(S) 接口发请求，用于调用外部服务（dashi-ppt、图像/视频/音频生成 API、Webhook、任意 REST 接口）。规则：①鉴权令牌放 headers 的 Authorization 字段，绝不写进回复文本；②若服务返回文件（.pptx/.pdf/图片/音频/视频），你会收到可打开/分享的文件；③当某个技能提示词要求你“运行脚本 / 执行 Node / 启动连接器 / 调用本地工具”时，不要声称缺少连接器或无法执行——应将其翻译为对应的 web_request HTTP 调用（用户需提供该服务的 endpoint 与密钥，或该服务以本地服务器形式可达）；④绝不要对用户说“我没有连接器”或“环境未接入”，web_request 就是连接器。
+        9. 【多模态生成】用户要“画一张图 / 生成图片 / 做张配图” → generate_image；要“朗读 / 生成语音 / 配音 / 音频” → generate_speech；要“生成视频 / 做段短片” → generate_video。规则：①generate_video 较慢（1–5 分钟），调用前先告诉用户需要等待；②若 generate_video 返回“仍在生成 / pending”且给出 request_id，稍后用 check_video 查询结果并告诉用户已保存的文件；③生成成功后用一句话说明已保存、可点击打开/分享，不要复述内部 URL 或 JSON。你始终拥有 web_request 这个“万能连接器”工具，可向任意 HTTP(S) 接口发请求，用于调用外部服务（dashi-ppt、图像/视频/音频生成 API、Webhook、任意 REST 接口）。规则：①鉴权令牌放 headers 的 Authorization 字段，绝不写进回复文本；②若服务返回文件（.pptx/.pdf/图片/音频/视频），你会收到可打开/分享的文件；③当某个技能提示词要求你“运行脚本 / 执行 Node / 启动连接器 / 调用本地工具”时，不要声称缺少连接器或无法执行——应将其翻译为对应的 web_request HTTP 调用（用户需提供该服务的 endpoint 与密钥，或该服务以本地服务器形式可达）；④绝不要对用户说“我没有连接器”或“环境未接入”，web_request 就是连接器。
 
         示例：
         用户：5分钟后提醒我喝水
@@ -748,18 +748,21 @@ struct SkillInstaller {
         return [skill]
     }
 
-    /// GitHub 搜索 skill 文件（filename:SKILL.md）。未认证 Search API 限制约 10 次/分钟，调用方需节流。
+    /// GitHub 搜索 skill 文件（filename:SKILL.md）。
+    /// - 已配置 GitHub 令牌：直连 GitHub Search API（限额 30 次/分钟）。
+    /// - 无令牌：走服务端 /skills/search 代理（服务端自带令牌 + 5 分钟缓存），用户零配置也能搜。
     static func searchGitHub(query: String) async throws -> [SkillGitHubSearchResult] {
-        var q = "filename:SKILL.md"
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmed.isEmpty {
-            q += "+\(trimmed.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? trimmed)"
-        }
-        let url = URL(string: "https://api.github.com/search/code?q=\(q)&per_page=10")!
+        guard !Self.authToken.isEmpty else { return try await searchViaRelay(query: query) }
+        return try await searchDirect(query: Self.buildQuery(query), perPage: 10)
+    }
+
+    /// 直连 GitHub Search API（需令牌，否则极易 403 限流）
+    private static func searchDirect(query: String, perPage: Int) async throws -> [SkillGitHubSearchResult] {
+        let url = URL(string: "https://api.github.com/search/code?q=\(query)&per_page=\(perPage)")!
         var req = URLRequest(url: url)
         req.timeoutInterval = 30
         req.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
-        req.setValue("iOSAgent/8.9.4", forHTTPHeaderField: "User-Agent")
+        req.setValue("iOSAgent/8.9.5", forHTTPHeaderField: "User-Agent")
         let token = Self.authToken
         if !token.isEmpty { req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
         let (data, resp) = try await URLSession.shared.data(for: req)
@@ -776,6 +779,84 @@ struct SkillInstaller {
     }
 
     // MARK: - Private
+
+    /// 组装 GitHub 代码搜索表达式（始终限定 filename:SKILL.md）
+    private static func buildQuery(_ query: String) -> String {
+        var q = "filename:SKILL.md"
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty {
+            q += "+\(trimmed.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? trimmed)"
+        }
+        return q
+    }
+
+    /// 无令牌通道：由 velos 服务端代理 GitHub 搜索（服务端令牌 + 缓存，避免匿名 10 次/分钟限流）
+    private static func searchViaRelay(query: String) async throws -> [SkillGitHubSearchResult] {
+        let ep = SettingsStore.shared.connectorEndpoint.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard var comp = URLComponents(string: ep), !ep.isEmpty else {
+            throw SkillInstallError.githubAPIError("服务地址无效")
+        }
+        comp.path = "/skills/search"
+        comp.query = nil
+        comp.queryItems = [URLQueryItem(name: "q", value: query)]
+        guard let url = comp.url else { throw SkillInstallError.invalidURL }
+        var req = URLRequest(url: url)
+        req.timeoutInterval = 30
+        let t = SettingsStore.shared.authToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !t.isEmpty { req.setValue("Bearer \(t)", forHTTPHeaderField: "Authorization") }
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        if let http = resp as? HTTPURLResponse {
+            if http.statusCode == 403 || http.statusCode == 429 {
+                throw SkillInstallError.rateLimited(seconds: Self.rateLimitSeconds(from: resp))
+            }
+            if !(200...299).contains(http.statusCode) {
+                let msg = String(data: data, encoding: .utf8) ?? "status \(http.statusCode)"
+                throw SkillInstallError.githubAPIError(msg)
+            }
+        }
+        struct ProxyItem: Decodable {
+            let name: String?
+            let path: String?
+            let raw: String?
+            let repo: String?
+        }
+        struct ProxyResp: Decodable { let items: [ProxyItem]? }
+        let decoded = try JSONDecoder().decode(ProxyResp.self, from: data)
+        return (decoded.items ?? []).compactMap { it in
+            guard let raw = it.raw, let full = it.name else { return nil }
+            let p = it.path ?? "SKILL.md"
+            return SkillGitHubSearchResult(
+                fullName: full,
+                path: p,
+                htmlURL: it.repo ?? "https://github.com/" + full,
+                rawURL: raw,
+                fileName: (p as NSString).lastPathComponent
+            )
+        }
+    }
+
+    /// 无令牌通道：由 velos 服务端代理抓取 raw 内容（直连 raw 失败时兜底，也可绕开地区网络问题）
+    private static func fetchViaRelay(_ url: URL) async throws -> String {
+        let ep = SettingsStore.shared.connectorEndpoint.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard var comp = URLComponents(string: ep), !ep.isEmpty,
+              let target = comp.url?.appendingPathComponent("/skills/fetch") else {
+            throw SkillInstallError.downloadFailed
+        }
+        var req = URLRequest(url: target)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try? JSONSerialization.data(withJSONObject: ["url": url.absoluteString])
+        req.timeoutInterval = 60
+        let t = SettingsStore.shared.authToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !t.isEmpty { req.setValue("Bearer \(t)", forHTTPHeaderField: "Authorization") }
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        if let http = resp as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+            throw SkillInstallError.downloadFailed
+        }
+        struct FetchResp: Decodable { let content: String? }
+        if let c = try? JSONDecoder().decode(FetchResp.self, from: data).content { return c }
+        throw SkillInstallError.parseFailed
+    }
 
     /// github.com blob 链接转 raw.githubusercontent.com
     private static func normalizeGitHub(_ url: URL) -> URL {
@@ -813,24 +894,10 @@ struct SkillInstaller {
         if !repo.subpath.isEmpty {
             q += " path:\(repo.subpath)"
         }
-        let url = URL(string: "https://api.github.com/search/code?q=\(q.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? q)&per_page=50")!
-        var req = URLRequest(url: url)
-        req.timeoutInterval = 30
-        req.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
-        req.setValue("iOSAgent/8.9.4", forHTTPHeaderField: "User-Agent")
-        let token = Self.authToken
-        if !token.isEmpty { req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
-        let (data, resp) = try await URLSession.shared.data(for: req)
-        if let http = resp as? HTTPURLResponse {
-            if http.statusCode == 403 || http.statusCode == 429 {
-                throw SkillInstallError.rateLimited(seconds: Self.rateLimitSeconds(from: resp))
-            }
-            if !(200...299).contains(http.statusCode) {
-                let msg = String(data: data, encoding: .utf8) ?? "status \(http.statusCode)"
-                throw SkillInstallError.githubAPIError(msg)
-            }
-        }
-        let results = try parseSearchResults(data)
+        let encoded = q.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? q
+        let results = Self.authToken.isEmpty
+            ? try await searchViaRelay(query: q)
+            : try await searchDirect(query: encoded, perPage: 50)
         guard !results.isEmpty else { throw SkillInstallError.noSkillFound }
 
         var installed: [Skill] = []
@@ -851,13 +918,20 @@ struct SkillInstaller {
     }
 
     private static func downloadAndSave(_ url: URL, into dir: URL) async throws -> Skill {
-        var req = URLRequest(url: url)
-        req.timeoutInterval = 30
-        let (data, resp) = try await URLSession.shared.data(for: req)
-        if let http = resp as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
-            throw SkillInstallError.downloadFailed
+        let text: String
+        do {
+            var req = URLRequest(url: url)
+            req.timeoutInterval = 30
+            let (data, resp) = try await URLSession.shared.data(for: req)
+            if let http = resp as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+                throw SkillInstallError.downloadFailed
+            }
+            guard let t = String(data: data, encoding: .utf8) else { throw SkillInstallError.parseFailed }
+            text = t
+        } catch {
+            // 直连失败（网络/地区限制）→ 回落到服务端代理抓取
+            text = try await fetchViaRelay(url)
         }
-        guard let text = String(data: data, encoding: .utf8) else { throw SkillInstallError.parseFailed }
         let fallbackID = url.deletingPathExtension().lastPathComponent
         guard let skill = SkillMarkdownParser.parse(text, fallbackID: fallbackID) else {
             throw SkillInstallError.noSkillFound

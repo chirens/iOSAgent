@@ -26,6 +26,11 @@ struct ContentView: View {
         }
     }
 
+    /// 使用期间禁止自动锁屏：息屏会让 iOS 挂起网络请求，导致 PPT/大文件下载中断。
+    private func applyIdleTimer() {
+        UIApplication.shared.isIdleTimerDisabled = settings.keepAwakeEnabled
+    }
+
     var body: some View {
         ZStack {
             ChatRootView(onMenu: { withAnimation(.spring()) { showSideMenu = true } }, path: $path)
@@ -44,6 +49,8 @@ struct ContentView: View {
         }
         .animation(.spring(response: 0.45, dampingFraction: 0.85), value: showSettings)
         .preferredColorScheme(preferredScheme)
+        .onAppear { applyIdleTimer() }
+        .onChange(of: settings.keepAwakeEnabled) { _ in applyIdleTimer() }
         .overlay {
             if showSideMenu {
                 SideMenuOverlay(isPresented: $showSideMenu, path: $path, onSettings: { showSettings = true }, onAccount: { showAccount = true; showSideMenu = false })
