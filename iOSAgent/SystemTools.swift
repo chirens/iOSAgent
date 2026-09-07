@@ -661,16 +661,24 @@ final class SystemTools {
             return ToolResult(success: false, message: "日历未获得 iOS 授权，请在系统设置 → 隐私与安全性 → 日历中允许 Velos", data: nil)
         }
         let days = int(call, "days") ?? 7
+        let store = SettingsStore.shared.eventStore
         let start = Date()
         let end = Calendar.current.date(byAdding: .day, value: days, to: start)!
-        let predicate = SettingsStore.shared.eventStore.predicateForEvents(withStart: start, end: end, calendars: nil)
-        let events = SettingsStore.shared.eventStore.events(matching: predicate).map { e in
+        // events(matching:) 是同步阻塞调用，必须放到后台线程，避免阻塞主线程（大量日历/首次 iCloud 同步时会让 UI 卡死 → watchdog 杀 app）
+        let events: [EKEvent] = await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                let predicate = store.predicateForEvents(withStart: start, end: end, calendars: nil)
+                let result = store.events(matching: predicate)
+                continuation.resume(returning: result)
+            }
+        }
+        let mapped = events.map { e in
             ["id": AnyCodable(e.calendarItemIdentifier),
              "title": AnyCodable(e.title ?? ""),
              "start": AnyCodable(formatDate(e.startDate)),
              "end": AnyCodable(formatDate(e.endDate))]
         }
-        return ToolResult(success: true, message: "未来 \(days) 天共有 \(events.count) 个日程", data: ["events": AnyCodable(events)])
+        return ToolResult(success: true, message: "未来 \(days) 天共有 \(mapped.count) 个日程", data: ["events": AnyCodable(mapped)])
     }
 
     // MARK: - HealthKit
@@ -793,24 +801,35 @@ final class SystemTools {
 
     // MARK: - Location
 
-    private static func getLocation(_ call: [String: AnyCodable]) async throws -> ToolResult {
-        guard SettingsStore.shared.isEnabled("location") else { return needEnable("位置") }
+    /// 获取当前坐标（供天气等工具复用）。定位失败/未授权返回 nil，不抛异常。
+    private static func currentCoordinate() async -> CLLocationCoordinate2D? {
+        guard SettingsStore.shared.isEnabled("location") else { return nil }
         let manager = CLLocationManager()
         let status = manager.authorizationStatus
-        guard status == .authorizedWhenInUse || status == .authorizedAlways else {
-            return ToolResult(success: false, message: "位置权限未授权", data: nil)
-        }
-        let location = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<CLLocation, Error>) in
-            let delegate = LocationFetchDelegate { result in
-                continuation.resume(with: result)
+        guard status == .authorizedWhenInUse || status == .authorizedAlways else { return nil }
+        do {
+            let location = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<CLLocation, Error>) in
+                let delegate = LocationFetchDelegate(manager: manager) { result in
+                    continuation.resume(with: result)
+                }
+                LocationFetchDelegate.retain(delegate)
+                manager.delegate = delegate
+                manager.requestLocation()
             }
-            LocationFetchDelegate.retain(delegate)
-            manager.delegate = delegate
-            manager.requestLocation()
+            return location.coordinate
+        } catch {
+            return nil
         }
-        let coord = ["latitude": AnyCodable(location.coordinate.latitude), "longitude": AnyCodable(location.coordinate.longitude)]
-        return ToolResult(success: true, message: "当前位置：纬度 \(String(format: "%.5f", location.coordinate.latitude))，经度 \(String(format: "%.5f", location.coordinate.longitude))",
-                          data: ["coordinate": AnyCodable(coord), "accuracy": AnyCodable(location.horizontalAccuracy)])
+    }
+
+    private static func getLocation(_ call: [String: AnyCodable]) async throws -> ToolResult {
+        guard SettingsStore.shared.isEnabled("location") else { return needEnable("位置") }
+        guard let coord = await currentCoordinate() else {
+            return ToolResult(success: false, message: "位置权限未授权或定位失败，请在系统设置 → 隐私与安全性 → 定位服务中允许 Velos", data: nil)
+        }
+        let coordDict = ["latitude": AnyCodable(coord.latitude), "longitude": AnyCodable(coord.longitude)]
+        return ToolResult(success: true, message: "当前位置：纬度 \(String(format: "%.5f", coord.latitude))，经度 \(String(format: "%.5f", coord.longitude))",
+                          data: ["coordinate": AnyCodable(coordDict)])
     }
 
     // MARK: - Clipboard
@@ -1001,7 +1020,7 @@ final class SystemTools {
         guard let url = URL(string: urlString) else { return ToolResult(success: false, message: "URL 无效", data: nil) }
         var req = URLRequest(url: url)
         req.timeoutInterval = 30
-        req.setValue("Velos/9.0.0", forHTTPHeaderField: "User-Agent")
+        req.setValue("Velos/9.0.1", forHTTPHeaderField: "User-Agent")
         let (data, resp) = try await URLSession.shared.data(for: req)
         guard let http = resp as? HTTPURLResponse, (200...299).contains(http.statusCode), !data.isEmpty else {
             return ToolResult(success: false, message: "下载 SKILL.md 失败：HTTP \((resp as? HTTPURLResponse)?.statusCode ?? 0)", data: nil)
@@ -1031,7 +1050,17 @@ final class SystemTools {
     }
 
     private static func getWeather(_ call: [String: AnyCodable]) async throws -> ToolResult {
-        let location = string(call, "location")?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "auto"
+        var location = string(call, "location")?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let isAuto = location.isEmpty || location.lowercased() == "auto"
+            || location.contains("本地") || location.contains("我这") || location.contains("这里") || location.contains("当前位置")
+        // 未指定城市或要求"本地/我这儿"时，优先用 GPS 坐标查天气，避免走 wttr.in 的 IP 定位（代理 IP 会错位）
+        if isAuto {
+            if let coord = await currentCoordinate() {
+                location = String(format: "%.4f,%.4f", coord.latitude, coord.longitude)
+            } else {
+                location = "auto"
+            }
+        }
         let encoded = location.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? "auto"
         let urlString = "https://wttr.in/\(encoded)?format=4&lang=zh"
         guard let url = URL(string: urlString) else { return ToolResult(success: false, message: "天气地址构造失败", data: nil) }
@@ -1406,9 +1435,15 @@ final class LocationFetchDelegate: NSObject, CLLocationManagerDelegate {
     static private var retained: [LocationFetchDelegate] = []
     static func retain(_ d: LocationFetchDelegate) { retained.append(d) }
 
+    // 强引用 manager：否则 getLocation 里作为局部变量的 CLLocationManager 会在 async 挂起后被释放，
+    // 导致 requestLocation() 的回调永不触发（卡死）或访问已释放内存（闪退）。
+    private let manager: CLLocationManager
     private let completion: (Result<CLLocation, Error>) -> Void
     private var done = false
-    init(_ completion: @escaping (Result<CLLocation, Error>) -> Void) { self.completion = completion }
+    init(manager: CLLocationManager, _ completion: @escaping (Result<CLLocation, Error>) -> Void) {
+        self.manager = manager
+        self.completion = completion
+    }
 
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         guard !done, let loc = locations.last else { return }

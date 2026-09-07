@@ -79,8 +79,8 @@ struct ChatRootView: View {
     var body: some View {
         NavigationStack(path: $path) {
             ChatRootList(path: $path)
-                .navigationTitle("Velos")
-                .navigationBarTitleDisplayMode(.large)
+                .navigationTitle("")
+                .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .navigationBarLeading) {
                         Button {
@@ -147,6 +147,11 @@ struct ChatRootList: View {
     @State private var loadingReminders = false
     @State private var reminderExpanded = false
     @State private var searchText = ""
+    @State private var renameTargetID: UUID?
+    @State private var renameText = ""
+    @State private var showRename = false
+    @State private var shareText = ""
+    @State private var showShare = false
 
     private var filteredConversations: [Conversation] {
         let nonempty = store.sorted.filter { !($0.title == "新对话" && $0.messages.isEmpty) }
@@ -176,6 +181,31 @@ struct ChatRootList: View {
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
             Task { await loadReminders() }
         }
+        .sheet(isPresented: $showShare) {
+            ShareSheet(activityItems: [shareText])
+        }
+        .alert("重命名对话", isPresented: $showRename) {
+            TextField("对话名称", text: $renameText)
+            Button("保存") {
+                if let id = renameTargetID {
+                    store.rename(id, to: renameText)
+                }
+            }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("输入新的对话名称")
+        }
+    }
+
+    private func exportConversation(_ c: Conversation) -> String {
+        var lines = ["【\(c.title)】"]
+        for m in c.messages where m.role != "tool" {
+            let text = m.content.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !text.isEmpty else { continue }
+            let who = m.role == "user" ? "我" : "Velos"
+            lines.append("\(who)：\(text)")
+        }
+        return lines.joined(separator: "\n\n")
     }
 
     private var searchBar: some View {
@@ -272,6 +302,21 @@ struct ChatRootList: View {
                             } label: {
                                 Label("删除", systemImage: "trash")
                             }
+                            Button {
+                                renameTargetID = conversation.id
+                                renameText = conversation.title == "新对话" ? "" : conversation.title
+                                showRename = true
+                            } label: {
+                                Label("重命名", systemImage: "pencil")
+                            }
+                            .tint(.blue)
+                            Button {
+                                shareText = exportConversation(conversation)
+                                showShare = true
+                            } label: {
+                                Label("分享", systemImage: "square.and.arrow.up")
+                            }
+                            .tint(.green)
                         }
                         if conversation.id != filteredConversations.last?.id {
                             Divider().padding(.leading, AppSpacing.md)

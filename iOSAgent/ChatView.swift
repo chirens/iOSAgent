@@ -42,6 +42,28 @@ struct ChatView: View {
     // v9.0 对话内 skill 链接一键安装
     @State private var skillInstallStatus: String?
     @State private var isInstallingSkill = false
+    @AppStorage("skillInstallIgnoredURLs") private var ignoredSkillURLsData = "[]"
+
+    /// 已点「不再提示」的 skill 链接集合
+    private var ignoredSkillURLs: Set<String> {
+        get {
+            guard let data = ignoredSkillURLsData.data(using: .utf8),
+                  let arr = try? JSONDecoder().decode([String].self, from: data) else { return [] }
+            return Set(arr)
+        }
+        nonmutating set {
+            if let data = try? JSONEncoder().encode(Array(newValue)),
+               let s = String(data: data, encoding: .utf8) {
+                ignoredSkillURLsData = s
+            }
+        }
+    }
+
+    private func dismissSkillBanner(_ url: String) {
+        var s = ignoredSkillURLs
+        s.insert(url)
+        ignoredSkillURLs = s
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -501,7 +523,8 @@ struct ChatView: View {
             let range = NSRange(location: 0, length: text.utf16.count)
             if let match = regex.firstMatch(in: text, options: [], range: range),
                let r = Range(match.range, in: text) {
-                return String(text[r])
+                let url = String(text[r])
+                if !ignoredSkillURLs.contains(url) { return url }
             }
         }
         return nil
@@ -602,6 +625,12 @@ struct ChatView: View {
                 }
                 .font(.appCaption().weight(.semibold))
                 .foregroundStyle(Color.brandAccent)
+                .buttonStyle(.plain)
+                Button("不再提示") {
+                    dismissSkillBanner(url)
+                }
+                .font(.appCaption2())
+                .foregroundStyle(Color.appSecondaryText)
                 .buttonStyle(.plain)
             }
         }
