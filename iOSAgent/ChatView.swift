@@ -39,6 +39,10 @@ struct ChatView: View {
     @State private var showAttachmentSheet = false
     @State private var pinnedSkillID: String?
 
+    // v9.0 对话内 skill 链接一键安装
+    @State private var skillInstallStatus: String?
+    @State private var isInstallingSkill = false
+
     var body: some View {
         VStack(spacing: 0) {
             ScrollViewReader { proxy in
@@ -145,6 +149,11 @@ struct ChatView: View {
                     .padding(.horizontal, AppSpacing.md)
                 }
                 .padding(.top, AppSpacing.xs)
+            }
+
+            // v9.0 对话内 skill 链接一键安装提示
+            if let url = detectedSkillURL {
+                skillInstallBanner(url: url)
             }
 
             // 输入栏
@@ -482,6 +491,22 @@ struct ChatView: View {
         store.conversations.first(where: { $0.id == conversationId })?.title ?? "对话"
     }
 
+    /// 从最近一条用户或 assistant 消息中提取 GitHub 仓库/技能链接
+    private var detectedSkillURL: String? {
+        let all = store.conversations.first(where: { $0.id == conversationId })?.messages ?? []
+        let pattern = "https?://(www\\.)?github\\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+[^\\s]*"
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else { return nil }
+        for msg in all.reversed() {
+            let text = msg.content
+            let range = NSRange(location: 0, length: text.utf16.count)
+            if let match = regex.firstMatch(in: text, options: [], range: range),
+               let r = Range(match.range, in: text) {
+                return String(text[r])
+            }
+        }
+        return nil
+    }
+
     private func scrollToBottom(_ proxy: ScrollViewProxy, animated: Bool = true) {
         let jump = { (anim: Bool) in
             if anim { withAnimation(.easeOut(duration: 0.22)) { proxy.scrollTo("bottom-anchor", anchor: .bottom) } }
@@ -548,6 +573,65 @@ struct ChatView: View {
                 store.update(conversationId, messages: finalMsgs)
             }
             isLoading = false
+        }
+    }
+
+    /// 对话内 skill 链接一键安装提示条
+    @ViewBuilder
+    private func skillInstallBanner(url: String) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "puzzlepiece.extension.fill")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(Color.brandAccent)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("检测到技能链接")
+                    .font(.appCaption().weight(.semibold))
+                    .foregroundStyle(Color.appPrimaryText)
+                Text(url)
+                    .font(.appCaption2())
+                    .foregroundStyle(Color.appSecondaryText)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 0)
+            if isInstallingSkill {
+                ProgressView()
+                    .scaleEffect(0.8)
+            } else {
+                Button("一键安装") {
+                    installSkill(from: url)
+                }
+                .font(.appCaption().weight(.semibold))
+                .foregroundStyle(Color.brandAccent)
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, AppSpacing.md)
+        .padding(.vertical, AppSpacing.sm)
+        .background(Color.appSurface)
+        .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
+        .padding(.horizontal, AppSpacing.md)
+        .padding(.top, AppSpacing.xs)
+
+        if let status = skillInstallStatus {
+            Text(status)
+                .font(.appCaption2())
+                .foregroundStyle(status.contains("失败") || status.contains("无法") ? Color.appError : Color.brandAccent)
+                .padding(.horizontal, AppSpacing.md)
+                .padding(.top, 2)
+        }
+    }
+
+    private func installSkill(from url: String) {
+        isInstallingSkill = true
+        skillInstallStatus = nil
+        Task {
+            do {
+                let installed = try await SkillRouter.shared.install(from: url)
+                skillInstallStatus = installed.isEmpty ? "安装完成" : "已安装：\(installed.map(\.name).joined(separator: "、"))"
+            } catch {
+                skillInstallStatus = "安装失败：\(error.localizedDescription)"
+            }
+            isInstallingSkill = false
         }
     }
 
@@ -750,7 +834,8 @@ struct MessageBubble: View {
 
                     // 流式占位：模型思考/工具执行中但尚未输出文字时显示动态心跳，避免空矩形。
                     // 工具执行阶段 isStreaming 会被置 false、但 status 仍保留心跳文字，故条件需同时覆盖 status。
-                    if message.role == "assistant" && message.content.isEmpty && (message.isStreaming || message.status != nil) {
+                    // 用 trimming 判断，防止模型只返回换行/空格时误判为非空。
+                    if message.role == "assistant" && message.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && (message.isStreaming || message.status != nil) {
                         HStack(spacing: 6) {
                             ProgressView()
                                 .scaleEffect(0.7)
@@ -766,7 +851,7 @@ struct MessageBubble: View {
                                 .fill(bubbleBackground)
                         )
                         .shadow(color: .black.opacity(0.15), radius: 6, x: 0, y: 2)
-                    } else if !message.content.isEmpty {
+                    } else if !message.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                         Text(message.content)
                             .font(.appBody())
                             .foregroundStyle(message.role == "user" ? .white : Color.appPrimaryText)
@@ -780,7 +865,7 @@ struct MessageBubble: View {
                             .textSelection(.enabled)
                     }
 
-                    if message.role == "assistant" && !message.isStreaming && !message.content.isEmpty {
+                    if message.role == "assistant" && !message.isStreaming && !message.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                         HStack(spacing: 4) {
                             Image(systemName: "sparkle")
                                 .font(.appCaption2())
@@ -805,7 +890,7 @@ struct MessageBubble: View {
                         .padding(.leading, 4)
                     }
 
-                    if !message.isStreaming && !message.content.isEmpty {
+                    if !message.isStreaming && !message.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                         actionButtons
                     }
                 }

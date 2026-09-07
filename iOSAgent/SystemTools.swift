@@ -106,7 +106,7 @@ final class SystemTools {
         )),
         ToolSpec(type: "function", function: FunctionSpec(
             name: "create_file",
-            description: "在 App 文档目录创建一个文本文件（txt/md/html/csv/json）。",
+            description: "在 workspace/ 命名空间创建一个文本文件（txt/md/html/csv/json），与 write_file(namespace='workspace') 等价。",
             parameters: [
                 "filename": ParameterSpec(type: "string", description: "文件名，必须包含扩展名，如 notes.md、data.csv。"),
                 "content": ParameterSpec(type: "string", description: "文件内容。")
@@ -195,6 +195,74 @@ final class SystemTools {
             description: "获取设备信息：型号、系统版本、电量、存储等。",
             parameters: [:],
             required: []
+        )),
+        ToolSpec(type: "function", function: FunctionSpec(
+            name: "get_weather",
+            description: "查询当前天气。支持城市名（如 北京、上海）或留空自动定位。",
+            parameters: [
+                "location": ParameterSpec(type: "string", description: "城市名，如 Beijing、Shanghai、Tokyo。留空则自动获取。")
+            ],
+            required: []
+        )),
+        ToolSpec(type: "function", function: FunctionSpec(
+            name: "list_files",
+            description: "列出某个命名空间下的文件。命名空间：workspace（工作文件）、memory（跨会话记忆）、skills（用户技能）、attachments（附件）。",
+            parameters: [
+                "namespace": ParameterSpec(type: "string", description: "workspace / memory / skills / attachments，默认 workspace。"),
+                "limit": ParameterSpec(type: "integer", description: "最多返回条数，默认20。")
+            ],
+            required: []
+        )),
+        ToolSpec(type: "function", function: FunctionSpec(
+            name: "read_file",
+            description: "读取命名空间中的某个文本文件。",
+            parameters: [
+                "namespace": ParameterSpec(type: "string", description: "workspace / memory / skills / attachments。"),
+                "path": ParameterSpec(type: "string", description: "文件名，如 notes.md、summary.txt。")
+            ],
+            required: ["namespace", "path"]
+        )),
+        ToolSpec(type: "function", function: FunctionSpec(
+            name: "write_file",
+            description: "向命名空间写入文本文件。会自动创建目录。",
+            parameters: [
+                "namespace": ParameterSpec(type: "string", description: "workspace / memory / skills / attachments。"),
+                "path": ParameterSpec(type: "string", description: "文件名，如 report.md、data.csv。"),
+                "content": ParameterSpec(type: "string", description: "文件内容。")
+            ],
+            required: ["namespace", "path", "content"]
+        )),
+        ToolSpec(type: "function", function: FunctionSpec(
+            name: "write_memory",
+            description: "写入一条跨会话记忆。会自动保存到 memory 命名空间，文件名为 title.md 或 memory_时间戳.md。",
+            parameters: [
+                "content": ParameterSpec(type: "string", description: "要记录的记忆内容。"),
+                "title": ParameterSpec(type: "string", description: "记忆标题，用于文件名。可选。")
+            ],
+            required: ["content"]
+        )),
+        ToolSpec(type: "function", function: FunctionSpec(
+            name: "install_skill",
+            description: "从 GitHub URL 安装一个 SKILL.md 到本机。支持 raw 链接或普通仓库链接（自动推导 raw）。安装后立即可用。",
+            parameters: [
+                "url": ParameterSpec(type: "string", description: "SKILL.md 的 GitHub raw 链接，或仓库首页链接。")
+            ],
+            required: ["url"]
+        )),
+        ToolSpec(type: "function", function: FunctionSpec(
+            name: "list_scheduled",
+            description: "列出当前已设置的闹钟/提醒/定时通知。",
+            parameters: [:],
+            required: []
+        )),
+        ToolSpec(type: "function", function: FunctionSpec(
+            name: "cancel_scheduled",
+            description: "取消指定 id 的定时通知，或取消全部。",
+            parameters: [
+                "id": ParameterSpec(type: "string", description: "要取消的通知 id。"),
+                "cancel_all": ParameterSpec(type: "boolean", description: "是否取消全部。")
+            ],
+            required: []
         ))
     ]
 
@@ -202,11 +270,13 @@ final class SystemTools {
     static let systemTools: [ToolSpec] = [
         ToolSpec(type: "function", function: FunctionSpec(
             name: "set_alarm",
-            description: "设置一个闹钟，到点以本地通知响铃/弹窗。用户说“叫我起床”“N分钟后叫我”“明早7点叫我”时使用。不会写入系统提醒事项。",
+            description: "设置一个闹钟，到点以本地通知响铃/弹窗。用户说“叫我起床”“N分钟后叫我”“明早7点叫我”时使用。不会写入系统提醒事项。支持重复：none（默认）/ daily / weekdays / weekly / custom。",
             parameters: [
                 "fire_in_minutes": ParameterSpec(type: "integer", description: "相对几分钟后触发。若用户说“5分钟后叫我”则填5。"),
                 "fire_at": ParameterSpec(type: "string", description: "绝对触发时间 ISO8601（如 2026-08-26T09:00:00+08:00）。当用户提供明确时间如“明早9点”时使用。"),
-                "title": ParameterSpec(type: "string", description: "闹钟标题，如“起床”“会议提醒”。")
+                "title": ParameterSpec(type: "string", description: "闹钟标题，如“起床”“会议提醒”。"),
+                "repeat": ParameterSpec(type: "string", description: "重复规则：none（默认）/ daily（每天）/ weekdays（工作日）/ weekly（每周）/ custom（自定义）。"),
+                "weekdays": ParameterSpec(type: "array", description: "custom 时指定星期，1=周日…7=周六，如 [2,3,4,5,6] 表示工作日。")
             ],
             required: ["title"]
         )),
@@ -237,12 +307,14 @@ final class SystemTools {
         )),
         ToolSpec(type: "function", function: FunctionSpec(
             name: "create_reminder",
-            description: "在系统“提醒事项”App 中创建一条提醒。用户说“提醒我N分钟后做某事”“提醒我拿快递”“明天提醒我交报告”时使用。会出现在系统提醒事项和通知中心，即使 Velos 不在后台也能收到。",
+            description: "在系统“提醒事项”App 中创建一条提醒。用户说“提醒我N分钟后做某事”“提醒我拿快递”“明天提醒我交报告”时使用。会出现在系统提醒事项和通知中心，即使 Velos 不在后台也能收到。支持重复：none（默认）/ daily / weekdays / weekly / custom。",
             parameters: [
                 "title": ParameterSpec(type: "string", description: "提醒标题，即要做的事情，如“喝水”“拿快递”。"),
                 "notes": ParameterSpec(type: "string", description: "备注。"),
                 "due_in_minutes": ParameterSpec(type: "integer", description: "相对几分钟后到期。"),
-                "due_at": ParameterSpec(type: "string", description: "绝对到期时间 ISO8601。")
+                "due_at": ParameterSpec(type: "string", description: "绝对到期时间 ISO8601。"),
+                "repeat": ParameterSpec(type: "string", description: "重复规则：none（默认）/ daily（每天）/ weekdays（工作日）/ weekly（每周）/ custom（自定义）。"),
+                "weekdays": ParameterSpec(type: "array", description: "custom 时指定星期，1=周日…7=周六，如 [2,3,4,5,6] 表示工作日。")
             ],
             required: ["title"]
         )),
@@ -305,11 +377,25 @@ final class SystemTools {
         ))
     ]
 
-    /// 实际下发给模型的工具清单：核心工具始终包含；隐私 / 系统权限类工具需用户授权后追加
+    /// 实际下发给模型的工具清单：核心工具始终包含；隐私 / 系统权限类工具按各自开关独立启用
     static var activeTools: [ToolSpec] {
         var t = coreTools
-        if SettingsStore.shared.anyToolEnabled {
-            t.append(contentsOf: systemTools)
+        let settings = SettingsStore.shared
+        let map: [String: String] = [
+            "set_alarm": "notifications", "set_timer": "notifications", "list_alarms": "notifications", "cancel_alarm": "notifications",
+            "create_reminder": "reminders", "list_reminders": "reminders", "complete_reminder": "reminders",
+            "create_calendar_event": "calendar", "list_events": "calendar",
+            "read_health": "health",
+            "search_contacts": "contacts",
+            "get_location": "location",
+            "get_clipboard": "clipboard", "set_clipboard": "clipboard",
+            "list_photos": "photos",
+            "device_info": "device"
+        ]
+        for spec in systemTools {
+            if let key = map[spec.function.name], settings.isEnabled(key) {
+                t.append(spec)
+            }
         }
         return t
     }
@@ -335,8 +421,16 @@ final class SystemTools {
             case "list_photos": return try await listPhotos(call)
             case "open_url": return try await openURL(call)
             case "device_info": return try await deviceInfo(call)
+            case "get_weather": return try await getWeather(call)
             case "create_file": return try await createFile(call)
             case "create_ppt": return try await createPPT(call)
+            case "list_files": return try await listFiles(call)
+            case "read_file": return try await readFile(call)
+            case "write_file": return try await writeFile(call)
+            case "write_memory": return try await writeMemory(call)
+            case "install_skill": return try await installSkill(call)
+            case "list_scheduled": return try await listScheduled(call)
+            case "cancel_scheduled": return try await cancelScheduled(call)
             case "web_request": return try await webRequest(call)
             case "generate_image": return try await generateImage(call)
             case "generate_speech": return try await generateSpeech(call)
@@ -381,9 +475,13 @@ final class SystemTools {
         } else {
             return ToolResult(success: false, message: "需要提供 fire_in_minutes 或 fire_at", data: nil)
         }
-        let id = try await NotificationsManager.shared.scheduleAlarm(title: title, body: body, fireAt: fireAt)
-        return ToolResult(success: true, message: "已设置闹钟：\(formatDate(fireAt))",
-                          data: ["id": AnyCodable(id), "fire_at": AnyCodable(formatDate(fireAt)), "title": AnyCodable(title)])
+        let repeatPattern = string(call, "repeat") ?? "none"
+        let weekdays = (call["weekdays"]?.value as? [Int]) ?? []
+        let id = try await NotificationsManager.shared.scheduleAlarm(title: title, body: body, fireAt: fireAt,
+                                                                      repeatPattern: repeatPattern, weekdays: weekdays)
+        let repeatText = repeatPattern == "none" ? "" : "（重复：\(repeatPattern)）"
+        return ToolResult(success: true, message: "已设置闹钟：\(formatDate(fireAt))\(repeatText)",
+                          data: ["id": AnyCodable(id), "fire_at": AnyCodable(formatDate(fireAt)), "title": AnyCodable(title), "repeat": AnyCodable(repeatPattern)])
     }
 
     private static func setTimer(_ call: [String: AnyCodable]) async throws -> ToolResult {
@@ -428,31 +526,6 @@ final class SystemTools {
         }
     }
 
-    /// 未授权时尝试请求一次；返回最终是否可用
-    @MainActor
-    private static func ensureEKAuth(_ type: EKEntityType) async -> Bool {
-        if ekAuthorized(type) { return true }
-        let status = EKEventStore.authorizationStatus(for: type)
-        guard status == .notDetermined else { return false }
-        do {
-            if #available(iOS 17.0, *) {
-                if type == .event {
-                    return try await SettingsStore.shared.eventStore.requestFullAccessToEvents()
-                } else {
-                    return try await SettingsStore.shared.eventStore.requestFullAccessToReminders()
-                }
-            } else {
-                return await withCheckedContinuation { continuation in
-                    SettingsStore.shared.eventStore.requestAccess(to: type) { granted, _ in
-                        continuation.resume(returning: granted)
-                    }
-                }
-            }
-        } catch {
-            return false
-        }
-    }
-
     // MARK: - Reminders
 
     private static func createReminder(_ call: [String: AnyCodable]) async throws -> ToolResult {
@@ -462,6 +535,8 @@ final class SystemTools {
         }
         let title = string(call, "title") ?? "提醒"
         let notes = string(call, "notes")
+        let repeatPattern = string(call, "repeat") ?? "none"
+        let customWeekdays = (call["weekdays"]?.value as? [Int]) ?? []
         let reminder = EKReminder(eventStore: SettingsStore.shared.eventStore)
         reminder.title = title
         reminder.notes = notes
@@ -477,16 +552,40 @@ final class SystemTools {
             let comps = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: due)
             reminder.dueDateComponents = comps
             reminder.addAlarm(EKAlarm(absoluteDate: due))
+
+            if repeatPattern != "none", let rule = makeRecurrenceRule(repeatPattern, weekdays: customWeekdays, due: due) {
+                reminder.addRecurrenceRule(rule)
+            }
         }
         try SettingsStore.shared.eventStore.save(reminder, commit: true)
-        return ToolResult(success: true, message: due != nil ? "已创建提醒：\(title)，到期 \(formatDate(due!))" : "已创建提醒：\(title)",
-                          data: ["id": AnyCodable(reminder.calendarItemIdentifier), "title": AnyCodable(title), "due": AnyCodable(due.map(formatDate) ?? "")])
+        let repeatText = repeatPattern == "none" ? "" : "（重复：\(repeatPattern)）"
+        return ToolResult(success: true, message: due != nil ? "已创建提醒：\(title)，到期 \(formatDate(due!))\(repeatText)" : "已创建提醒：\(title)",
+                          data: ["id": AnyCodable(reminder.calendarItemIdentifier), "title": AnyCodable(title), "due": AnyCodable(due.map(formatDate) ?? ""), "repeat": AnyCodable(repeatPattern)])
+    }
+
+    private static func makeRecurrenceRule(_ pattern: String, weekdays: [Int], due: Date) -> EKRecurrenceRule? {
+        switch pattern {
+        case "daily":
+            return EKRecurrenceRule(recurrenceWith: .daily, interval: 1, end: nil)
+        case "weekly":
+            let wd = EKWeekday(rawValue: Calendar.current.component(.weekday, from: due)) ?? .sunday
+            return EKRecurrenceRule(recurrenceWith: .weekly, interval: 1, daysOfTheWeek: [EKRecurrenceDayOfWeek(wd)], daysOfTheMonth: nil, monthsOfTheYear: nil, weeksOfTheYear: nil, daysOfTheYear: nil, setPositions: nil, end: nil)
+        case "weekdays":
+            let days = [2,3,4,5,6].compactMap { EKWeekday(rawValue: $0) }.map { EKRecurrenceDayOfWeek($0) }
+            return EKRecurrenceRule(recurrenceWith: .weekly, interval: 1, daysOfTheWeek: days, daysOfTheMonth: nil, monthsOfTheYear: nil, weeksOfTheYear: nil, daysOfTheYear: nil, setPositions: nil, end: nil)
+        case "custom":
+            let days = weekdays.compactMap { EKWeekday(rawValue: $0) }.map { EKRecurrenceDayOfWeek($0) }
+            guard !days.isEmpty else { return nil }
+            return EKRecurrenceRule(recurrenceWith: .weekly, interval: 1, daysOfTheWeek: days, daysOfTheMonth: nil, monthsOfTheYear: nil, weeksOfTheYear: nil, daysOfTheYear: nil, setPositions: nil, end: nil)
+        default:
+            return nil
+        }
     }
 
     private static func listReminders(_ call: [String: AnyCodable]) async throws -> ToolResult {
         guard SettingsStore.shared.isEnabled("reminders") else { return needEnable("提醒事项") }
-        guard await ensureEKAuth(.reminder) else {
-            return ToolResult(success: false, message: "提醒事项未授权，请在系统设置或 Velos 设置页开启", data: nil)
+        guard ekAuthorized(.reminder) else {
+            return ToolResult(success: false, message: "提醒事项未获得 iOS 授权，请在系统设置 → 隐私与安全性 → 提醒事项中允许 Velos", data: nil)
         }
         let store = SettingsStore.shared.eventStore
         let calendars = store.calendars(for: .reminder)
@@ -551,8 +650,8 @@ final class SystemTools {
 
     private static func listEvents(_ call: [String: AnyCodable]) async throws -> ToolResult {
         guard SettingsStore.shared.isEnabled("calendar") else { return needEnable("日历") }
-        guard await ensureEKAuth(.event) else {
-            return ToolResult(success: false, message: "日历未授权，请在系统设置或 Velos 设置页开启", data: nil)
+        guard ekAuthorized(.event) else {
+            return ToolResult(success: false, message: "日历未获得 iOS 授权，请在系统设置 → 隐私与安全性 → 日历中允许 Velos", data: nil)
         }
         let days = int(call, "days") ?? 7
         let start = Date()
@@ -781,8 +880,11 @@ final class SystemTools {
         guard let filename = string(call, "filename"), let content = string(call, "content") else {
             return ToolResult(success: false, message: "缺少 filename 或 content", data: nil)
         }
-        let url = try DocumentGenerator.generateTextFile(filename: filename, content: content)
-        return ToolResult(success: true, message: "已创建文件：\(url.lastPathComponent)",
+        // v9.0：create_file 默认落到 workspace/ 命名空间，与 write_file 语义一致
+        guard let dir = namespaceURL("workspace") else { return ToolResult(success: false, message: "无法访问 workspace 目录", data: nil) }
+        let url = dir.appendingPathComponent(filename)
+        try content.write(to: url, atomically: true, encoding: .utf8)
+        return ToolResult(success: true, message: "已创建文件：workspace/\(url.lastPathComponent)",
                           data: ["path": AnyCodable(url.path), "filename": AnyCodable(filename)],
                           fileURL: url)
     }
@@ -808,6 +910,147 @@ final class SystemTools {
         return ToolResult(success: true, message: "已生成 PPT：\(url.lastPathComponent)，可在聊天中点击分享。",
                           data: ["path": AnyCodable(url.path), "filename": AnyCodable(url.lastPathComponent)],
                           fileURL: url)
+    }
+
+    // MARK: - 文件命名空间
+
+    private static let allowedNamespaces = ["workspace", "memory", "skills", "attachments"]
+
+    private static func namespaceURL(_ namespace: String) -> URL? {
+        guard allowedNamespaces.contains(namespace) else { return nil }
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+        let dir = docs.appendingPathComponent(namespace, isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true, attributes: nil)
+        return dir
+    }
+
+    private static func listFiles(_ call: [String: AnyCodable]) async throws -> ToolResult {
+        let ns = string(call, "namespace") ?? "workspace"
+        guard allowedNamespaces.contains(ns) else { return ToolResult(success: false, message: "不支持的命名空间：\(ns)", data: nil) }
+        guard let dir = namespaceURL(ns) else { return ToolResult(success: false, message: "无法访问命名空间", data: nil) }
+        let limit = int(call, "limit") ?? 20
+        let urls = (try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? []
+        let names = urls.filter { !$0.hasDirectoryPath && !$0.lastPathComponent.hasPrefix(".") }
+            .sorted { $0.lastPathComponent < $1.lastPathComponent }
+            .prefix(limit)
+            .map { $0.lastPathComponent }
+        return ToolResult(success: true, message: "\(ns)/ 下共 \(names.count) 个文件", data: ["files": AnyCodable(names), "namespace": AnyCodable(ns)])
+    }
+
+    private static func readFile(_ call: [String: AnyCodable]) async throws -> ToolResult {
+        guard let ns = string(call, "namespace"), let path = string(call, "path") else {
+            return ToolResult(success: false, message: "需要提供 namespace 和 path", data: nil)
+        }
+        guard allowedNamespaces.contains(ns) else { return ToolResult(success: false, message: "不支持的命名空间：\(ns)", data: nil) }
+        guard let dir = namespaceURL(ns) else { return ToolResult(success: false, message: "无法访问命名空间", data: nil) }
+        let fileURL = dir.appendingPathComponent(path)
+        guard fileURL.path.hasPrefix(dir.path) else { return ToolResult(success: false, message: "非法路径", data: nil) }
+        guard FileManager.default.fileExists(atPath: fileURL.path) else { return ToolResult(success: false, message: "文件不存在", data: nil) }
+        let content = (try? String(contentsOf: fileURL, encoding: .utf8)) ?? ""
+        return ToolResult(success: true, message: "已读取 \(path)", data: ["content": AnyCodable(content), "namespace": AnyCodable(ns), "path": AnyCodable(path)])
+    }
+
+    private static func writeFile(_ call: [String: AnyCodable]) async throws -> ToolResult {
+        guard let ns = string(call, "namespace"), let path = string(call, "path"), let content = string(call, "content") else {
+            return ToolResult(success: false, message: "需要提供 namespace、path 和 content", data: nil)
+        }
+        guard allowedNamespaces.contains(ns) else { return ToolResult(success: false, message: "不支持的命名空间：\(ns)", data: nil) }
+        guard let dir = namespaceURL(ns) else { return ToolResult(success: false, message: "无法访问命名空间", data: nil) }
+        let fileURL = dir.appendingPathComponent(path)
+        guard fileURL.path.hasPrefix(dir.path) else { return ToolResult(success: false, message: "非法路径", data: nil) }
+        try content.write(to: fileURL, atomically: true, encoding: .utf8)
+        return ToolResult(success: true, message: "已保存到 \(ns)/\(path)", data: ["namespace": AnyCodable(ns), "path": AnyCodable(path)])
+    }
+
+    private static func writeMemory(_ call: [String: AnyCodable]) async throws -> ToolResult {
+        guard let content = string(call, "content") else { return ToolResult(success: false, message: "需要提供 content", data: nil) }
+        let title = string(call, "title")?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let f = DateFormatter()
+        f.dateFormat = "yyyyMMdd_HHmmss"
+        f.locale = Locale(identifier: "en_US_POSIX")
+        let filename = (title?.isEmpty == false ? title! : "memory_\(f.string(from: Date()))") + ".md"
+        let ns = "memory"
+        guard let dir = namespaceURL(ns) else { return ToolResult(success: false, message: "无法访问记忆目录", data: nil) }
+        let fileURL = dir.appendingPathComponent(filename)
+        try content.write(to: fileURL, atomically: true, encoding: .utf8)
+        return ToolResult(success: true, message: "记忆已保存：\(filename)", data: ["namespace": AnyCodable(ns), "path": AnyCodable(filename)])
+    }
+
+    private static func installSkill(_ call: [String: AnyCodable]) async throws -> ToolResult {
+        guard var urlString = string(call, "url"), !urlString.isEmpty else {
+            return ToolResult(success: false, message: "需要提供 url", data: nil)
+        }
+        // 普通 github.com 仓库链接 → 推导 raw
+        if urlString.contains("github.com"), !urlString.contains("raw.githubusercontent.com") {
+            let clean = urlString.trimmingCharacters(in: .whitespacesAndNewlines)
+                .replacingOccurrences(of: "https://github.com/", with: "")
+                .replacingOccurrences(of: "http://github.com/", with: "")
+            let parts = clean.split(separator: "/").map(String.init)
+            guard parts.count >= 2 else { return ToolResult(success: false, message: "无效的 GitHub 仓库链接", data: nil) }
+            let owner = parts[0], repo = parts[1]
+            let branch = (parts.count >= 4 && parts[2] == "tree") ? parts[3] : "main"
+            urlString = "https://raw.githubusercontent.com/\(owner)/\(repo)/\(branch)/SKILL.md"
+        }
+        guard let url = URL(string: urlString) else { return ToolResult(success: false, message: "URL 无效", data: nil) }
+        var req = URLRequest(url: url)
+        req.timeoutInterval = 30
+        req.setValue("Velos/9.0.0", forHTTPHeaderField: "User-Agent")
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        guard let http = resp as? HTTPURLResponse, (200...299).contains(http.statusCode), !data.isEmpty else {
+            return ToolResult(success: false, message: "下载 SKILL.md 失败：HTTP \((resp as? HTTPURLResponse)?.statusCode ?? 0)", data: nil)
+        }
+        guard let raw = String(data: data, encoding: .utf8), raw.contains("---") else {
+            return ToolResult(success: false, message: "下载内容不是有效的 SKILL.md（缺少 YAML frontmatter）", data: nil)
+        }
+        // 解析 frontmatter 取 id/name
+        let fallbackID = "skill_\(Int(Date().timeIntervalSince1970))"
+        guard let skill = SkillMarkdownParser.parse(raw, fallbackID: fallbackID) else {
+            return ToolResult(success: false, message: "无法解析 SKILL.md 的 frontmatter", data: nil)
+        }
+        guard !skill.id.isEmpty, !skill.name.isEmpty else {
+            return ToolResult(success: false, message: "SKILL.md 缺少 id 或 name", data: nil)
+        }
+        guard let dir = namespaceURL("skills") else { return ToolResult(success: false, message: "无法访问 skills 目录", data: nil) }
+        let fileURL = dir.appendingPathComponent("\(skill.id).md")
+        try raw.write(to: fileURL, atomically: true, encoding: .utf8)
+        SkillRouter.shared.loadUserSkills()
+        return ToolResult(success: true, message: "技能「\(skill.name)」已安装并加载", data: ["id": AnyCodable(skill.id), "name": AnyCodable(skill.name)])
+    }
+
+    private static func getWeather(_ call: [String: AnyCodable]) async throws -> ToolResult {
+        let location = string(call, "location")?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "auto"
+        let encoded = location.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? "auto"
+        let urlString = "https://wttr.in/\(encoded)?format=4&lang=zh"
+        guard let url = URL(string: urlString) else { return ToolResult(success: false, message: "天气地址构造失败", data: nil) }
+        var req = URLRequest(url: url)
+        req.timeoutInterval = 30
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        guard let http = resp as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            return ToolResult(success: false, message: "天气接口错误：HTTP \((resp as? HTTPURLResponse)?.statusCode ?? 0)", data: nil)
+        }
+        let text = String(data: data, encoding: .utf8) ?? "无法解析天气"
+        return ToolResult(success: true, message: text, data: ["weather": AnyCodable(text)])
+    }
+
+    private static func listScheduled(_ call: [String: AnyCodable]) async throws -> ToolResult {
+        await NotificationsManager.shared.refreshPending()
+        let list = NotificationsManager.shared.pendingAlarms.map { [
+            "id": AnyCodable($0.id),
+            "title": AnyCodable($0.title),
+            "fire_at": AnyCodable(formatDate($0.fireDate)),
+            "repeat": AnyCodable($0.repeatPattern ?? "none")
+        ] }
+        return ToolResult(success: true, message: "当前有 \(list.count) 个待触发通知", data: ["scheduled": AnyCodable(list)])
+    }
+
+    private static func cancelScheduled(_ call: [String: AnyCodable]) async throws -> ToolResult {
+        if bool(call, "cancel_all") {
+            await NotificationsManager.shared.cancelAllAlarms()
+            return ToolResult(success: true, message: "已取消全部定时通知", data: nil)
+        }
+        guard let id = string(call, "id") else { return ToolResult(success: false, message: "需要提供 id 或 cancel_all=true", data: nil) }
+        await NotificationsManager.shared.cancelAlarm(id: id)
+        return ToolResult(success: true, message: "已取消通知 \(id)", data: nil)
     }
 
     // MARK: - 通用 HTTP 请求（类 Manus 连接器，可编排任意外部服务）
