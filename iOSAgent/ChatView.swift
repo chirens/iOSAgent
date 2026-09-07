@@ -209,7 +209,7 @@ struct ChatView: View {
             }
         }
         .id(conversationId)
-        .navigationTitle(store.selected?.title ?? "对话")
+        .navigationTitle(conversationTitle)
         .background(Color.appBackground)
         .toolbarBackground(Color.appBackground, for: .navigationBar)
         .toolbarColorScheme(.dark, for: .navigationBar)
@@ -474,6 +474,11 @@ struct ChatView: View {
         store.conversations.first(where: { $0.id == conversationId })?.messages ?? []
     }
 
+    /// 顶部标题必须绑定到当前 conversationId，避免共享 store.selected 导致多个对话互相串标题
+    private var conversationTitle: String {
+        store.conversations.first(where: { $0.id == conversationId })?.title ?? "对话"
+    }
+
     private func scrollToBottom(_ proxy: ScrollViewProxy, animated: Bool = true) {
         let jump = { (anim: Bool) in
             if anim { withAnimation(.easeOut(duration: 0.22)) { proxy.scrollTo("bottom-anchor", anchor: .bottom) } }
@@ -736,12 +741,13 @@ struct MessageBubble: View {
                         .padding(.horizontal, 14)
                 }
 
-                if message.isStreaming && message.content.isEmpty, let status = message.status {
+                // 流式占位：模型思考/工具执行中但尚未输出文字时显示动态心跳，避免空矩形
+                if message.isStreaming && message.role == "assistant" && message.content.isEmpty {
                     HStack(spacing: 6) {
                         ProgressView()
                             .scaleEffect(0.7)
                             .frame(width: 14, height: 14)
-                        Text(status)
+                        Text(heartbeatText)
                             .font(.appBody())
                             .foregroundStyle(Color.appPrimaryText)
                     }
@@ -862,6 +868,19 @@ struct MessageBubble: View {
         default:
             return Color.appInputFill
         }
+    }
+
+    /// 流式占位心跳文字：按 status → toolCalls → 默认兜底 的优先级显示
+    private var heartbeatText: String {
+        if let status = message.status, !status.isEmpty { return status }
+        if let calls = message.toolCalls, !calls.isEmpty {
+            let names = calls.map { $0.name }
+            if names.contains("generate_image") { return "服务器正在生成图片…" }
+            if names.contains("generate_speech") { return "服务器正在合成语音…" }
+            if names.contains("generate_video") { return "服务器正在渲染视频…" }
+            return "正在执行：\(names.joined(separator: "、"))…"
+        }
+        return "正在处理中…"
     }
 
 }
