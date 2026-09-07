@@ -53,7 +53,7 @@ class NotificationsManager: NSObject, ObservableObject, UNUserNotificationCenter
         if isTimer { content.categoryIdentifier = "timer_category" }
         content.userInfo = ["fireAt": fireAt, "repeatPattern": repeatPattern]
 
-        let center = UNUserNotificationCenter.current
+        let center = UNUserNotificationCenter.current()
         let baseComps = cal.dateComponents([.hour, .minute, .second], from: fireAt)
 
         func makeRequest(_ comps: DateComponents, _ subId: String) async throws {

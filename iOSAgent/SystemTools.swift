@@ -263,6 +263,12 @@ final class SystemTools {
                 "cancel_all": ParameterSpec(type: "boolean", description: "是否取消全部。")
             ],
             required: []
+        )),
+        ToolSpec(type: "function", function: FunctionSpec(
+            name: "reload_skills",
+            description: "重新加载 skills/ 目录下的所有用户技能。当用 write_file 写入新 SKILL.md 后调用，使其立即可用。",
+            parameters: [:],
+            required: []
         ))
     ]
 
@@ -431,6 +437,7 @@ final class SystemTools {
             case "install_skill": return try await installSkill(call)
             case "list_scheduled": return try await listScheduled(call)
             case "cancel_scheduled": return try await cancelScheduled(call)
+            case "reload_skills": return reloadSkills(call)
             case "web_request": return try await webRequest(call)
             case "generate_image": return try await generateImage(call)
             case "generate_speech": return try await generateSpeech(call)
@@ -1015,6 +1022,12 @@ final class SystemTools {
         try raw.write(to: fileURL, atomically: true, encoding: .utf8)
         SkillRouter.shared.loadUserSkills()
         return ToolResult(success: true, message: "技能「\(skill.name)」已安装并加载", data: ["id": AnyCodable(skill.id), "name": AnyCodable(skill.name)])
+    }
+
+    private static func reloadSkills(_ call: [String: AnyCodable]) -> ToolResult {
+        SkillRouter.shared.loadUserSkills()
+        let count = SkillRouter.shared.userSkills.count
+        return ToolResult(success: true, message: "已重新加载 \(count) 个用户技能", data: ["count": AnyCodable(count)])
     }
 
     private static func getWeather(_ call: [String: AnyCodable]) async throws -> ToolResult {
