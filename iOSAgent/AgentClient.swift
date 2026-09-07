@@ -792,7 +792,7 @@ struct SkillInstaller {
 
     /// 无令牌通道：由 velos 服务端代理 GitHub 搜索（服务端令牌 + 缓存，避免匿名 10 次/分钟限流）
     private static func searchViaRelay(query: String) async throws -> [SkillGitHubSearchResult] {
-        let ep = SettingsStore.shared.connectorEndpoint.trimmingCharacters(in: .whitespacesAndNewlines)
+        let ep = await MainActor.run { SettingsStore.shared.connectorEndpoint.trimmingCharacters(in: .whitespacesAndNewlines) }
         guard var comp = URLComponents(string: ep), !ep.isEmpty else {
             throw SkillInstallError.githubAPIError("服务地址无效")
         }
@@ -802,7 +802,7 @@ struct SkillInstaller {
         guard let url = comp.url else { throw SkillInstallError.invalidURL }
         var req = URLRequest(url: url)
         req.timeoutInterval = 30
-        let t = SettingsStore.shared.authToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        let t = await MainActor.run { SettingsStore.shared.authToken.trimmingCharacters(in: .whitespacesAndNewlines) }
         if !t.isEmpty { req.setValue("Bearer \(t)", forHTTPHeaderField: "Authorization") }
         let (data, resp) = try await URLSession.shared.data(for: req)
         if let http = resp as? HTTPURLResponse {
@@ -837,7 +837,7 @@ struct SkillInstaller {
 
     /// 无令牌通道：由 velos 服务端代理抓取 raw 内容（直连 raw 失败时兜底，也可绕开地区网络问题）
     private static func fetchViaRelay(_ url: URL) async throws -> String {
-        let ep = SettingsStore.shared.connectorEndpoint.trimmingCharacters(in: .whitespacesAndNewlines)
+        let ep = await MainActor.run { SettingsStore.shared.connectorEndpoint.trimmingCharacters(in: .whitespacesAndNewlines) }
         guard var comp = URLComponents(string: ep), !ep.isEmpty,
               let target = comp.url?.appendingPathComponent("/skills/fetch") else {
             throw SkillInstallError.downloadFailed
@@ -847,7 +847,7 @@ struct SkillInstaller {
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try? JSONSerialization.data(withJSONObject: ["url": url.absoluteString])
         req.timeoutInterval = 60
-        let t = SettingsStore.shared.authToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        let t = await MainActor.run { SettingsStore.shared.authToken.trimmingCharacters(in: .whitespacesAndNewlines) }
         if !t.isEmpty { req.setValue("Bearer \(t)", forHTTPHeaderField: "Authorization") }
         let (data, resp) = try await URLSession.shared.data(for: req)
         if let http = resp as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
