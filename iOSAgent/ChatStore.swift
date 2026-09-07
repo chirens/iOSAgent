@@ -61,6 +61,14 @@ final class ChatStore: ObservableObject {
         save()
     }
 
+    /// 重命名会话
+    func rename(_ id: UUID, to title: String) {
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let idx = conversations.firstIndex(where: { $0.id == id }) else { return }
+        conversations[idx].title = trimmed
+        save()
+    }
+
     /// 写回某会话的消息，并刷新标题/时间，置顶
     func update(_ id: UUID, messages: [StoredMessage]) {
         guard let idx = conversations.firstIndex(where: { $0.id == id }) else { return }
