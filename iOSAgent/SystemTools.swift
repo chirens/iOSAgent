@@ -428,6 +428,31 @@ final class SystemTools {
         }
     }
 
+    /// 未授权时尝试请求一次；返回最终是否可用
+    @MainActor
+    private static func ensureEKAuth(_ type: EKEntityType) async -> Bool {
+        if ekAuthorized(type) { return true }
+        let status = EKEventStore.authorizationStatus(for: type)
+        guard status == .notDetermined else { return false }
+        do {
+            if #available(iOS 17.0, *) {
+                if type == .event {
+                    return try await SettingsStore.shared.eventStore.requestFullAccessToEvents()
+                } else {
+                    return try await SettingsStore.shared.eventStore.requestFullAccessToReminders()
+                }
+            } else {
+                return await withCheckedContinuation { continuation in
+                    SettingsStore.shared.eventStore.requestAccess(to: type) { granted, _ in
+                        continuation.resume(returning: granted)
+                    }
+                }
+            }
+        } catch {
+            return false
+        }
+    }
+
     // MARK: - Reminders
 
     private static func createReminder(_ call: [String: AnyCodable]) async throws -> ToolResult {
@@ -460,6 +485,9 @@ final class SystemTools {
 
     private static func listReminders(_ call: [String: AnyCodable]) async throws -> ToolResult {
         guard SettingsStore.shared.isEnabled("reminders") else { return needEnable("提醒事项") }
+        guard await ensureEKAuth(.reminder) else {
+            return ToolResult(success: false, message: "提醒事项未授权，请在系统设置或 Velos 设置页开启", data: nil)
+        }
         let store = SettingsStore.shared.eventStore
         let calendars = store.calendars(for: .reminder)
         let predicate = store.predicateForIncompleteReminders(withDueDateStarting: nil, ending: nil, calendars: calendars)
@@ -523,6 +551,9 @@ final class SystemTools {
 
     private static func listEvents(_ call: [String: AnyCodable]) async throws -> ToolResult {
         guard SettingsStore.shared.isEnabled("calendar") else { return needEnable("日历") }
+        guard await ensureEKAuth(.event) else {
+            return ToolResult(success: false, message: "日历未授权，请在系统设置或 Velos 设置页开启", data: nil)
+        }
         let days = int(call, "days") ?? 7
         let start = Date()
         let end = Calendar.current.date(byAdding: .day, value: days, to: start)!
