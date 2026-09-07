@@ -159,7 +159,7 @@ struct SettingsView: View {
                     }
 
                     SettingsSection(title: "关于") {
-                        SettingsLinkRow(icon: "info.circle.fill", color: .pastelGray, title: "关于 velos", destination: .about)
+                        SettingsLinkRow(icon: "info.circle.fill", color: .pastelGray, title: "关于 Velos", destination: .about)
                     }
                 }
                 .padding(.horizontal, AppSpacing.lg)
@@ -693,7 +693,7 @@ struct LegalView: View {
         switch type {
         case .userAgreement:
             return """
-            欢迎使用 velos（以下简称"本应用"）。在使用本应用前，请您务必仔细阅读并充分理解本用户协议（以下简称"本协议"）的全部内容，特别是以加粗或下划线标识的免责与责任限制条款。当您下载、安装、启动或实际使用本应用时，即视为您已阅读、理解并同意接受本协议各项条款的约束。如您不同意本协议任何内容，请勿使用本应用。
+            欢迎使用 Velos（以下简称"本应用"）。在使用本应用前，请您务必仔细阅读并充分理解本用户协议（以下简称"本协议"）的全部内容，特别是以加粗或下划线标识的免责与责任限制条款。当您下载、安装、启动或实际使用本应用时，即视为您已阅读、理解并同意接受本协议各项条款的约束。如您不同意本协议任何内容，请勿使用本应用。
 
             一、协议的接受与修订
             1.1 本协议是您与本应用开发者之间关于本应用使用所订立的协议。
@@ -712,7 +712,7 @@ struct LegalView: View {
             3.4 开发者不对第三方 API 的可用性、稳定性、准确性、安全性、计费或内容审核策略承担责任。
 
             四、知识产权
-            4.1 本应用自身的软件、界面、文档、名称（"velos"）及相关商誉的知识产权归开发者所有或已获合法授权。
+            4.1 本应用自身的软件、界面、文档、名称（"Velos"）及相关商誉的知识产权归开发者所有或已获合法授权。
             4.2 您在使用本应用过程中输入的内容、以及由 AI 生成并经您确认保存的文件，其知识产权按您与相应内容来源或第三方的约定处理；开发者不因提供工具而取得上述内容的所有权。
             4.3 您不得对本应用进行反向工程、反编译、破解、二次打包分发，或去除其版权标识，但法律明文允许的除外。
 
@@ -741,7 +741,7 @@ struct LegalView: View {
             """
         case .privacyPolicy:
             return """
-            本隐私政策旨在向您说明：当您使用 velos（以下简称"本应用"）时，我们如何处理与您相关的信息。我们高度重视您的隐私，并遵循"最小必要、本地优先"的原则设计本应用。
+            本隐私政策旨在向您说明：当您使用 Velos（以下简称"本应用"）时，我们如何处理与您相关的信息。我们高度重视您的隐私，并遵循"最小必要、本地优先"的原则设计本应用。
 
             一、我们收集的信息
             1.1 本应用不要求您注册账户，也不向开发者服务器上传您的对话内容、文件或任何个人身份信息。
@@ -788,7 +788,7 @@ struct LegalView: View {
             """
         case .disclaimer:
             return """
-            本免责声明（以下简称"声明"）就 velos（以下简称"本应用"）的服务性质、能力边界与风险作出说明。使用本应用即表示您已阅读并理解本声明全部内容。
+            本免责声明（以下简称"声明"）就 Velos（以下简称"本应用"）的服务性质、能力边界与风险作出说明。使用本应用即表示您已阅读并理解本声明全部内容。
 
             一、服务性质
             1.1 本应用是一款运行于 iPhone/iPad 的本地的 AI 助手工具，通过调用 iOS 系统能力与您自配的第三方大模型 API 提供辅助功能。
@@ -843,7 +843,7 @@ struct AboutView: View {
 
                 VStack(spacing: AppSpacing.md) {
                     SettingsSection(title: "版本信息") {
-                        InfoRow(title: "名称", value: "velos - 移动AI Agent客户端")
+                        InfoRow(title: "名称", value: "Velos - 移动AI Agent客户端")
 
                         Divider().padding(.leading, AppSpacing.md)
 
@@ -857,6 +857,35 @@ struct AboutView: View {
 
                         LinkRow(title: "仓库", value: "https://github.com/chirens/iOSAgent", url: "https://github.com/chirens/iOSAgent")
                     }
+
+                    // 公众号「忘仙」二维码 — 居中固定，跟仓库行之间留出明确间距
+                    VStack(spacing: AppSpacing.md) {
+                        Text("关注公众号「忘仙」")
+                            .font(.appBody().weight(.semibold))
+                            .foregroundStyle(Color.appPrimaryText)
+                        Image("WeChatQRCode")
+                            .resizable()
+                            .interpolation(.high)
+                            .aspectRatio(1, contentMode: .fit)
+                            .frame(width: 180, height: 180)
+                            .padding(AppSpacing.sm)
+                            .background(Color.white)
+                            .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous)
+                                    .strokeBorder(Color.appSeparator, lineWidth: 0.5)
+                            )
+                        Text("「忘却红尘三千事，自在人间第一仙」")
+                            .font(.appCaption())
+                            .foregroundStyle(Color.appSecondaryText)
+                            .multilineTextAlignment(.center)
+                            .lineLimit(nil)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, AppSpacing.xl)
+                    .background(Color.appSurface)
+                    .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
+                    .appCardShadow()
                 }
             }
             .padding(.horizontal, AppSpacing.lg)
@@ -966,7 +995,7 @@ struct SkillsView: View {
                     Image(systemName: "magnifyingglass")
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundStyle(Color.appSecondaryText)
-                    TextField(searchMode == .local ? "搜索技能名称 / 描述 / 触发词" : "搜索 GitHub 上的 skill 文件",
+                    TextField(searchMode == .local ? "搜索技能名称 / 描述 / 关键词" : "搜索 GitHub 上的 skill 文件",
                               text: $query)
                         .font(.appBody())
                         .foregroundStyle(Color.appPrimaryText)
@@ -1001,17 +1030,7 @@ struct SkillsView: View {
                 .background(Color.appInputFill)
                 .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
 
-                // GitHub 搜索：已自动通过 velos 服务端代理，无需在 App 内配置 Token
-                HStack(spacing: AppSpacing.sm) {
-                    Image(systemName: "checkmark.shield.fill")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(Color.appSuccess)
-                    Text("已通过 velos 服务端代理搜索 GitHub，无需配置 Token")
-                        .font(.appCaption2())
-                        .foregroundStyle(Color.appSecondaryText)
-                        .lineLimit(nil)
-                    Spacer(minLength: 0)
-                }
+                // GitHub 搜索状态提示已并入搜索框内，无需单行
                 .padding(.horizontal, AppSpacing.md)
                 .padding(.vertical, AppSpacing.sm)
                 .background(Color.appSurface)
@@ -1756,7 +1775,7 @@ struct AccountView: View {
                 .frame(width: 76, height: 76)
                 .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
 
-                Text(mode == 0 ? "登录 velos" : "创建 velos 账号")
+                Text(mode == 0 ? "登录 Velos" : "创建 Velos 账号")
                     .font(.appTitle1().weight(.bold))
                     .foregroundStyle(Color.appPrimaryText)
 

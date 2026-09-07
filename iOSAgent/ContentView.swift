@@ -79,7 +79,7 @@ struct ChatRootView: View {
     var body: some View {
         NavigationStack(path: $path) {
             ChatRootList(path: $path)
-                .navigationTitle("velos")
+                .navigationTitle("Velos")
                 .navigationBarTitleDisplayMode(.large)
                 .toolbar {
                     ToolbarItem(placement: .navigationBarLeading) {

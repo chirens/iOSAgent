@@ -62,18 +62,26 @@ struct ChatView: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .id("typing")
                         }
+                        // 始终存在的底部锚点：scrollTo 一定命中（LazyVStack 首帧未实例化的元素 id 找不到）
+                        Color.clear
+                            .frame(height: 1)
+                            .id("bottom-anchor")
                     }
                     .padding(.horizontal, AppSpacing.md)
                     .padding(.vertical, AppSpacing.md)
                 }
+                .onAppear {
+                    // 打开对话时主动滚到底（onChange 只在内容变化时触发，历史会话进入时 count 不变 → 不会滚）
+                    scheduleJumpToBottom(proxy, animated: false, retries: 6)
+                }
                 .onChange(of: messages.count) { _ in
-                    scrollToBottom(proxy)
+                    scheduleJumpToBottom(proxy, animated: true, retries: 4)
                 }
                 .onChange(of: messages.last?.content) { _ in
-                    scrollToBottom(proxy)
+                    scheduleJumpToBottom(proxy, animated: true, retries: 4)
                 }
                 .onChange(of: isLoading) { _ in
-                    scrollToBottom(proxy)
+                    scheduleJumpToBottom(proxy, animated: true, retries: 4)
                 }
             }
 
@@ -223,7 +231,7 @@ struct ChatView: View {
         .alert("麦克风/语音识别未授权", isPresented: $showMicError) {
             Button("确定", role: .cancel) {}
         } message: {
-            Text("请在系统设置中为 velos 开启麦克风和语音识别权限。")
+            Text("请在系统设置中为 Velos 开启麦克风和语音识别权限。")
         }
         .photosPicker(isPresented: $showPhotoPicker, selection: $photoItem, matching: .images)
         .onChange(of: photoItem) { item in
@@ -467,19 +475,27 @@ struct ChatView: View {
     }
 
     private func scrollToBottom(_ proxy: ScrollViewProxy, animated: Bool = true) {
-        func jump() {
-            if let last = messages.last {
-                if animated { withAnimation { proxy.scrollTo(last.id, anchor: .bottom) } }
-                else { proxy.scrollTo(last.id, anchor: .bottom) }
-            } else if isLoading {
-                if animated { withAnimation { proxy.scrollTo("typing", anchor: .bottom) } }
-                else { proxy.scrollTo("typing", anchor: .bottom) }
+        let jump = { (anim: Bool) in
+            if anim { withAnimation(.easeOut(duration: 0.22)) { proxy.scrollTo("bottom-anchor", anchor: .bottom) } }
+            else { proxy.scrollTo("bottom-anchor", anchor: .bottom) }
+        }
+        jump(animated)
+        // 多次延迟重试覆盖 LazyVStack 首帧 / 元素虚拟化 / onAppear 时序不确定
+        let delays: [Double] = animated ? [0.06, 0.18, 0.4, 0.8] : [0.05, 0.12, 0.25, 0.5, 1.0]
+        for d in delays {
+            DispatchQueue.main.asyncAfter(deadline: .now() + d) { jump(animated) }
+        }
+    }
+
+    private func scheduleJumpToBottom(_ proxy: ScrollViewProxy, animated: Bool, retries: Int) {
+        let delays: [Double] = [0.0, 0.05, 0.15, 0.35, 0.6, 1.0, 1.6]
+        for i in 0..<min(retries, delays.count) {
+            let d = delays[i]
+            DispatchQueue.main.asyncAfter(deadline: .now() + d) {
+                if animated { withAnimation(.easeOut(duration: 0.22)) { proxy.scrollTo("bottom-anchor", anchor: .bottom) } }
+                else { proxy.scrollTo("bottom-anchor", anchor: .bottom) }
             }
         }
-        jump()
-        // LazyVStack 首帧尚未完成布局时 scrollTo 会失效，补两次延迟重试确保落到最新消息
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { jump() }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { jump() }
     }
 
     private func resendMessage(_ msg: StoredMessage) {
@@ -547,7 +563,7 @@ struct ChatView: View {
             } catch {
                 if speech.authorizationStatus != .authorized {
                     showMicError = true
-                    errorText = "语音识别需要授权：请在系统设置中为「velos」开启“语音识别”权限。另外，当前云端 API（如 DeepSeek）通常不支持音频转写，建议改用支持 /audio/transcriptions 的接口（如 OpenAI）以获得更好效果。"
+                    errorText = "语音识别需要授权：请在系统设置中为「Velos」开启“语音识别”权限。另外，当前云端 API（如 DeepSeek）通常不支持音频转写，建议改用支持 /audio/transcriptions 的接口（如 OpenAI）以获得更好效果。"
                 } else {
                     errorText = "语音识别失败：\(error.localizedDescription)"
                 }
@@ -754,7 +770,7 @@ struct MessageBubble: View {
                     HStack(spacing: 4) {
                         Image(systemName: "sparkle")
                             .font(.appCaption2())
-                        Text("velos")
+                        Text("Velos")
                             .font(.appCaption2().weight(.medium))
                     }
                     .foregroundStyle(Color.appSecondaryText)

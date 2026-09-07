@@ -395,7 +395,7 @@ final class AgentClient {
         return """
         \(skillBlock)\(connectorBlock)
 
-        你是 velos，一个运行在 iPhone 上的本地 AI Agent。你可以调用系统工具帮用户完成操作。
+        你是 Velos，一个运行在 iPhone 上的本地 AI Agent。你可以调用系统工具帮用户完成操作。
 
         当前时间：\(nowStr)（东八区，北京时间）。系统时间已直接提供给你，不要向用户询问现在几点或今天几号，直接用当前时间计算。
         已开启的系统能力：\(capabilities)
@@ -404,7 +404,7 @@ final class AgentClient {
         1. 当用户请求设置闹钟、提醒、日程、倒计时等时间相关操作时，必须使用对应的工具函数，不要只回答文字。
         2. 工具选择必须精确：
            - “闹钟”“叫我起床”“N分钟后叫我” → 用 set_alarm（本地通知响铃）。
-           - “提醒”“提醒我N分钟后做某事”“提醒事项” → 用 create_reminder（写入系统“提醒事项”App，会在锁屏/通知中心弹窗，即使 velos 被划掉也能收到）。
+           - “提醒”“提醒我N分钟后做某事”“提醒事项” → 用 create_reminder（写入系统“提醒事项”App，会在锁屏/通知中心弹窗，即使 Velos 被划掉也能收到）。
            - “日程”“会议”“约会” → 用 create_calendar_event（写入系统“日历”App）。
            - “计时”“倒计时” → 用 set_timer。
         3. 对于相对时间如“5分钟后”“半小时后”“明天早上9点”，直接使用 fire_in_minutes / due_in_minutes / duration_minutes；对于绝对时间使用 fire_at / due_at / start_at（ISO8601 格式，如 2026-08-26T09:00:00+08:00）。
@@ -762,7 +762,7 @@ struct SkillInstaller {
         var req = URLRequest(url: url)
         req.timeoutInterval = 30
         req.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
-        req.setValue("iOSAgent/8.9.6", forHTTPHeaderField: "User-Agent")
+        req.setValue("iOSAgent/8.9.7", forHTTPHeaderField: "User-Agent")
         let token = Self.authToken
         if !token.isEmpty { req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
         let (data, resp) = try await URLSession.shared.data(for: req)
@@ -790,7 +790,7 @@ struct SkillInstaller {
         return q
     }
 
-    /// 无令牌通道：由 velos 服务端代理 GitHub 搜索（服务端令牌 + 缓存，避免匿名 10 次/分钟限流）
+    /// 无令牌通道：由 Velos 服务端代理 GitHub 搜索（服务端令牌 + 缓存，避免匿名 10 次/分钟限流）
     private static func searchViaRelay(query: String) async throws -> [SkillGitHubSearchResult] {
         let ep = await MainActor.run { SettingsStore.shared.connectorEndpoint.trimmingCharacters(in: .whitespacesAndNewlines) }
         guard var comp = URLComponents(string: ep), !ep.isEmpty else {
@@ -835,7 +835,7 @@ struct SkillInstaller {
         }
     }
 
-    /// 无令牌通道：由 velos 服务端代理抓取 raw 内容（直连 raw 失败时兜底，也可绕开地区网络问题）
+    /// 无令牌通道：由 Velos 服务端代理抓取 raw 内容（直连 raw 失败时兜底，也可绕开地区网络问题）
     private static func fetchViaRelay(_ url: URL) async throws -> String {
         let ep = await MainActor.run { SettingsStore.shared.connectorEndpoint.trimmingCharacters(in: .whitespacesAndNewlines) }
         guard var comp = URLComponents(string: ep), !ep.isEmpty,
@@ -988,42 +988,22 @@ enum SkillRegistry {
             7. 如用户要求保存，调用 create_file 写入 .md。
             """
         ),
-        Skill(
-            id: "ea-analyzer",
-            name: "EA 解读",
-            icon: "chart.line.uptrend.xyaxis",
-            description: "解读 HJDS038OU 等 XAUUSD EA 逻辑",
-            triggers: ["EA", "HJDS", "锁利", "keepRatio", "信号塔", "MT4", "XAUUSD", "量化", "马丁", "止盈", "止损", "爆仓"],
-            tools: ["create_file"],
+Skill(
+            id: "image-creator",
+            name: "图片创作",
+            icon: "photo.fill",
+            description: "为写作/PPT/笔记生成配图、插画、海报封面",
+            triggers: ["图片", "生成图", "画一张", "画个", "配图", "插图", "插画", "海报", "封面", "壁纸", "illustration", "image", "picture", "photo", "poster"],
+            tools: ["generate_image"],
             prompt: """
-            你是 XAUUSD/MT4 量化交易专家，精通 HJDS038OU 策略。回答必须基于源码+日志+交易记录交叉分析，禁用笼统定论，每条结论必须有具体数字/逻辑支撑。
-            核心参数：MagicNumber=20045，ADXRangeThreshold=18.0，MaxStopLossPercent=12。
-            锁利模型：10级，keepRatio Lv1=22%、Lv2=35%、Lv3=48%、Lv4=58%、Lv5=52%、Lv6=55%、Lv7=60%、Lv8=65%、Lv9=70%、Lv10=75%；Lv10含max-8保护；由highestProfit驱动。
-            关键修复点：
-            - signal strength 枚举 EXTREME=0、STRONG=1、MEDIUM=2、WEAK=3；EMA过滤比较应为 <=。
-            - 强趋势（signal≤STRONG + H1=YES + D1=YES）跳过距离检查，允许追涨。
-            - EMA冲突时跳过市价单，改用pending order。
-            - lock mode只在lockLevel变化时更新SL，加lastLockLevel变量。
-            - DailyHardStop=10U应移除或调至999。
-            若需要整理结论或生成报告，调用 create_file。
-            """
-        ),
-        Skill(
-            id: "domain-picker",
-            name: "域名选品",
-            icon: "globe",
-            description: "按规则筛选短域名",
-            triggers: ["域名", "选品", "expireddomains", "Whoxy", "Whois", "后缀", ".com", ".cc", ".co", ".cm", ".net", ".cn", ".org", ".pw", ".ai", ".io"],
-            tools: ["create_file"],
-            prompt: """
-            你是短域名选品助手。规则：
-            1. 优先纯字母、无符号、短到长。
-            2. 后缀优先级：.com/.cc/.co/.cm/.net/.cn/.org/.pw/.ai/.io。
-            3. 默认预算 ≤5000 RMB；若用户没给预算/后缀/用途，先反问再输出。
-            4. 输出格式：序号、域名、后缀、长度、估值理由、风险提醒。
-            5. 注意 Whoxy 免费列表存在到期日续费误区，提醒用户以注册商数据为准。
-            如需保存候选列表，调用 create_file 输出 csv/md。
-            """
+            你是图片创作助理。规则：
+1. 用户说"画一张…"、"配图"、"插画"、"海报"等关键词 → 直接调用 generate_image 工具，prompt 必须写成英文（Stable Diffusion/Flux 风格），参数 size 默认 1024x1024、需要横版时 1024x576、需要竖版 576x1024，需要方形头图 768x768。
+2. prompt 写法：[主体] + [风格] + [光线] + [构图] + [画质]，不要写中文。例如：a cyberpunk girl with glowing neon umbrella, standing on a rainy street, cinematic lighting, dramatic angle, ultra-detailed, 8k, masterpiece。
+3. 同一段对话内若用户多次要求改图（"再画一张" / "再来个版本" / "换个颜色"），复用上轮 prompt 改对应属性，**不要每次都让用户复述要求**。
+4. 每次出图后用一句话描述图里内容（中文，10 字以内），让用户一眼知道结果是否对路。文件名建议用简短英文或拼音（例 cybercat.jpg、lake_mountain.jpg）。
+5. 用户要"系列图"（如"再画 3 张类似的"）：循环调用 3 次 generate_image，每次换 prompt 关键属性（颜色/角度/季节）。
+6. 角色/场景一致性：用户说"同一个角色再画一张" → 在 prompt 里把上一张的关键描述词原样复用，只改场景。
+"""
         ),
         Skill(
             id: "dashi-ppt-remote",
