@@ -175,6 +175,19 @@ final class AgentClient {
             await onUpdate(out)
         }
 
+        // 最终收尾：清除所有 assistant 消息的流式/心跳状态，避免对话结束后残留「执行：xxx」菊花占位；
+        // 并移除纯占位空消息（无内容、无工具调用、无文件），它们只是流式过程中的临时气泡。
+        for idx in out.indices where out[idx].role == "assistant" {
+            out[idx].isStreaming = false
+            out[idx].status = nil
+        }
+        out.removeAll { m in
+            m.role == "assistant"
+                && m.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                && (m.toolCalls ?? []).isEmpty
+                && m.fileURL == nil
+        }
+
         if finalText.isEmpty, let last = out.last, last.role == "assistant" {
             finalText = last.content
         }
@@ -900,7 +913,7 @@ struct SkillInstaller {
         var req = URLRequest(url: url)
         req.timeoutInterval = 30
         req.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
-        req.setValue("iOSAgent/9.0.1", forHTTPHeaderField: "User-Agent")
+        req.setValue("iOSAgent/9.0.2", forHTTPHeaderField: "User-Agent")
         let token = Self.authToken
         if !token.isEmpty { req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
         let (data, resp) = try await URLSession.shared.data(for: req)

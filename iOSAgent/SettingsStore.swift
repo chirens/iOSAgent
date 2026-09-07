@@ -129,7 +129,7 @@ class SettingsStore: ObservableObject {
         ("calendar", "日历", true),
         ("health", "健康", false),
         ("contacts", "通讯录", false),
-        ("location", "位置", false),
+        ("location", "位置", true),
         ("clipboard", "剪贴板", true),
         ("photos", "相册", false),
         ("notifications", "通知/闹钟", true),
