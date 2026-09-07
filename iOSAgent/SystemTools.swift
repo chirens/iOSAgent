@@ -123,6 +123,44 @@ final class SystemTools {
             required: ["title", "slides"]
         )),
         ToolSpec(type: "function", function: FunctionSpec(
+            name: "generate_image",
+            description: "AI 文生图：根据文字描述生成图片，自动保存到 App 文档目录，可在聊天中打开/分享。用户说“画一张…”“生成图片”“做张图”时使用。",
+            parameters: [
+                "prompt": ParameterSpec(type: "string", description: "画面描述，尽量具体：主体 + 风格 + 构图 + 光线 + 色彩。中文或英文均可。"),
+                "size": ParameterSpec(type: "string", description: "可选尺寸：1024x1024（默认方图）、960x1280（竖版）、1280x720（横版）。"),
+                "filename": ParameterSpec(type: "string", description: "可选，保存的文件名（不含扩展名），默认按描述自动生成。")
+            ],
+            required: ["prompt"]
+        )),
+        ToolSpec(type: "function", function: FunctionSpec(
+            name: "generate_speech",
+            description: "AI 语音合成（TTS）：把文字转成配音音频，保存为 MP3 到 App 文档目录。用户说“朗读这段”“生成语音/配音”“读出来存成音频”时使用。",
+            parameters: [
+                "text": ParameterSpec(type: "string", description: "要合成语音的文本，≤4000 字。"),
+                "voice": ParameterSpec(type: "string", description: "可选音色：anna(沉稳女) / bella(激情女) / claire(温柔女) / diana(欢快女) / alex(沉稳男) / benjamin(低沉男) / charles(磁性男) / david(欢快男)，默认 anna。"),
+                "speed": ParameterSpec(type: "number", description: "可选语速 0.5–2.0，默认 1.0。"),
+                "filename": ParameterSpec(type: "string", description: "可选，保存的文件名（不含扩展名）。")
+            ],
+            required: ["text"]
+        )),
+        ToolSpec(type: "function", function: FunctionSpec(
+            name: "generate_video",
+            description: "AI 文生视频：根据文字描述生成一段短视频（MP4），保存到 App 文档目录。生成较慢（通常 1–5 分钟），调用前先告诉用户需要等待。若返回“仍在生成”，可稍后用 check_video 查询结果。",
+            parameters: [
+                "prompt": ParameterSpec(type: "string", description: "视频画面描述：主体动作 + 场景 + 镜头运动 + 光线。建议 200 词以内。"),
+                "filename": ParameterSpec(type: "string", description: "可选，保存的文件名（不含扩展名）。")
+            ],
+            required: ["prompt"]
+        )),
+        ToolSpec(type: "function", function: FunctionSpec(
+            name: "check_video",
+            description: "查询此前提交的视频生成任务：已完成则下载 MP4 保存；未完成则返回当前状态。",
+            parameters: [
+                "request_id": ParameterSpec(type: "string", description: "generate_video 返回的 request_id。")
+            ],
+            required: ["request_id"]
+        )),
+        ToolSpec(type: "function", function: FunctionSpec(
             name: "web_request",
             description: "向任意 HTTP(S) 接口发起请求并返回结果，用于调用外部服务（如 dashi-ppt、图像/视频/音频生成 API、Webhook 等）。返回状态码与响应体；若响应为二进制文件（或指定 save_as），自动保存到 App 文档并可在聊天中打开/分享。这是【始终可用】的“万能连接器”：无论是否开启系统权限都能调用。仅在用户明确要求调用某外部服务时使用，密钥放 headers，不要写进回复文本。",
             parameters: [
@@ -300,6 +338,10 @@ final class SystemTools {
             case "create_file": return try await createFile(call)
             case "create_ppt": return try await createPPT(call)
             case "web_request": return try await webRequest(call)
+            case "generate_image": return try await generateImage(call)
+            case "generate_speech": return try await generateSpeech(call)
+            case "generate_video": return try await generateVideo(call)
+            case "check_video": return try await checkVideo(call)
             default: return ToolResult(success: false, message: "未知工具 \(name)", data: nil)
             }
         } catch {
@@ -822,6 +864,181 @@ final class SystemTools {
         }
     }
 
+    // MARK: - 多模态生成（图片 / 语音 / 视频，走 velos 服务端中继）
+
+    private enum MediaEndpoint: String {
+        case image = "/generate/image"
+        case speech = "/generate/speech"
+        case video = "/generate/video"
+
+        var label: String {
+            switch self {
+            case .image: return "图片生成"
+            case .speech: return "语音合成"
+            case .video: return "视频生成"
+            }
+        }
+    }
+
+    /// 生成文件名的时间戳后缀
+    private static func mediaStamp() -> String {
+        let f = DateFormatter()
+        f.dateFormat = "yyyyMMdd_HHmmss"
+        f.locale = Locale(identifier: "en_US_POSIX")
+        return f.string(from: Date())
+    }
+
+    /// 只替换文件系统非法字符，保留中文与字母数字
+    private static func safeMediaName(_ raw: String?, fallback: String) -> String {
+        let s = (raw ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleaned = s.replacingOccurrences(of: "[\\\\/:*?\"<>|\\s]+", with: "_", options: .regularExpression)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "_."))
+        return cleaned.isEmpty ? fallback : String(cleaned.prefix(40))
+    }
+
+    private static func byteText(_ n: Int) -> String {
+        if n >= 1024 * 1024 { return String(format: "%.1f MB", Double(n) / 1048576.0) }
+        if n >= 1024 { return String(format: "%.0f KB", Double(n) / 1024.0) }
+        return "\(n) 字节"
+    }
+
+    /// 统一的生成请求：服务端返回二进制则落盘为文件；返回 JSON（202 排队 / 4xx 报错）则回传文本。
+    private static func relayGenerate(_ endpoint: MediaEndpoint,
+                                      payload: [String: Any],
+                                      defaultExt: String,
+                                      fallbackName: String) async throws -> ToolResult {
+        let ep = SettingsStore.shared.connectorEndpoint.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard var comp = URLComponents(string: ep), !ep.isEmpty else {
+            return ToolResult(success: false, message: "服务地址未配置，无法生成", data: nil)
+        }
+        comp.path = endpoint.rawValue
+        guard let url = comp.url else {
+            return ToolResult(success: false, message: "服务地址无效", data: nil)
+        }
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let token = SettingsStore.shared.authToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !token.isEmpty {
+            req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        } else {
+            let key = SettingsStore.shared.connectorApiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !key.isEmpty { req.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization") }
+        }
+        let byo = SettingsStore.shared.mediaProviderKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !byo.isEmpty { req.setValue(byo, forHTTPHeaderField: "X-Provider-Key") }
+        req.httpBody = try? JSONSerialization.data(withJSONObject: payload)
+        req.timeoutInterval = 600
+
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        let status = (resp as? HTTPURLResponse)?.statusCode ?? 0
+        let ct = ((resp as? HTTPURLResponse)?.allHeaderFields["Content-Type"] as? String) ?? ""
+
+        // 文本类响应：排队中或报错
+        if ct.contains("application/json") || status == 202 || (status >= 400 && data.count < 8192) {
+            let text = String(data: data, encoding: .utf8) ?? ""
+            let brief = String(text.prefix(600))
+            if status == 202 {
+                return ToolResult(success: true,
+                                  message: "\(endpoint.label)任务已提交，仍在生成中。请稍后再用 check_video 查询结果。\n\(brief)",
+                                  data: ["status": AnyCodable(status), "body": AnyCodable(brief)])
+            }
+            if status >= 400 {
+                return ToolResult(success: false, message: "\(endpoint.label)失败（HTTP \(status)）：\(brief)", data: nil)
+            }
+            return ToolResult(success: true, message: "\(endpoint.label)返回：\(brief)",
+                              data: ["status": AnyCodable(status), "body": AnyCodable(brief)])
+        }
+
+        guard !data.isEmpty else {
+            return ToolResult(success: false, message: "\(endpoint.label)失败：服务端返回空内容", data: nil)
+        }
+
+        var ext = defaultExt
+        if ct.contains("jpeg") || ct.contains("jpg") { ext = "jpg" }
+        else if ct.contains("png") { ext = "png" }
+        else if ct.contains("mp4") { ext = "mp4" }
+        else if ct.contains("mpeg") || ct.contains("mp3") { ext = "mp3" }
+        else if ct.contains("wav") { ext = "wav" }
+        else if ct.contains("ogg") { ext = "ogg" }
+
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let fileName = "\(fallbackName).\(ext)"
+        let fileURL = docs.appendingPathComponent(fileName)
+        try data.write(to: fileURL, options: .atomic)
+        return ToolResult(success: true,
+                          message: "\(endpoint.label)完成，已保存：\(fileName)（\(byteText(data.count))），可在聊天中打开/分享。",
+                          data: ["filename": AnyCodable(fileName), "bytes": AnyCodable(data.count)],
+                          fileURL: fileURL)
+    }
+
+    private static func generateImage(_ call: [String: AnyCodable]) async throws -> ToolResult {
+        guard let prompt = string(call, "prompt"), !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return ToolResult(success: false, message: "需要提供 prompt 图片描述", data: nil)
+        }
+        var payload: [String: Any] = ["prompt": prompt]
+        if let size = string(call, "size"), !size.isEmpty { payload["size"] = size }
+        let name = safeMediaName(string(call, "filename"), fallback: "image_" + mediaStamp())
+        return try await relayGenerate(.image, payload: payload, defaultExt: "png", fallbackName: name)
+    }
+
+    private static func generateSpeech(_ call: [String: AnyCodable]) async throws -> ToolResult {
+        guard let text = string(call, "text"), !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return ToolResult(success: false, message: "需要提供 text 文本", data: nil)
+        }
+        var payload: [String: Any] = ["text": text]
+        if let voice = string(call, "voice"), !voice.isEmpty { payload["voice"] = voice }
+        if let speed = double(call, "speed"), speed > 0 { payload["speed"] = speed }
+        let name = safeMediaName(string(call, "filename"), fallback: "speech_" + mediaStamp())
+        return try await relayGenerate(.speech, payload: payload, defaultExt: "mp3", fallbackName: name)
+    }
+
+    private static func generateVideo(_ call: [String: AnyCodable]) async throws -> ToolResult {
+        guard let prompt = string(call, "prompt"), !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return ToolResult(success: false, message: "需要提供 prompt 视频描述", data: nil)
+        }
+        let payload: [String: Any] = ["prompt": prompt]
+        let name = safeMediaName(string(call, "filename"), fallback: "video_" + mediaStamp())
+        return try await relayGenerate(.video, payload: payload, defaultExt: "mp4", fallbackName: name)
+    }
+
+    private static func checkVideo(_ call: [String: AnyCodable]) async throws -> ToolResult {
+        guard let rid = string(call, "request_id"), !rid.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return ToolResult(success: false, message: "需要提供 request_id", data: nil)
+        }
+        let ep = SettingsStore.shared.connectorEndpoint.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard var comp = URLComponents(string: ep), !ep.isEmpty else {
+            return ToolResult(success: false, message: "服务地址未配置", data: nil)
+        }
+        comp.path = "/generate/video/status"
+        comp.queryItems = [URLQueryItem(name: "request_id", value: rid)]
+        guard let url = comp.url else { return ToolResult(success: false, message: "服务地址无效", data: nil) }
+        var req = URLRequest(url: url)
+        req.timeoutInterval = 300
+        let token = SettingsStore.shared.authToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !token.isEmpty { req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
+        let byo = SettingsStore.shared.mediaProviderKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !byo.isEmpty { req.setValue(byo, forHTTPHeaderField: "X-Provider-Key") }
+
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        let status = (resp as? HTTPURLResponse)?.statusCode ?? 0
+        let ct = ((resp as? HTTPURLResponse)?.allHeaderFields["Content-Type"] as? String) ?? ""
+        if ct.contains("video") || ct.contains("mp4") {
+            let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            let fileName = "video_" + mediaStamp() + ".mp4"
+            let fileURL = docs.appendingPathComponent(fileName)
+            try data.write(to: fileURL, options: .atomic)
+            return ToolResult(success: true,
+                              message: "视频已生成并保存：\(fileName)（\(byteText(data.count))），可在聊天中打开/分享。",
+                              data: ["filename": AnyCodable(fileName), "bytes": AnyCodable(data.count)],
+                              fileURL: fileURL)
+        }
+        let text = String(data: data, encoding: .utf8) ?? ""
+        if status >= 400 { return ToolResult(success: false, message: "查询失败（HTTP \(status)）：\(String(text.prefix(300)))", data: nil) }
+        return ToolResult(success: true, message: "任务当前状态：\(String(text.prefix(400)))",
+                          data: ["status": AnyCodable(status), "body": AnyCodable(String(text.prefix(400)))])
+    }
+
     private static func isBinaryContent(_ ct: String) -> Bool {
         let lower = ct.lowercased()
         if lower.contains("text/") || lower.contains("application/json") || lower.contains("application/xml")
@@ -865,6 +1082,13 @@ final class SystemTools {
     }
     private static func bool(_ call: [String: AnyCodable], _ key: String) -> Bool {
         call[key]?.value as? Bool ?? false
+    }
+    /// 读取数值参数：模型可能传 Double / Int / 数字字符串
+    private static func double(_ call: [String: AnyCodable], _ key: String) -> Double? {
+        if let d = call[key]?.value as? Double { return d }
+        if let i = call[key]?.value as? Int { return Double(i) }
+        if let s = call[key]?.value as? String { return Double(s.trimmingCharacters(in: .whitespaces)) }
+        return nil
     }
 
     private static func parseISO(_ iso: String) -> Date? {

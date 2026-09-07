@@ -79,6 +79,12 @@ class SettingsStore: ObservableObject {
     /// 主题模式：浅色 / 深色 / 跟随系统（默认深色，与 v8.9.2 之前一致）。
     @AppStorage("appColorScheme") var appColorSchemeRaw: String = AppColorScheme.dark.rawValue
 
+    /// 使用期间保持屏幕常亮（默认开）。息屏会触发 iOS 挂起网络，导致 PPT / 大文件下载中断。
+    @AppStorage("keepAwakeEnabled") var keepAwakeEnabled: Bool = true
+
+    /// 多模态供应商 API Key（可选，BYO）。留空时使用服务器内置额度。
+    @AppStorage("mediaProviderKey") var mediaProviderKey: String = ""
+
     /// 当前主题偏好（供 UI 绑定）。
     var colorSchemePreference: AppColorScheme {
         AppColorScheme(rawValue: appColorSchemeRaw) ?? .dark

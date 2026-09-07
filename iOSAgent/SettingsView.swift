@@ -65,6 +65,56 @@ struct SettingsView: View {
                         }
                         .padding(.horizontal, AppSpacing.md)
                         .padding(.vertical, AppSpacing.sm)
+
+                        Divider().padding(.leading, AppSpacing.md)
+
+                        Toggle(isOn: $settings.keepAwakeEnabled) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("使用期间保持屏幕常亮")
+                                    .font(.appBody().weight(.semibold))
+                                    .foregroundStyle(Color.appPrimaryText)
+                                Text("息屏会挂起网络，导致 PPT / 图片 / 视频下载中断")
+                                    .font(.appCaption())
+                                    .foregroundStyle(Color.appSecondaryText)
+                            }
+                        }
+                        .tint(Color.brandAccent)
+                        .padding(.horizontal, AppSpacing.md)
+                        .padding(.vertical, AppSpacing.sm)
+                    }
+
+                    SettingsSection(title: "多模态生成") {
+                        VStack(alignment: .leading, spacing: AppSpacing.sm) {
+                            HStack(spacing: AppSpacing.sm) {
+                                Image(systemName: "sparkles")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundStyle(Color.appSecondaryText)
+                                Text("SiliconFlow API Key（可选）")
+                                    .font(.appCaption2().weight(.semibold))
+                                    .foregroundStyle(Color.appSecondaryText)
+                                Spacer(minLength: 0)
+                                if !settings.mediaProviderKey.isEmpty {
+                                    Text("已配置")
+                                        .font(.appMicro())
+                                        .foregroundStyle(Color.appSuccess)
+                                }
+                            }
+                            .padding(.leading, AppSpacing.md)
+                            AppSecureField(placeholder: "sk-xxx（cloud.siliconflow.cn 注册即送额度）",
+                                           text: Binding(get: { settings.mediaProviderKey },
+                                                        set: { settings.mediaProviderKey = $0 }))
+                                .padding(.horizontal, AppSpacing.md)
+                            Text("留空时使用服务器内置额度（有限额）；填入自己的 Key 则优先使用你的额度。配置后即可在对话中直接生成图片 / 语音 / 视频，密钥仅保存在本机与请求头中，不会出现在聊天内容里。")
+                                .font(.appCaption())
+                                .foregroundStyle(Color.appSecondaryText)
+                                .lineLimit(nil)
+                                .padding(.horizontal, AppSpacing.md)
+                                .padding(.bottom, AppSpacing.sm)
+                        }
+                        .padding(.vertical, AppSpacing.sm)
+                        .background(Color.appSurface)
+                        .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
+                        .appCardShadow()
                     }
 
                     SettingsSection(title: "应用") {
@@ -946,7 +996,7 @@ struct SkillsView: View {
                                    text: Binding(get: { settings.githubToken },
                                                 set: { settings.githubToken = $0 }))
                         .padding(.horizontal, AppSpacing.md)
-                    Text("未认证时搜索 / 安装接口限流约 10 次/分钟，填入令牌可显著提升限额（30 次/分钟）。可在 GitHub → Settings → Developer settings → Personal access tokens 生成只读令牌。")
+                    Text("不填也能用：未配置令牌时，搜索会自动走 velos 服务端代理（无需 GitHub 账号，结果有缓存）。填入令牌后改为直连 GitHub，限额更高、结果更实时。令牌仅存本机。")
                         .font(.appCaption())
                         .foregroundStyle(Color.appSecondaryText)
                         .lineLimit(nil)

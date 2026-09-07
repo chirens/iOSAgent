@@ -466,12 +466,20 @@ struct ChatView: View {
         store.conversations.first(where: { $0.id == conversationId })?.messages ?? []
     }
 
-    private func scrollToBottom(_ proxy: ScrollViewProxy) {
-        if let last = messages.last {
-            withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
-        } else if isLoading {
-            withAnimation { proxy.scrollTo("typing", anchor: .bottom) }
+    private func scrollToBottom(_ proxy: ScrollViewProxy, animated: Bool = true) {
+        func jump() {
+            if let last = messages.last {
+                if animated { withAnimation { proxy.scrollTo(last.id, anchor: .bottom) } }
+                else { proxy.scrollTo(last.id, anchor: .bottom) }
+            } else if isLoading {
+                if animated { withAnimation { proxy.scrollTo("typing", anchor: .bottom) } }
+                else { proxy.scrollTo("typing", anchor: .bottom) }
+            }
         }
+        jump()
+        // LazyVStack 首帧尚未完成布局时 scrollTo 会失效，补两次延迟重试确保落到最新消息
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { jump() }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { jump() }
     }
 
     private func resendMessage(_ msg: StoredMessage) {
