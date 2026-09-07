@@ -290,33 +290,24 @@ struct ChatRootList: View {
                         .padding(AppSpacing.md)
                 } else {
                     ForEach(filteredConversations) { conversation in
-                        Button {
-                            path.append(ChatRoute.chat(conversation.id))
-                        } label: {
-                            ConversationRow(conversation: conversation)
-                        }
-                        .buttonStyle(.plain)
-                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                            Button(role: .destructive) {
-                                store.delete(conversation.id)
-                            } label: {
-                                Label("删除", systemImage: "trash")
-                            }
-                            Button {
+                        SwipeActionRow(
+                            onDelete: { store.delete(conversation.id) },
+                            onRename: {
                                 renameTargetID = conversation.id
                                 renameText = conversation.title == "新对话" ? "" : conversation.title
                                 showRename = true
-                            } label: {
-                                Label("重命名", systemImage: "pencil")
-                            }
-                            .tint(.blue)
-                            Button {
+                            },
+                            onShare: {
                                 shareText = exportConversation(conversation)
                                 showShare = true
-                            } label: {
-                                Label("分享", systemImage: "square.and.arrow.up")
                             }
-                            .tint(.green)
+                        ) {
+                            Button {
+                                path.append(ChatRoute.chat(conversation.id))
+                            } label: {
+                                ConversationRow(conversation: conversation)
+                            }
+                            .buttonStyle(.plain)
                         }
                         if conversation.id != filteredConversations.last?.id {
                             Divider().padding(.leading, AppSpacing.md)
@@ -463,6 +454,91 @@ struct ConversationRow: View {
     }
 }
 
+/// 自定义左滑操作行：`.swipeActions` 只在 `List` 里生效，首页历史对话是卡片式布局（VStack），
+/// 故手动实现左滑露出「重命名 / 分享 / 删除」按钮。
+struct SwipeActionRow<Content: View>: View {
+    let onDelete: () -> Void
+    let onRename: () -> Void
+    let onShare: () -> Void
+    private let content: Content
+    @State private var offset: CGFloat = 0
+
+    init(onDelete: @escaping () -> Void,
+         onRename: @escaping () -> Void,
+         onShare: @escaping () -> Void,
+         @ViewBuilder content: () -> Content) {
+        self.onDelete = onDelete
+        self.onRename = onRename
+        self.onShare = onShare
+        self.content = content()
+    }
+
+    private let buttonWidth: CGFloat = 68
+    private var actionWidth: CGFloat { buttonWidth * 3 }
+
+    var body: some View {
+        ZStack {
+            // 透明点击层：左滑展开后点击空白处收起
+            Color.clear
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    if offset != 0 { withAnimation(.easeOut(duration: 0.2)) { offset = 0 } }
+                }
+            // 背景操作按钮（右侧，左滑露出）
+            HStack(spacing: 0) {
+                Spacer()
+                actionButton("重命名", systemImage: "pencil", color: Color.blue, action: onRename)
+                actionButton("分享", systemImage: "square.and.arrow.up", color: Color.green, action: onShare)
+                actionButton("删除", systemImage: "trash", color: Color.red, action: onDelete)
+            }
+            // 前景内容
+            content
+                .frame(maxWidth: .infinity)
+                .background(Color.appSurface)
+                .offset(x: offset)
+                .allowsHitTesting(offset == 0)
+        }
+        .clipped()
+        .simultaneousGesture(dragGesture)
+    }
+
+    private func actionButton(_ title: String, systemImage: String, color: Color, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            VStack(spacing: 3) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 16, weight: .semibold))
+                Text(title)
+                    .font(.system(size: 10, weight: .medium))
+            }
+            .foregroundStyle(.white)
+            .frame(width: buttonWidth, height: 52)
+            .background(color)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var dragGesture: some Gesture {
+        DragGesture(minimumDistance: 15)
+            .onChanged { value in
+                let dx = value.translation.width
+                if dx < 0 {
+                    offset = max(dx, -actionWidth)
+                } else if offset < 0 {
+                    offset = min(0, offset + dx)
+                }
+            }
+            .onEnded { value in
+                withAnimation(.easeOut(duration: 0.2)) {
+                    if value.translation.width < -40 {
+                        offset = -actionWidth
+                    } else {
+                        offset = 0
+                    }
+                }
+            }
+    }
+}
+
 struct MiniReminderRow: View {
     let reminder: EKReminder
     let onComplete: () -> Void
@@ -511,6 +587,11 @@ struct SideMenuOverlay: View {
     var onAccount: () -> Void
     @EnvironmentObject var store: ChatStore
     @EnvironmentObject var settings: SettingsStore
+    @State private var renameTargetID: UUID?
+    @State private var renameText = ""
+    @State private var showRename = false
+    @State private var shareText = ""
+    @State private var showShare = false
 
     var body: some View {
         GeometryReader { geo in
@@ -543,6 +624,31 @@ struct SideMenuOverlay: View {
                     }
             )
         }
+        .sheet(isPresented: $showShare) {
+            ShareSheet(activityItems: [shareText])
+        }
+        .alert("重命名对话", isPresented: $showRename) {
+            TextField("对话名称", text: $renameText)
+            Button("保存") {
+                if let id = renameTargetID {
+                    store.rename(id, to: renameText)
+                }
+            }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("输入新的对话名称")
+        }
+    }
+
+    private func exportConversation(_ c: Conversation) -> String {
+        var lines = ["【\(c.title)】"]
+        for m in c.messages where m.role != "tool" {
+            let text = m.content.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !text.isEmpty else { continue }
+            let who = m.role == "user" ? "我" : "Velos"
+            lines.append("\(who)：\(text)")
+        }
+        return lines.joined(separator: "\n\n")
     }
 
     private var sideMenuHeader: some View {
@@ -601,6 +707,26 @@ struct SideMenuOverlay: View {
                             SideMenuButton(icon: "bubble.left", color: .pastelPurple, title: conversation.title) {
                                 path.append(ChatRoute.chat(conversation.id))
                                 isPresented = false
+                            }
+                            .contextMenu {
+                                Button {
+                                    renameTargetID = conversation.id
+                                    renameText = conversation.title == "新对话" ? "" : conversation.title
+                                    showRename = true
+                                } label: {
+                                    Label("重命名", systemImage: "pencil")
+                                }
+                                Button {
+                                    shareText = exportConversation(conversation)
+                                    showShare = true
+                                } label: {
+                                    Label("分享", systemImage: "square.and.arrow.up")
+                                }
+                                Button(role: .destructive) {
+                                    store.delete(conversation.id)
+                                } label: {
+                                    Label("删除", systemImage: "trash")
+                                }
                             }
                             if conversation.id != sidebarConversations.last?.id {
                                 Divider().padding(.leading, 44)

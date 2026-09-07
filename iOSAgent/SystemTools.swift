@@ -533,11 +533,32 @@ final class SystemTools {
         }
     }
 
+    /// 确保 EventKit 授权：已授权返回 true；未决定（notDetermined）时主动弹窗请求一次；拒绝/受限返回 false。
+    /// 用 try? 兜底，避免侧载环境下请求 fullAccess 抛异常导致闪退。
+    private static func ensureEKAuth(_ type: EKEntityType) async -> Bool {
+        if ekAuthorized(type) { return true }
+        let status = EKEventStore.authorizationStatus(for: type)
+        guard status == .notDetermined else { return false }
+        if #available(iOS 17.0, *) {
+            if type == .event {
+                return (try? await SettingsStore.shared.eventStore.requestFullAccessToEvents()) ?? false
+            } else {
+                return (try? await SettingsStore.shared.eventStore.requestFullAccessToReminders()) ?? false
+            }
+        } else {
+            return await withCheckedContinuation { continuation in
+                SettingsStore.shared.eventStore.requestAccess(to: type) { granted, _ in
+                    continuation.resume(returning: granted)
+                }
+            }
+        }
+    }
+
     // MARK: - Reminders
 
     private static func createReminder(_ call: [String: AnyCodable]) async throws -> ToolResult {
         guard SettingsStore.shared.isEnabled("reminders") else { return needEnable("提醒事项") }
-        guard ekAuthorized(.reminder) else {
+        guard await ensureEKAuth(.reminder) else {
             return ToolResult(success: false, message: "提醒事项未授权，请在设置中开启", data: nil)
         }
         let title = string(call, "title") ?? "提醒"
@@ -591,7 +612,7 @@ final class SystemTools {
 
     private static func listReminders(_ call: [String: AnyCodable]) async throws -> ToolResult {
         guard SettingsStore.shared.isEnabled("reminders") else { return needEnable("提醒事项") }
-        guard ekAuthorized(.reminder) else {
+        guard await ensureEKAuth(.reminder) else {
             return ToolResult(success: false, message: "提醒事项未获得 iOS 授权，请在系统设置 → 隐私与安全性 → 提醒事项中允许 Velos", data: nil)
         }
         let store = SettingsStore.shared.eventStore
@@ -633,7 +654,7 @@ final class SystemTools {
 
     private static func createCalendarEvent(_ call: [String: AnyCodable]) async throws -> ToolResult {
         guard SettingsStore.shared.isEnabled("calendar") else { return needEnable("日历") }
-        guard ekAuthorized(.event) else {
+        guard await ensureEKAuth(.event) else {
             return ToolResult(success: false, message: "日历未授权，请在设置中开启", data: nil)
         }
         let title = string(call, "title") ?? "日程"
@@ -657,7 +678,7 @@ final class SystemTools {
 
     private static func listEvents(_ call: [String: AnyCodable]) async throws -> ToolResult {
         guard SettingsStore.shared.isEnabled("calendar") else { return needEnable("日历") }
-        guard ekAuthorized(.event) else {
+        guard await ensureEKAuth(.event) else {
             return ToolResult(success: false, message: "日历未获得 iOS 授权，请在系统设置 → 隐私与安全性 → 日历中允许 Velos", data: nil)
         }
         let days = int(call, "days") ?? 7
@@ -802,19 +823,17 @@ final class SystemTools {
     // MARK: - Location
 
     /// 获取当前坐标（供天气等工具复用）。定位失败/未授权返回 nil，不抛异常。
+    /// 不依赖 App 内「位置」能力开关——用户主动问天气时，定位是合理预期；由系统授权状态 + 授权弹窗把关。
+    /// 未授权时 delegate.start() 会主动 requestWhenInUseAuthorization 弹窗，并带 10 秒超时保护。
     private static func currentCoordinate() async -> CLLocationCoordinate2D? {
-        guard SettingsStore.shared.isEnabled("location") else { return nil }
         let manager = CLLocationManager()
-        let status = manager.authorizationStatus
-        guard status == .authorizedWhenInUse || status == .authorizedAlways else { return nil }
         do {
             let location = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<CLLocation, Error>) in
                 let delegate = LocationFetchDelegate(manager: manager) { result in
                     continuation.resume(with: result)
                 }
                 LocationFetchDelegate.retain(delegate)
-                manager.delegate = delegate
-                manager.requestLocation()
+                delegate.start()
             }
             return location.coordinate
         } catch {
@@ -1020,7 +1039,7 @@ final class SystemTools {
         guard let url = URL(string: urlString) else { return ToolResult(success: false, message: "URL 无效", data: nil) }
         var req = URLRequest(url: url)
         req.timeoutInterval = 30
-        req.setValue("Velos/9.0.1", forHTTPHeaderField: "User-Agent")
+        req.setValue("Velos/9.0.2", forHTTPHeaderField: "User-Agent")
         let (data, resp) = try await URLSession.shared.data(for: req)
         guard let http = resp as? HTTPURLResponse, (200...299).contains(http.statusCode), !data.isEmpty else {
             return ToolResult(success: false, message: "下载 SKILL.md 失败：HTTP \((resp as? HTTPURLResponse)?.statusCode ?? 0)", data: nil)
@@ -1440,21 +1459,53 @@ final class LocationFetchDelegate: NSObject, CLLocationManagerDelegate {
     private let manager: CLLocationManager
     private let completion: (Result<CLLocation, Error>) -> Void
     private var done = false
+
     init(manager: CLLocationManager, _ completion: @escaping (Result<CLLocation, Error>) -> Void) {
         self.manager = manager
         self.completion = completion
+        super.init()
+    }
+
+    /// 启动定位流程：未授权先请求授权，已授权直接定位，被拒绝则立即失败。
+    func start() {
+        manager.delegate = self
+        let status = manager.authorizationStatus
+        // 超时保护：GPS 弱信号 / 室内时 requestLocation 可能永不回调，10 秒后强制失败
+        DispatchQueue.main.asyncAfter(deadline: .now() + 10) { [weak self] in
+            guard let self, !self.done else { return }
+            self.finish(.failure(NSError(domain: "Location", code: 2, userInfo: [NSLocalizedDescriptionKey: "定位超时"])))
+        }
+        if status == .notDetermined {
+            manager.requestWhenInUseAuthorization()
+        } else if status == .authorizedWhenInUse || status == .authorizedAlways {
+            manager.requestLocation()
+        } else {
+            finish(.failure(NSError(domain: "Location", code: 1, userInfo: [NSLocalizedDescriptionKey: "位置权限被拒绝"])))
+        }
+    }
+
+    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        let status = manager.authorizationStatus
+        if status == .authorizedWhenInUse || status == .authorizedAlways {
+            manager.requestLocation()
+        } else if status == .denied || status == .restricted {
+            finish(.failure(NSError(domain: "Location", code: 1, userInfo: [NSLocalizedDescriptionKey: "位置权限被拒绝"])))
+        }
     }
 
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         guard !done, let loc = locations.last else { return }
-        done = true
-        completion(.success(loc))
-        LocationFetchDelegate.retained.removeAll { $0 === self }
+        finish(.success(loc))
     }
+
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+        finish(.failure(error))
+    }
+
+    private func finish(_ result: Result<CLLocation, Error>) {
         guard !done else { return }
         done = true
-        completion(.failure(error))
+        completion(result)
         LocationFetchDelegate.retained.removeAll { $0 === self }
     }
 }
