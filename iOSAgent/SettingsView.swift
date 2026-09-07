@@ -83,33 +83,59 @@ struct SettingsView: View {
                         .padding(.vertical, AppSpacing.sm)
                     }
 
-                    SettingsSection(title: "多模态生成") {
+                    SettingsSection(title: "图片生成") {
                         VStack(alignment: .leading, spacing: AppSpacing.sm) {
                             HStack(spacing: AppSpacing.sm) {
-                                Image(systemName: "sparkles")
-                                    .font(.system(size: 13, weight: .semibold))
-                                    .foregroundStyle(Color.appSecondaryText)
-                                Text("SiliconFlow API Key（可选）")
+                                Image(systemName: "checkmark.circle.fill")
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundStyle(Color.appSuccess)
+                                Text("已默认配置（服务器内置免费图源）")
                                     .font(.appCaption2().weight(.semibold))
-                                    .foregroundStyle(Color.appSecondaryText)
+                                    .foregroundStyle(Color.appPrimaryText)
                                 Spacer(minLength: 0)
-                                if !settings.mediaProviderKey.isEmpty {
-                                    Text("已配置")
-                                        .font(.appMicro())
-                                        .foregroundStyle(Color.appSuccess)
-                                }
                             }
-                            .padding(.leading, AppSpacing.md)
-                            AppSecureField(placeholder: "sk-xxx（cloud.siliconflow.cn 注册即送额度）",
-                                           text: Binding(get: { settings.mediaProviderKey },
-                                                        set: { settings.mediaProviderKey = $0 }))
-                                .padding(.horizontal, AppSpacing.md)
-                            Text("留空时使用服务器内置额度（有限额）；填入自己的 Key 则优先使用你的额度。配置后即可在对话中直接生成图片 / 语音 / 视频，密钥仅保存在本机与请求头中，不会出现在聊天内容里。")
-                                .font(.appCaption())
+                            .padding(.horizontal, AppSpacing.md)
+                            Text("开箱即用，对话里直接说「画一张…」即可生成图片。密钥仅在本机与请求头中保存，不参与聊天内容。")
+                                .font(.appCaption2())
                                 .foregroundStyle(Color.appSecondaryText)
                                 .lineLimit(nil)
                                 .padding(.horizontal, AppSpacing.md)
-                                .padding(.bottom, AppSpacing.sm)
+                            // 高级：自带 SiliconFlow Key（默认折叠，不再默认引导）
+                            DisclosureGroup {
+                                VStack(alignment: .leading, spacing: AppSpacing.sm) {
+                                    HStack(spacing: AppSpacing.sm) {
+                                        Image(systemName: "sparkles")
+                                            .font(.system(size: 13, weight: .semibold))
+                                            .foregroundStyle(Color.appSecondaryText)
+                                        Text("SiliconFlow API Key（高级）")
+                                            .font(.appCaption2().weight(.semibold))
+                                            .foregroundStyle(Color.appSecondaryText)
+                                        Spacer(minLength: 0)
+                                        if !settings.mediaProviderKey.isEmpty {
+                                            Text("已配置")
+                                                .font(.appMicro())
+                                                .foregroundStyle(Color.appSuccess)
+                                        }
+                                    }
+                                    .padding(.leading, AppSpacing.md)
+                                    AppSecureField(placeholder: "sk-xxx",
+                                                   text: Binding(get: { settings.mediaProviderKey },
+                                                                set: { settings.mediaProviderKey = $0 }))
+                                        .padding(.horizontal, AppSpacing.md)
+                                    Text("填入后优先使用你自己的额度（更高画质 / 自定义尺寸）。留空即可，不影响基础使用。")
+                                        .font(.appMicro())
+                                        .foregroundStyle(Color.appSecondaryText)
+                                        .lineLimit(nil)
+                                        .padding(.horizontal, AppSpacing.md)
+                                        .padding(.bottom, AppSpacing.sm)
+                                }
+                            } label: {
+                                Text("高级：自带 Key")
+                                    .font(.appCaption())
+                                    .foregroundStyle(Color.appSecondaryText)
+                            }
+                            .padding(.horizontal, AppSpacing.md)
+                            .padding(.bottom, AppSpacing.sm)
                         }
                         .padding(.vertical, AppSpacing.sm)
                         .background(Color.appSurface)
@@ -975,38 +1001,21 @@ struct SkillsView: View {
                 .background(Color.appInputFill)
                 .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
 
-                // GitHub 访问令牌（可选，用于提升限额）
-                VStack(alignment: .leading, spacing: AppSpacing.sm) {
-                    HStack(spacing: AppSpacing.sm) {
-                        Image(systemName: "key.fill")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(Color.appSecondaryText)
-                        Text("GitHub 访问令牌（可选）")
-                            .font(.appCaption2().weight(.semibold))
-                            .foregroundStyle(Color.appSecondaryText)
-                        Spacer(minLength: 0)
-                        if !settings.githubToken.isEmpty {
-                            Text("已配置")
-                                .font(.appMicro())
-                                .foregroundStyle(Color.appSuccess)
-                        }
-                    }
-                    .padding(.leading, AppSpacing.md)
-                    AppSecureField(placeholder: "ghp_xxx 或 github_pat_xxx（提升限额）",
-                                   text: Binding(get: { settings.githubToken },
-                                                set: { settings.githubToken = $0 }))
-                        .padding(.horizontal, AppSpacing.md)
-                    Text("不填也能用：未配置令牌时，搜索会自动走 velos 服务端代理（无需 GitHub 账号，结果有缓存）。填入令牌后改为直连 GitHub，限额更高、结果更实时。令牌仅存本机。")
-                        .font(.appCaption())
+                // GitHub 搜索：已自动通过 velos 服务端代理，无需在 App 内配置 Token
+                HStack(spacing: AppSpacing.sm) {
+                    Image(systemName: "checkmark.shield.fill")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(Color.appSuccess)
+                    Text("已通过 velos 服务端代理搜索 GitHub，无需配置 Token")
+                        .font(.appCaption2())
                         .foregroundStyle(Color.appSecondaryText)
                         .lineLimit(nil)
-                        .padding(.horizontal, AppSpacing.md)
-                        .padding(.bottom, AppSpacing.sm)
+                    Spacer(minLength: 0)
                 }
+                .padding(.horizontal, AppSpacing.md)
                 .padding(.vertical, AppSpacing.sm)
                 .background(Color.appSurface)
                 .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
-                .appCardShadow()
 
                 // 远程执行服务（账户）入口已移到「账户」页：侧边栏头像或设置页顶部均可进入。
 
@@ -2003,6 +2012,23 @@ struct AccountRootView: View {
                                 .contentShape(Rectangle())
                         }
                     }
+                }
+                // AccountRootView 是从侧边栏覆盖进来的（不是 push 出来的），
+                // NavigationStack 根视图没有"上一层"可 pop，右滑默认失效。
+                // 显式追加一个左缘右滑手势来关闭覆盖层，与 SettingsRootView 行为一致。
+                .overlay(alignment: .leading) {
+                    Color.clear
+                        .frame(width: 44)
+                        .contentShape(Rectangle())
+                        .highPriorityGesture(
+                            DragGesture(minimumDistance: 16)
+                                .onChanged { _ in }
+                                .onEnded { value in
+                                    if value.translation.width > 50 {
+                                        onBack()
+                                    }
+                                }
+                        )
                 }
         }
         .background(Color.appBackground)
