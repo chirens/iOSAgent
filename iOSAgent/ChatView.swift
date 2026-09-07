@@ -470,8 +470,11 @@ struct ChatView: View {
         photoItem = nil
     }
 
+    /// 对 UI 可见的消息：过滤掉工具中间结果的气泡文本，只保留带文件附件的工具卡片。
+    /// 注意：原始消息仍保存在 store 中并发给模型，这里只是不在界面上渲染噪声。
     private var messages: [StoredMessage] {
-        store.conversations.first(where: { $0.id == conversationId })?.messages ?? []
+        let all = store.conversations.first(where: { $0.id == conversationId })?.messages ?? []
+        return all.filter { $0.role != "tool" || $0.fileURL != nil }
     }
 
     /// 顶部标题必须绑定到当前 conversationId，避免共享 store.selected 导致多个对话互相串标题
@@ -734,34 +737,28 @@ struct MessageBubble: View {
             if message.role == "user" { Spacer(minLength: 28) }
 
             VStack(alignment: message.role == "user" ? .trailing : .leading, spacing: 5) {
-                if let toolName = message.toolName {
-                    Label(toolName, systemImage: "hammer.fill")
-                        .font(.appCaption2().weight(.medium))
-                        .foregroundStyle(Color.appSecondaryText)
-                        .padding(.horizontal, 14)
-                }
-
-                // 流式占位：模型思考/工具执行中但尚未输出文字时显示动态心跳，避免空矩形
-                if message.isStreaming && message.role == "assistant" && message.content.isEmpty {
-                    HStack(spacing: 6) {
-                        ProgressView()
-                            .scaleEffect(0.7)
-                            .frame(width: 14, height: 14)
-                        Text(heartbeatText)
-                            .font(.appBody())
-                            .foregroundStyle(Color.appPrimaryText)
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 12)
-                    .background(
-                        RoundedRectangle(cornerRadius: 18, style: .circular)
-                            .fill(bubbleBackground)
-                    )
-                    .shadow(color: .black.opacity(0.15), radius: 6, x: 0, y: 2)
+                if message.role == "tool" {
+                    // 工具结果消息：不展示原始文本/JSON/HTML，只展示文件卡片（若有）
+                    toolFileCard
                 } else {
-                    Text(message.content)
-                        .font(.appBody())
-                        .foregroundStyle(message.role == "user" ? .white : Color.appPrimaryText)
+                    if let toolName = message.toolName {
+                        Label(toolName, systemImage: "hammer.fill")
+                            .font(.appCaption2().weight(.medium))
+                            .foregroundStyle(Color.appSecondaryText)
+                            .padding(.horizontal, 14)
+                    }
+
+                    // 流式占位：模型思考/工具执行中但尚未输出文字时显示动态心跳，避免空矩形。
+                    // 工具执行阶段 isStreaming 会被置 false、但 status 仍保留心跳文字，故条件需同时覆盖 status。
+                    if message.role == "assistant" && message.content.isEmpty && (message.isStreaming || message.status != nil) {
+                        HStack(spacing: 6) {
+                            ProgressView()
+                                .scaleEffect(0.7)
+                                .frame(width: 14, height: 14)
+                            Text(heartbeatText)
+                                .font(.appBody())
+                                .foregroundStyle(Color.appPrimaryText)
+                        }
                         .padding(.horizontal, 16)
                         .padding(.vertical, 12)
                         .background(
@@ -769,36 +766,48 @@ struct MessageBubble: View {
                                 .fill(bubbleBackground)
                         )
                         .shadow(color: .black.opacity(0.15), radius: 6, x: 0, y: 2)
-                        .textSelection(.enabled)
-                }
-
-                if message.role == "assistant" && !message.isStreaming {
-                    HStack(spacing: 4) {
-                        Image(systemName: "sparkle")
-                            .font(.appCaption2())
-                        Text("Velos")
-                            .font(.appCaption2().weight(.medium))
+                    } else if !message.content.isEmpty {
+                        Text(message.content)
+                            .font(.appBody())
+                            .foregroundStyle(message.role == "user" ? .white : Color.appPrimaryText)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 12)
+                            .background(
+                                RoundedRectangle(cornerRadius: 18, style: .circular)
+                                    .fill(bubbleBackground)
+                            )
+                            .shadow(color: .black.opacity(0.15), radius: 6, x: 0, y: 2)
+                            .textSelection(.enabled)
                     }
-                    .foregroundStyle(Color.appSecondaryText)
-                    .padding(.leading, 4)
-                }
 
-                if let url = message.fileURL {
-                    Button {
-                        previewURL = PreviewItem(url: url)
-                    } label: {
+                    if message.role == "assistant" && !message.isStreaming && !message.content.isEmpty {
                         HStack(spacing: 4) {
-                            Image(systemName: "doc.text.viewfinder")
-                            Text("打开文件")
+                            Image(systemName: "sparkle")
+                                .font(.appCaption2())
+                            Text("Velos")
+                                .font(.appCaption2().weight(.medium))
                         }
-                        .font(.appCaption().weight(.medium))
-                        .foregroundStyle(Color.brandAccent)
+                        .foregroundStyle(Color.appSecondaryText)
+                        .padding(.leading, 4)
                     }
-                    .padding(.leading, 4)
-                }
 
-                if !message.isStreaming {
-                    actionButtons
+                    if let url = message.fileURL {
+                        Button {
+                            previewURL = PreviewItem(url: url)
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: "doc.text.viewfinder")
+                                Text("打开文件")
+                            }
+                            .font(.appCaption().weight(.medium))
+                            .foregroundStyle(Color.brandAccent)
+                        }
+                        .padding(.leading, 4)
+                    }
+
+                    if !message.isStreaming && !message.content.isEmpty {
+                        actionButtons
+                    }
                 }
             }
             .frame(maxWidth: 300, alignment: message.role == "user" ? .trailing : .leading)
@@ -808,6 +817,38 @@ struct MessageBubble: View {
         .sheet(item: $previewURL) { FilePreviewView(url: $0.url) }
         .sheet(isPresented: $showShareSheet) {
             ShareSheet(activityItems: [message.content])
+        }
+    }
+
+    /// 工具结果文件卡片：只保留“打开文件”入口，不显示执行成功/失败文字
+    @ViewBuilder
+    private var toolFileCard: some View {
+        if let url = message.fileURL {
+            Button {
+                previewURL = PreviewItem(url: url)
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "doc.text.viewfinder")
+                        .font(.appBody().weight(.medium))
+                    Text("打开文件")
+                        .font(.appBody().weight(.medium))
+                    Spacer(minLength: 0)
+                    Image(systemName: "chevron.right")
+                        .font(.appCaption2())
+                }
+                .foregroundStyle(Color.brandAccent)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .background(
+                    RoundedRectangle(cornerRadius: 18, style: .circular)
+                        .fill(Color.appSurface)
+                )
+                .shadow(color: .black.opacity(0.15), radius: 6, x: 0, y: 2)
+            }
+            .buttonStyle(.plain)
+        } else {
+            // 无文件的工具结果：完全不渲染（messages 已过滤，此处为防御）
+            EmptyView()
         }
     }
 

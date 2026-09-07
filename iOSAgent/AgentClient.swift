@@ -133,6 +133,12 @@ final class AgentClient {
                                          fileURL: result.fileURL))
                 await onUpdate(out)
             }
+
+            // 工具执行完毕：清除“工具调用指令”类 assistant 消息的 status，避免心跳占位残留到最终结果之后
+            for idx in out.indices where out[idx].role == "assistant" && out[idx].content.isEmpty {
+                out[idx].status = nil
+            }
+            await onUpdate(out)
         }
 
         if finalText.isEmpty, let last = out.last, last.role == "assistant" {
@@ -475,13 +481,16 @@ final class AgentClient {
            - “提醒”“提醒我N分钟后做某事”“提醒事项” → 用 create_reminder（写入系统“提醒事项”App，会在锁屏/通知中心弹窗，即使 Velos 被划掉也能收到）。
            - “日程”“会议”“约会” → 用 create_calendar_event（写入系统“日历”App）。
            - “计时”“倒计时” → 用 set_timer。
+           - “看我最近/近几天的安排”“今天/明天有什么日程”“待办/提醒事项有哪些”“我有哪些闹钟”等**查询类**请求 → 分别用 list_events、list_reminders、list_alarms 读取后汇总成人话清单（按时间排序），不要只回复“请查看系统 App”。
         3. 对于相对时间如“5分钟后”“半小时后”“明天早上9点”，直接使用 fire_in_minutes / due_in_minutes / duration_minutes；对于绝对时间使用 fire_at / due_at / start_at（ISO8601 格式，如 2026-08-26T09:00:00+08:00）。
         4. 用户说“提醒我N分钟后做某事”时，标题就是这件事本身（如“喝水”“拿快递”），不要再问用户标题。
         5. 如果用户没有指定标题，根据内容推断一个合适的标题。
         6. 工具执行后，根据结果用一句话向用户确认，不要暴露内部 ID、路径或 JSON。
         7. 如果某个能力未开启，引导用户到设置页开启，不要重复尝试调用失败工具。
         8. 当用户要求生成文件、PPT、写报告、整理数据时，使用 create_file（文本/md/csv）或 create_ppt（PPT）。先自己规划内容结构，再调用工具生成；生成后用一句话告诉用户文件已保存，可点击分享按钮导出。
-        9. 【多模态生成】用户要“画一张图 / 生成图片 / 做张配图” → generate_image；要“朗读 / 生成语音 / 配音 / 音频” → generate_speech；要“生成视频 / 做段短片” → generate_video。规则：①generate_image 默认 1024x1024，调用前先把用户的中文描述改写成简洁具体的英文 Stable Diffusion prompt（主体 + 风格 + 光线 + 色彩 + 构图），必要时通过 negative_prompt 排除低质量元素，这样免费图源出图更贴近描述；②generate_video 较慢（1–5 分钟），调用前先告诉用户需要等待；③若 generate_video 返回“仍在生成 / pending”且给出 request_id，稍后用 check_video 查询结果并告诉用户已保存的文件；④生成成功后用一句话说明已保存、可点击打开/分享，不要复述内部 URL 或 JSON。你始终拥有 web_request 这个“万能连接器”工具，可向任意 HTTP(S) 接口发请求，用于调用外部服务（dashi-ppt、图像/视频/音频生成 API、Webhook、任意 REST 接口）。规则：①鉴权令牌放 headers 的 Authorization 字段，绝不写进回复文本；②若服务返回文件（.pptx/.pdf/图片/音频/视频），你会收到可打开/分享的文件；③当某个技能提示词要求你“运行脚本 / 执行 Node / 启动连接器 / 调用本地工具”时，不要声称缺少连接器或无法执行——应将其翻译为对应的 web_request HTTP 调用（用户需提供该服务的 endpoint 与密钥，或该服务以本地服务器形式可达）；④绝不要对用户说“我没有连接器”或“环境未接入”，web_request 就是连接器。
+        9. 【多模态生成】用户要“画一张图 / 生成图片 / 做张配图” → generate_image；要“朗读 / 生成语音 / 配音 / 音频” → generate_speech；要“生成视频 / 做段短片” → generate_video。规则：①generate_image 默认 1024x1024，调用前先把用户的中文描述改写成简洁具体的英文 Stable Diffusion prompt（主体 + 风格 + 光线 + 色彩 + 构图），必要时通过 negative_prompt 排除低质量元素，这样免费图源出图更贴近描述；②generate_video 较慢（1–5 分钟），调用前先告诉用户需要等待；③若 generate_video 返回“仍在生成 / pending”且给出 request_id，稍后用 check_video 查询结果并告诉用户已保存的文件；④生成成功后用一句话说明已保存、可点击打开/分享，不要复述内部 URL 或 JSON。
+        10. 【web_request / 万能连接器】用于调用外部 HTTP 服务（dashi-ppt、图片/视频/音频生成、Webhook、GitHub 等）。规则：①鉴权令牌放 headers 的 Authorization 字段，绝不写进回复文本；②若服务返回文件（.pptx/.pdf/图片/音频/视频），你会收到可打开/分享的文件；③当某个技能提示词要求你“运行脚本 / 执行 Node / 启动连接器 / 调用本地工具”时，不要声称缺少连接器——应翻译为对应的 web_request HTTP 调用；④绝不要对用户说“我没有连接器”或“环境未接入”，web_request 就是连接器；⑤当用户让你“查看一个 GitHub 项目 / 网页 / 链接”时，优先用 web_request 抓取该页面的 raw 文本或 README（如 GitHub 的 raw.githubusercontent.com 或 ?format=raw、render 接口），抓取到 HTML 后请在内部消化，只向用户输出项目的一句话概括、核心定位、主要功能和安装入口，**严禁把原始 HTML、CSS、JS、JSON 或转义字符直接复制到回复里**；⑥如果一次请求失败（TLS/限流/连接断开），立即换 URL 或方式重试，失败过程不要告诉用户，只报告最终结果。
+        11. 【输出纯净度】用户只看最终结果。任何工具的失败、重试、中间状态、原始响应体，只允许出现在流式心跳占位里一闪而过，不允许作为独立消息气泡留在对话中；最终回复必须是人话总结，禁止包含 JSON 转义、HTML 标签、CSS 代码、JS 代码、路径字符串、未解析编码或"status":200 之类的技术字段。
 
         示例：
         用户：5分钟后提醒我喝水
@@ -830,7 +839,7 @@ struct SkillInstaller {
         var req = URLRequest(url: url)
         req.timeoutInterval = 30
         req.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
-        req.setValue("iOSAgent/8.9.8", forHTTPHeaderField: "User-Agent")
+        req.setValue("iOSAgent/8.9.9", forHTTPHeaderField: "User-Agent")
         let token = Self.authToken
         if !token.isEmpty { req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
         let (data, resp) = try await URLSession.shared.data(for: req)
