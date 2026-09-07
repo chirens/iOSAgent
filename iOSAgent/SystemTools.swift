@@ -237,7 +237,7 @@ final class SystemTools {
         )),
         ToolSpec(type: "function", function: FunctionSpec(
             name: "create_reminder",
-            description: "在系统“提醒事项”App 中创建一条提醒。用户说“提醒我N分钟后做某事”“提醒我拿快递”“明天提醒我交报告”时使用。会出现在系统提醒事项和通知中心，即使 velos 不在后台也能收到。",
+            description: "在系统“提醒事项”App 中创建一条提醒。用户说“提醒我N分钟后做某事”“提醒我拿快递”“明天提醒我交报告”时使用。会出现在系统提醒事项和通知中心，即使 Velos 不在后台也能收到。",
             parameters: [
                 "title": ParameterSpec(type: "string", description: "提醒标题，即要做的事情，如“喝水”“拿快递”。"),
                 "notes": ParameterSpec(type: "string", description: "备注。"),
@@ -552,7 +552,7 @@ final class SystemTools {
                 return ToolResult(success: false, message: "健康数据尚未授权。请在 App“设置 → 系统权限”中开启健康，并用包含 HealthKit 能力的付费开发者描述文件重签 IPA。免费 Apple ID 侧载通常无法开启 HealthKit 能力，会导致授权被系统拒绝。", data: nil)
             }
             if st == .sharingDenied {
-                return ToolResult(success: false, message: "健康数据读取被拒绝。请在 iOS 系统“设置 → 隐私与安全性 → 健康”中重新允许 velos 读取。", data: nil)
+                return ToolResult(success: false, message: "健康数据读取被拒绝。请在 iOS 系统“设置 → 隐私与安全性 → 健康”中重新允许 Velos 读取。", data: nil)
             }
         }
 
@@ -864,7 +864,7 @@ final class SystemTools {
         }
     }
 
-    // MARK: - 多模态生成（图片 / 语音 / 视频，走 velos 服务端中继）
+    // MARK: - 多模态生成（图片 / 语音 / 视频，走 Velos 服务端中继）
 
     private enum MediaEndpoint: String {
         case image = "/generate/image"
