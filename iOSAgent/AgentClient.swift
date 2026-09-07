@@ -122,7 +122,7 @@ final class AgentClient {
 
             for tc in toolCalls {
                 if let lastIdx = out.indices.last {
-                    out[lastIdx].status = "执行：\(tc.name)…"
+                    out[lastIdx].status = statusForExecutingTool(tc.name)
                     await onUpdate(out)
                 }
                 let args = parseArgs(tc.arguments)
@@ -190,15 +190,15 @@ final class AgentClient {
                         }
                         accumulated[idx] = call
                     }
-                    let names = accumulated.values.map { $0.name }.filter { !$0.isEmpty }.joined(separator: "、")
-                    msg.status = names.isEmpty ? "正在规划工具…" : "正在调用：\(names)"
+                    let names = accumulated.values.map { $0.name }.filter { !$0.isEmpty }
+                    msg.status = statusForToolCalls(names)
                 }
             }
 
             if let finish = first["finish_reason"] as? String {
                 if finish == "tool_calls" {
                     msg.toolCalls = Array(accumulated.sorted { $0.key < $1.key }.map { $0.value })
-                    msg.status = "正在执行工具…"
+                    msg.status = statusForToolCalls(msg.toolCalls?.map { $0.name } ?? [])
                 } else if finish == "stop" || finish == "length" {
                     msg.isStreaming = false
                     msg.status = nil
@@ -215,6 +215,27 @@ final class AgentClient {
 
         let calls = Array(accumulated.sorted { $0.key < $1.key }.map { $0.value })
         return (msg, calls)
+    }
+
+    /// 根据工具名返回更友好的流式状态文字
+    private func statusForToolCalls(_ names: [String]) -> String {
+        let clean = names.filter { !$0.isEmpty }
+        if clean.isEmpty { return "正在规划工具…" }
+        if clean.contains("generate_image") { return "生图API调用中…" }
+        if clean.contains("generate_speech") { return "语音API调用中…" }
+        if clean.contains("generate_video") { return "视频API调用中…" }
+        return "正在调用：\(clean.joined(separator: "、"))…"
+    }
+
+    /// 工具实际执行阶段的状态文字（比"执行：xxx"更具体）
+    private func statusForExecutingTool(_ name: String) -> String {
+        switch name {
+        case "generate_image": return "服务器正在生成图片…"
+        case "generate_speech": return "服务器正在合成语音…"
+        case "generate_video": return "服务器正在渲染视频…"
+        case "check_video": return "正在查询视频状态…"
+        default: return "执行：\(name)…"
+        }
     }
 
     /// 单轮问答（供 App Intents 使用，不挂工具）
@@ -335,7 +356,7 @@ final class AgentClient {
 
     private func toolResultString(_ result: ToolResult) -> String {
         var base = result.success ? "[执行成功]" : "[执行失败]"
-        base += " \(result.message)"
+        base += " \(cleanToolMessage(result.message))"
         // 生成文件类工具的数据仅包含内部路径，不要展示给用户；其它工具结果仍保留结构化数据供模型参考。
         if result.fileURL == nil,
            let data = result.data,
@@ -344,6 +365,53 @@ final class AgentClient {
             base += "\n数据：\(s)"
         }
         return base
+    }
+
+    /// 清洗工具返回的原始错误字符串：去掉 JSON 转义、提取可读的 message/error，避免把未解析编码抛给用户
+    private func cleanToolMessage(_ raw: String) -> String {
+        // 1. 先做一次反 JSON-escape
+        var s = raw
+            .replacingOccurrences(of: "\\\"", with: "\"")
+            .replacingOccurrences(of: "\\\\", with: "\\")
+            .replacingOccurrences(of: "\\n", with: " ")
+            .replacingOccurrences(of: "\\r", with: " ")
+            .replacingOccurrences(of: "\\t", with: " ")
+            .replacingOccurrences(of: "\\/", with: "/")
+
+        // 2. 如果字符串里还残留嵌套 JSON，尝试提取最内层的 message / error
+        if let inner = extractInnerErrorMessage(s) {
+            s = inner
+        }
+
+        // 3. 压平多余空白
+        let comp = s.components(separatedBy: .whitespacesAndNewlines)
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+        s = comp
+
+        // 4. 截断，防止超长噪声刷屏
+        if s.count > 360 {
+            s = String(s.prefix(360)) + "…"
+        }
+        return s
+    }
+
+    private func extractInnerErrorMessage(_ text: String) -> String? {
+        // 从 "message": "..." 或 "error": "..." 中提取最内层文本
+        let pattern = "\"(?:message|error|detail)\"\\s*:\\s*\"([^\"]+)\""
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else { return nil }
+        let ns = text as NSString
+        let matches = regex.matches(in: text, options: [], range: NSRange(location: 0, length: ns.length))
+        var best: String?
+        for m in matches {
+            if let r = Range(m.range(at: 1), in: text) {
+                let candidate = String(text[r])
+                if candidate.count > (best?.count ?? 0) {
+                    best = candidate
+                }
+            }
+        }
+        return best
     }
 
     // MARK: - 系统提示词
@@ -413,7 +481,7 @@ final class AgentClient {
         6. 工具执行后，根据结果用一句话向用户确认，不要暴露内部 ID、路径或 JSON。
         7. 如果某个能力未开启，引导用户到设置页开启，不要重复尝试调用失败工具。
         8. 当用户要求生成文件、PPT、写报告、整理数据时，使用 create_file（文本/md/csv）或 create_ppt（PPT）。先自己规划内容结构，再调用工具生成；生成后用一句话告诉用户文件已保存，可点击分享按钮导出。
-        9. 【多模态生成】用户要“画一张图 / 生成图片 / 做张配图” → generate_image；要“朗读 / 生成语音 / 配音 / 音频” → generate_speech；要“生成视频 / 做段短片” → generate_video。规则：①generate_video 较慢（1–5 分钟），调用前先告诉用户需要等待；②若 generate_video 返回“仍在生成 / pending”且给出 request_id，稍后用 check_video 查询结果并告诉用户已保存的文件；③生成成功后用一句话说明已保存、可点击打开/分享，不要复述内部 URL 或 JSON。你始终拥有 web_request 这个“万能连接器”工具，可向任意 HTTP(S) 接口发请求，用于调用外部服务（dashi-ppt、图像/视频/音频生成 API、Webhook、任意 REST 接口）。规则：①鉴权令牌放 headers 的 Authorization 字段，绝不写进回复文本；②若服务返回文件（.pptx/.pdf/图片/音频/视频），你会收到可打开/分享的文件；③当某个技能提示词要求你“运行脚本 / 执行 Node / 启动连接器 / 调用本地工具”时，不要声称缺少连接器或无法执行——应将其翻译为对应的 web_request HTTP 调用（用户需提供该服务的 endpoint 与密钥，或该服务以本地服务器形式可达）；④绝不要对用户说“我没有连接器”或“环境未接入”，web_request 就是连接器。
+        9. 【多模态生成】用户要“画一张图 / 生成图片 / 做张配图” → generate_image；要“朗读 / 生成语音 / 配音 / 音频” → generate_speech；要“生成视频 / 做段短片” → generate_video。规则：①generate_image 默认 1024x1024，调用前先把用户的中文描述改写成简洁具体的英文 Stable Diffusion prompt（主体 + 风格 + 光线 + 色彩 + 构图），必要时通过 negative_prompt 排除低质量元素，这样免费图源出图更贴近描述；②generate_video 较慢（1–5 分钟），调用前先告诉用户需要等待；③若 generate_video 返回“仍在生成 / pending”且给出 request_id，稍后用 check_video 查询结果并告诉用户已保存的文件；④生成成功后用一句话说明已保存、可点击打开/分享，不要复述内部 URL 或 JSON。你始终拥有 web_request 这个“万能连接器”工具，可向任意 HTTP(S) 接口发请求，用于调用外部服务（dashi-ppt、图像/视频/音频生成 API、Webhook、任意 REST 接口）。规则：①鉴权令牌放 headers 的 Authorization 字段，绝不写进回复文本；②若服务返回文件（.pptx/.pdf/图片/音频/视频），你会收到可打开/分享的文件；③当某个技能提示词要求你“运行脚本 / 执行 Node / 启动连接器 / 调用本地工具”时，不要声称缺少连接器或无法执行——应将其翻译为对应的 web_request HTTP 调用（用户需提供该服务的 endpoint 与密钥，或该服务以本地服务器形式可达）；④绝不要对用户说“我没有连接器”或“环境未接入”，web_request 就是连接器。
 
         示例：
         用户：5分钟后提醒我喝水
@@ -762,7 +830,7 @@ struct SkillInstaller {
         var req = URLRequest(url: url)
         req.timeoutInterval = 30
         req.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
-        req.setValue("iOSAgent/8.9.7", forHTTPHeaderField: "User-Agent")
+        req.setValue("iOSAgent/8.9.8", forHTTPHeaderField: "User-Agent")
         let token = Self.authToken
         if !token.isEmpty { req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
         let (data, resp) = try await URLSession.shared.data(for: req)
