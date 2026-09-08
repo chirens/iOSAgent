@@ -1,6 +1,6 @@
 import SwiftUI
 import UserNotifications
-import ObjectiveC
+import Foundation
 
 @main
 struct iOSAgentApp: App {
@@ -17,22 +17,15 @@ struct iOSAgentApp: App {
     }
 }
 
-/// 全局未捕获 ObjC 异常 / Swift 致命错误处理：
+/// 全局未捕获 ObjC 异常处理：
 /// EventKit / CoreLocation / Photos 等系统库的内部 NSException 一旦抛出，Swift 的 try/catch 捕获不了，
 /// 会直接终止进程；这里在最后一刻把异常名、reason、callStackSymbols 写入 Documents/crash.log，
 /// 下次启动时由 SettingsView 顶卡显示，让用户/开发者看到真正的崩溃原因，避免连续多个版本"修了又闪"却不知道闪在哪。
 enum CrashGuard {
     /// 启动时一次性安装全局 handler。
     static func install() {
-        let previous = NSGetUncaughtExceptionHandler()
         NSSetUncaughtExceptionHandler { exc in
             CrashGuard.persist(exc: exc)
-            // 调用系统默认行为（让进程真的崩，但日志已落盘）
-            previous?(exc)
-        }
-        // Swift fatalError / 断言失败
-        Swift.setFatalErrorCallback { message, file, line, flags in
-            CrashGuard.persistSwift(message: message, file: file, line: line)
         }
     }
 
@@ -47,17 +40,6 @@ enum CrashGuard {
         write("CRASH [ObjC NSException]", body: body)
     }
 
-    private static func persistSwift(message: String, file: String, line: UInt) {
-        let stack = Thread.callStackSymbols.joined(separator: "\n")
-        let body = """
-        message: \(message)
-        at:      \(file):\(line)
-        ---
-        \(stack)
-        """
-        write("CRASH [Swift fatalError]", body: body)
-    }
-
     /// 写入 Documents/crash.log（每次启动覆盖，只保留最后一次崩溃）。
     private static func write(_ title: String, body: String) {
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
@@ -70,8 +52,9 @@ enum CrashGuard {
 
 class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
-        // 进程启动第一件事：装全局 ObjC exception + Swift fatalError 拦截器
-        // 这样无论是 EventKit 的 NSException 还是其他 Swift fatal 都能在闪退前落盘。
+        // 进程启动第一件事：装全局 ObjC exception 拦截器
+        // 这样 EventKit / CoreLocation 等库的内部 NSException 闪退前能落盘到 crash.log，
+        // 下次启动 SettingsView 顶卡显示，让用户和开发者看到真正的崩溃原因。
         CrashGuard.install()
 
         UNUserNotificationCenter.current().delegate = self
