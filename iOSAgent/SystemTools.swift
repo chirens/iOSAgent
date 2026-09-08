@@ -714,8 +714,8 @@ final class SystemTools {
         CrashGuard.mark("listEvents: 进入 ObjC 桥读取事件")
         var nsError: NSString?
         let raw = EKEventStoreBridge.safeEventDicts(for: store,
-                                                    startDate: start,
-                                                    endDate: end,
+                                                    start: start,
+                                                    end: end,
                                                     error: &nsError)
         CrashGuard.mark("listEvents: ObjC 桥返回 \(raw.count) 条")
         let dicts = (raw as NSArray).compactMap { $0 as? [String: Any] }
