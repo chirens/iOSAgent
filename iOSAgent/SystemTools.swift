@@ -407,6 +407,8 @@ final class SystemTools {
     }
 
     static func execute(tool name: String, call: [String: AnyCodable]) async -> ToolResult {
+        // 面包屑：崩溃前最后执行的工具名（SettingsView「崩溃前最后操作」卡可查看）
+        CrashGuard.mark("执行工具 \(name)")
         do {
             switch name {
             case "get_current_time": return currentTime(call)
@@ -618,21 +620,23 @@ final class SystemTools {
         // 同样的 EventKit DB 稳定时间（listEvents 注释同因）
         try? await Task.sleep(nanoseconds: 800_000_000)
         let store = SettingsStore.shared.eventStore
-        let calendars = store.calendars(for: .reminder)
-        if calendars.isEmpty {
-            return ToolResult(success: true, message: "未找到可读取的提醒事项账户", data: ["reminders": AnyCodable([])])
-        }
-        let predicate = store.predicateForIncompleteReminders(withDueDateStarting: nil, ending: nil, calendars: calendars)
-        let reminders = await withCheckedContinuation { continuation in
-            store.fetchReminders(matching: predicate) { items in
-                continuation.resume(returning: items ?? [])
+        // 整条链路走 ObjC @try/@catch 桥（同 listEvents），Swift 侧不触碰 EKReminder。
+        let limit = int(call, "limit") ?? 20
+        // 回调式桥接：EKEventStore 的 fetchReminders 回调在主队列派发，
+        // 调用方是 @MainActor，绝不能用信号量同步等待（会死锁）。
+        let dicts = await withCheckedContinuation { (continuation: CheckedContinuation<[[String: Any]], Never>) in
+            EKEventStoreBridge.safeFetchReminderDicts(for: store, limit: limit) { arr, err in
+                if let err = err as String?, !err.isEmpty {
+                    CrashGuard.logEventKitCrash("listReminders: \(err)")
+                }
+                let list = (arr as NSArray).compactMap { $0 as? [String: Any] }
+                continuation.resume(returning: list)
             }
         }
-        let limit = int(call, "limit") ?? 20
-        let result = reminders.prefix(limit).map { r in
-            ["id": AnyCodable(r.calendarItemIdentifier),
-             "title": AnyCodable(r.title ?? ""),
-             "due": AnyCodable(r.dueDateComponents?.date.map(formatDate) ?? "")]
+        let result = dicts.map { d in
+            ["id": AnyCodable((d["id"] as? String) ?? ""),
+             "title": AnyCodable((d["title"] as? String) ?? ""),
+             "due": AnyCodable((d["due"] as? String) ?? "")]
         }
         return ToolResult(success: true, message: "找到 \(result.count) 条未完成提醒", data: ["reminders": AnyCodable(result)])
     }
@@ -691,36 +695,43 @@ final class SystemTools {
         // Swift try/catch 捕获不了 ObjC NSException → 进程直接终止。800ms 是经验安全值。
         try? await Task.sleep(nanoseconds: 800_000_000)
         let days = int(call, "days") ?? 7
+        CrashGuard.mark("listEvents: 授权已通过，准备读取日历 days=\(days)")
         let store = SettingsStore.shared.eventStore
         // 防御：iOS 18 在日历数据库尚未完全初始化时 calendars(for:) 返回空集合或底层断言失败。
-        // 显式取日历列表做前置校验：非空且 calendars 字段有效才走 events(matching:)，否则安全返回 0 条。
-        let availableCalendars = store.calendars(for: .event)
-        if availableCalendars.isEmpty {
-            return ToolResult(success: true, message: "未来 \(days) 天没有可读取的日历账户", data: ["events": AnyCodable([])])
+        var calErr: NSString?
+        let hasCals = EKEventStoreBridge.safeHasEventCalendars(for: store, error: &calErr)
+        if !hasCals {
+            let detail = (calErr as String?).map { "（\($0)）" } ?? ""
+            return ToolResult(success: true, message: "没有可读取的日历账户\(detail)", data: ["events": AnyCodable([])])
         }
         let start = Date()
         let end = Calendar.current.date(byAdding: .day, value: days, to: start)!
-        // 用显式日历列表而非 nil：规避 iOS 18 某些边缘情况下 calendars:nil 触发的内部。
-        let predicate = store.predicateForEvents(withStart: start, end: end, calendars: availableCalendars)
-        // 【v9.0.5 日程闪退真正根治】EventKit 内部 NSException Swift 抓不住，必须走 Objective-C @try/@catch 桥。
-        // 异常时返回空数组 + 错误信息，让 LLM 看到具体原因，而不是整个 App 闪退。
-        // 注意：ObjC 桥需要 NSString? 指针，不能直接传 Swift String?。
-        var nsErrorString: NSString?
-        let bridgedEvents = EKEventStoreBridge.safeEvents(for: store, predicate: predicate, error: &nsErrorString)
-        if let nsErrorString {
-            let errorString = nsErrorString as String
-            // 写到 crash.log 方便开发者；同时返回工具结果给 LLM/用户，解释读取失败
-            CrashGuard.logEventKitCrash("listEvents: \(errorString)")
-            return ToolResult(success: false,
-                              message: "读取日历时发生内部错误：\(errorString)。这可能是 iOS 日历数据库暂时不稳定，请稍后再试。",
-                              data: nil)
+        // 【v9.0.6 日程闪退彻底根治】
+        // 整条链路（calendars → predicate → eventsMatching → 每个 EKEvent 的属性读取）
+        // 全部在 Objective-C 的 @try/@catch 内完成，Swift 侧只拿到 NSDictionary 数组，
+        // 绝不触碰 EKEvent 实例 —— 属性访问（calendarItemIdentifier / title / startDate）
+        // 同样会抛 NSException，v9.0.5 只包了 eventsMatching 所以没修住。
+        CrashGuard.mark("listEvents: 进入 ObjC 桥读取事件")
+        var nsError: NSString?
+        let raw = EKEventStoreBridge.safeEventDicts(for: store,
+                                                    startDate: start,
+                                                    endDate: end,
+                                                    error: &nsError)
+        CrashGuard.mark("listEvents: ObjC 桥返回 \(raw.count) 条")
+        let dicts = (raw as NSArray).compactMap { $0 as? [String: Any] }
+        if let err = nsError as String? {
+            CrashGuard.logEventKitCrash("listEvents: \(err)")
+            if dicts.isEmpty {
+                return ToolResult(success: false,
+                                  message: "读取日历时发生内部错误：\(err)。这可能是 iOS 日历数据库暂时不稳定，请稍后再试。",
+                                  data: nil)
+            }
         }
-        let events = bridgedEvents as? [EKEvent] ?? []
-        let mapped = events.map { e in
-            ["id": AnyCodable(e.calendarItemIdentifier),
-             "title": AnyCodable(e.title ?? ""),
-             "start": AnyCodable(formatDate(e.startDate)),
-             "end": AnyCodable(formatDate(e.endDate))]
+        let mapped = dicts.map { d in
+            ["id": AnyCodable((d["id"] as? String) ?? ""),
+             "title": AnyCodable((d["title"] as? String) ?? ""),
+             "start": AnyCodable((d["start"] as? String) ?? ""),
+             "end": AnyCodable((d["end"] as? String) ?? "")]
         }
         return ToolResult(success: true, message: "未来 \(days) 天共有 \(mapped.count) 个日程", data: ["events": AnyCodable(mapped)])
     }
@@ -1062,7 +1073,7 @@ final class SystemTools {
         guard let url = URL(string: urlString) else { return ToolResult(success: false, message: "URL 无效", data: nil) }
         var req = URLRequest(url: url)
         req.timeoutInterval = 30
-        req.setValue("Velos/9.0.5", forHTTPHeaderField: "User-Agent")
+        req.setValue("Velos/9.0.6", forHTTPHeaderField: "User-Agent")
         let (data, resp) = try await URLSession.shared.data(for: req)
         guard let http = resp as? HTTPURLResponse, (200...299).contains(http.statusCode), !data.isEmpty else {
             return ToolResult(success: false, message: "下载 SKILL.md 失败：HTTP \((resp as? HTTPURLResponse)?.statusCode ?? 0)", data: nil)
