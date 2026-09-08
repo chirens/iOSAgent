@@ -43,3 +43,12 @@ jobs:
         with:
           name: iOSAgent-unsigned
           path: build/*/iOSAgent-unsigned.ipa
+
+      - name: Upload build log artifact (always)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: iOSAgent-build-log
+          path: |
+            build.log
+            build_errors.log
