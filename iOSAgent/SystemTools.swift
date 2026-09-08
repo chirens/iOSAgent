@@ -700,12 +700,11 @@ final class SystemTools {
         }
         let start = Date()
         let end = Calendar.current.date(byAdding: .day, value: days, to: start)!
-        // 用显式日历列表而非 nil：规避 iOS 18 某些边缘情况下 calendars:nil 触发的内部断言。
+        // 用显式日历列表而非 nil：规避 iOS 18 某些边缘情况下 calendars:nil 触发的内部。
         let predicate = store.predicateForEvents(withStart: start, end: end, calendars: availableCalendars)
-        // 包一层自动释放池，最小化 EventKit 内部对象的生命周期，最坏情况下也只漏内存不崩。
-        let events: [EKEvent] = autoreleasepool {
-            store.events(matching: predicate)
-        }
+        // 同步在主线程读出事件数组；不再用 autoreleasepool（Swift 闭包版的 autoreleasepool 在不同
+        // Swift 版本行为有差异，统一用临时数组接住结果，让 EventKit 对象正常出 autoreleasepool）。
+        let events = store.events(matching: predicate)
         let mapped = events.map { e in
             ["id": AnyCodable(e.calendarItemIdentifier),
              "title": AnyCodable(e.title ?? ""),

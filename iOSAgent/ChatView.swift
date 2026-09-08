@@ -974,14 +974,12 @@ struct MessageBubble: View {
     /// 聊天气泡里 inline 图片：圆角缩略图，点击全屏，长按弹出保存菜单。
     @ViewBuilder
     private func chatImageView(_ img: InlineImage) -> some View {
-        let maxWidth: CGFloat = 260
-        let maxHeight: CGFloat = 260
         Group {
             if let ui = img.uiImage {
                 Image(uiImage: ui)
                     .resizable()
                     .scaledToFit()
-                    .frame(maxWidth: maxWidth, maxHeight: maxHeight)
+                    .frame(maxWidth: 260, maxHeight: 260)
                     .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                     .overlay(
                         RoundedRectangle(cornerRadius: 14, style: .continuous)
@@ -997,7 +995,7 @@ struct MessageBubble: View {
                         Button {
                             Task { await saveToPhotos(ui) }
                         } label: { Label("保存到相册", systemImage: "square.and.arrow.down") }
-                        if case .url(let u) = img {
+                        if case .url(let u) = img.source {
                             Button {
                                 previewURL = PreviewItem(url: u)
                             } label: { Label("用 QuickLook 打开", systemImage: "doc.text.viewfinder") }
