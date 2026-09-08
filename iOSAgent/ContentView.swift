@@ -152,6 +152,7 @@ struct ChatRootList: View {
     @State private var showRename = false
     @State private var shareText = ""
     @State private var showShare = false
+    @State private var swipeExpandedID: UUID? = nil
 
     private var filteredConversations: [Conversation] {
         let nonempty = store.sorted.filter { !($0.title == "新对话" && $0.messages.isEmpty) }
@@ -291,6 +292,8 @@ struct ChatRootList: View {
                 } else {
                     ForEach(filteredConversations) { conversation in
                         SwipeActionRow(
+                            rowID: conversation.id,
+                            expandedID: $swipeExpandedID,
                             onDelete: { store.delete(conversation.id) },
                             onRename: {
                                 renameTargetID = conversation.id
@@ -456,33 +459,45 @@ struct ConversationRow: View {
 
 /// 自定义左滑操作行：`.swipeActions` 只在 `List` 里生效，首页历史对话是卡片式布局（VStack），
 /// 故手动实现左滑露出「重命名 / 分享 / 删除」按钮。
+/// 用父级 `expandedID` binding 实现多 row 互斥（一行展开时自动收起其他行），
+/// 用 `highPriorityGesture` 让水平拖拽优先于 Button tap，避免误触发进入对话。
 struct SwipeActionRow<Content: View>: View {
+    let rowID: UUID
+    @Binding var expandedID: UUID?
     let onDelete: () -> Void
     let onRename: () -> Void
     let onShare: () -> Void
-    private let content: Content
-    @State private var offset: CGFloat = 0
+    @State private var dragOffset: CGFloat = 0
 
-    init(onDelete: @escaping () -> Void,
+    init(rowID: UUID,
+         expandedID: Binding<UUID?>,
+         onDelete: @escaping () -> Void,
          onRename: @escaping () -> Void,
          onShare: @escaping () -> Void,
          @ViewBuilder content: () -> Content) {
+        self.rowID = rowID
+        self._expandedID = expandedID
         self.onDelete = onDelete
         self.onRename = onRename
         self.onShare = onShare
         self.content = content()
     }
 
+    private let content: Content
     private let buttonWidth: CGFloat = 68
     private var actionWidth: CGFloat { buttonWidth * 3 }
+    private var isExpanded: Bool { expandedID == rowID }
+    private var displayOffset: CGFloat { (isExpanded ? -actionWidth : 0) + dragOffset }
 
     var body: some View {
         ZStack {
-            // 透明点击层：左滑展开后点击空白处收起
+            // 透明点击层：展开时点击空白处收起
             Color.clear
                 .contentShape(Rectangle())
                 .onTapGesture {
-                    if offset != 0 { withAnimation(.easeOut(duration: 0.2)) { offset = 0 } }
+                    if isExpanded {
+                        withAnimation(.easeOut(duration: 0.2)) { expandedID = nil }
+                    }
                 }
             // 背景操作按钮（右侧，左滑露出）
             HStack(spacing: 0) {
@@ -495,11 +510,11 @@ struct SwipeActionRow<Content: View>: View {
             content
                 .frame(maxWidth: .infinity)
                 .background(Color.appSurface)
-                .offset(x: offset)
-                .allowsHitTesting(offset == 0)
+                .offset(x: displayOffset)
+                .allowsHitTesting(!isExpanded)
         }
         .clipped()
-        .simultaneousGesture(dragGesture)
+        .highPriorityGesture(dragGesture)
     }
 
     private func actionButton(_ title: String, systemImage: String, color: Color, action: @escaping () -> Void) -> some View {
@@ -518,22 +533,27 @@ struct SwipeActionRow<Content: View>: View {
     }
 
     private var dragGesture: some Gesture {
-        DragGesture(minimumDistance: 15)
+        DragGesture(minimumDistance: 20)
             .onChanged { value in
                 let dx = value.translation.width
-                if dx < 0 {
-                    offset = max(dx, -actionWidth)
-                } else if offset < 0 {
-                    offset = min(0, offset + dx)
+                if isExpanded {
+                    // 已展开：允许右滑关闭（dx > 0 → dragOffset 从 0 向 +actionWidth）
+                    dragOffset = min(actionWidth, max(dx, -actionWidth))
+                } else {
+                    // 未展开：只允许左滑展开
+                    if dx < 0 { dragOffset = max(dx, -actionWidth) }
                 }
             }
             .onEnded { value in
                 withAnimation(.easeOut(duration: 0.2)) {
-                    if value.translation.width < -40 {
-                        offset = -actionWidth
+                    if isExpanded {
+                        // 已展开：右滑距离足够则收起，否则保持展开
+                        if value.translation.width > 30 { expandedID = nil }
                     } else {
-                        offset = 0
+                        // 未展开：左滑距离足够则展开
+                        if value.translation.width < -40 { expandedID = rowID }
                     }
+                    dragOffset = 0
                 }
             }
     }
