@@ -615,6 +615,8 @@ final class SystemTools {
         guard await ensureEKAuth(.reminder) else {
             return ToolResult(success: false, message: "提醒事项未获得 iOS 授权，请在系统设置 → 隐私与安全性 → 提醒事项中允许 Velos", data: nil)
         }
+        // 主动请求授权后给 EKEventStore 短暂状态稳定时间
+        try? await Task.sleep(nanoseconds: 100_000_000)
         let store = SettingsStore.shared.eventStore
         let calendars = store.calendars(for: .reminder)
         let predicate = store.predicateForIncompleteReminders(withDueDateStarting: nil, ending: nil, calendars: calendars)
@@ -681,18 +683,17 @@ final class SystemTools {
         guard await ensureEKAuth(.event) else {
             return ToolResult(success: false, message: "日历未获得 iOS 授权，请在系统设置 → 隐私与安全性 → 日历中允许 Velos", data: nil)
         }
+        // 主动请求授权后给 EKEventStore 短暂状态稳定时间（刚弹完授权框时 EventKit 内部数据库可能仍在更新，立即读取会触发 NSException 闪退）
+        try? await Task.sleep(nanoseconds: 100_000_000)
         let days = int(call, "days") ?? 7
         let store = SettingsStore.shared.eventStore
         let start = Date()
         let end = Calendar.current.date(byAdding: .day, value: days, to: start)!
-        // events(matching:) 是同步阻塞调用，必须放到后台线程，避免阻塞主线程（大量日历/首次 iCloud 同步时会让 UI 卡死 → watchdog 杀 app）
-        let events: [EKEvent] = await withCheckedContinuation { continuation in
-            DispatchQueue.global(qos: .userInitiated).async {
-                let predicate = store.predicateForEvents(withStart: start, end: end, calendars: nil)
-                let result = store.events(matching: predicate)
-                continuation.resume(returning: result)
-            }
-        }
+        // 保持在主线程（main actor）同步执行 events(matching:)。
+        // 不能丢到 DispatchQueue.global：捕获 @MainActor 隔离的 EKEventStore 在某些 iOS 版本会触发 EventKit 内部 NSException 闪退。
+        // 正常情况 events(matching:) 几百毫秒内完成，短暂阻塞主线程可接受；大量事件/iCloud 同步场景下用 days 限制数据量。
+        let predicate = store.predicateForEvents(withStart: start, end: end, calendars: nil)
+        let events = store.events(matching: predicate)
         let mapped = events.map { e in
             ["id": AnyCodable(e.calendarItemIdentifier),
              "title": AnyCodable(e.title ?? ""),
@@ -1039,7 +1040,7 @@ final class SystemTools {
         guard let url = URL(string: urlString) else { return ToolResult(success: false, message: "URL 无效", data: nil) }
         var req = URLRequest(url: url)
         req.timeoutInterval = 30
-        req.setValue("Velos/9.0.2", forHTTPHeaderField: "User-Agent")
+        req.setValue("Velos/9.0.3", forHTTPHeaderField: "User-Agent")
         let (data, resp) = try await URLSession.shared.data(for: req)
         guard let http = resp as? HTTPURLResponse, (200...299).contains(http.statusCode), !data.isEmpty else {
             return ToolResult(success: false, message: "下载 SKILL.md 失败：HTTP \((resp as? HTTPURLResponse)?.statusCode ?? 0)", data: nil)

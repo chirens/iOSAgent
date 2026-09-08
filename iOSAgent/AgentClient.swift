@@ -191,6 +191,16 @@ final class AgentClient {
         if finalText.isEmpty, let last = out.last, last.role == "assistant" {
             finalText = last.content
         }
+
+        // 防护：8 轮工具循环跑完仍没有 assistant 最终回复（流中断 / 模型在工具后未继续生成），
+        // 但最后一条是 tool 消息且生成了文件（生图/PPT/语音等），自动合成一条"已生成文件"的最终回复，
+        // 避免用户看到"已生成文件但没文字说明"的诡异状态。
+        if finalText.isEmpty, let last = out.last, last.role == "tool", let url = last.fileURL {
+            let synthesized = StoredMessage(role: "assistant", content: "已生成文件：\(url.lastPathComponent)，可点击上方的「打开文件」查看或分享。")
+            out.append(synthesized)
+            finalText = synthesized.content
+        }
+
         return (out, finalText)
     }
 
@@ -913,7 +923,7 @@ struct SkillInstaller {
         var req = URLRequest(url: url)
         req.timeoutInterval = 30
         req.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
-        req.setValue("iOSAgent/9.0.2", forHTTPHeaderField: "User-Agent")
+        req.setValue("iOSAgent/9.0.3", forHTTPHeaderField: "User-Agent")
         let token = Self.authToken
         if !token.isEmpty { req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
         let (data, resp) = try await URLSession.shared.data(for: req)
