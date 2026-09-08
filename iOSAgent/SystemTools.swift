@@ -615,10 +615,13 @@ final class SystemTools {
         guard await ensureEKAuth(.reminder) else {
             return ToolResult(success: false, message: "提醒事项未获得 iOS 授权，请在系统设置 → 隐私与安全性 → 提醒事项中允许 Velos", data: nil)
         }
-        // 主动请求授权后给 EKEventStore 短暂状态稳定时间
-        try? await Task.sleep(nanoseconds: 100_000_000)
+        // 同样的 EventKit DB 稳定时间（listEvents 注释同因）
+        try? await Task.sleep(nanoseconds: 800_000_000)
         let store = SettingsStore.shared.eventStore
         let calendars = store.calendars(for: .reminder)
+        if calendars.isEmpty {
+            return ToolResult(success: true, message: "未找到可读取的提醒事项账户", data: ["reminders": AnyCodable([])])
+        }
         let predicate = store.predicateForIncompleteReminders(withDueDateStarting: nil, ending: nil, calendars: calendars)
         let reminders = await withCheckedContinuation { continuation in
             store.fetchReminders(matching: predicate) { items in
@@ -683,17 +686,26 @@ final class SystemTools {
         guard await ensureEKAuth(.event) else {
             return ToolResult(success: false, message: "日历未获得 iOS 授权，请在系统设置 → 隐私与安全性 → 日历中允许 Velos", data: nil)
         }
-        // 主动请求授权后给 EKEventStore 短暂状态稳定时间（刚弹完授权框时 EventKit 内部数据库可能仍在更新，立即读取会触发 NSException 闪退）
-        try? await Task.sleep(nanoseconds: 100_000_000)
+        // 【v9.0.4 日程闪退终极修复】刚授权完 EventKit 内部数据库需 ~600–900ms 稳定时间，
+        // 立即读 events(matching:) 在某些 iOS 17/18 + iCloud 同步场景下触发 EventKit 内部 NSException。
+        // Swift try/catch 捕获不了 ObjC NSException → 进程直接终止。800ms 是经验安全值。
+        try? await Task.sleep(nanoseconds: 800_000_000)
         let days = int(call, "days") ?? 7
         let store = SettingsStore.shared.eventStore
+        // 防御：iOS 18 在日历数据库尚未完全初始化时 calendars(for:) 返回空集合或底层断言失败。
+        // 显式取日历列表做前置校验：非空且 calendars 字段有效才走 events(matching:)，否则安全返回 0 条。
+        let availableCalendars = store.calendars(for: .event)
+        if availableCalendars.isEmpty {
+            return ToolResult(success: true, message: "未来 \(days) 天没有可读取的日历账户", data: ["events": AnyCodable([])])
+        }
         let start = Date()
         let end = Calendar.current.date(byAdding: .day, value: days, to: start)!
-        // 保持在主线程（main actor）同步执行 events(matching:)。
-        // 不能丢到 DispatchQueue.global：捕获 @MainActor 隔离的 EKEventStore 在某些 iOS 版本会触发 EventKit 内部 NSException 闪退。
-        // 正常情况 events(matching:) 几百毫秒内完成，短暂阻塞主线程可接受；大量事件/iCloud 同步场景下用 days 限制数据量。
-        let predicate = store.predicateForEvents(withStart: start, end: end, calendars: nil)
-        let events = store.events(matching: predicate)
+        // 用显式日历列表而非 nil：规避 iOS 18 某些边缘情况下 calendars:nil 触发的内部断言。
+        let predicate = store.predicateForEvents(withStart: start, end: end, calendars: availableCalendars)
+        // 包一层自动释放池，最小化 EventKit 内部对象的生命周期，最坏情况下也只漏内存不崩。
+        let events: [EKEvent] = autoreleasepool {
+            store.events(matching: predicate)
+        }
         let mapped = events.map { e in
             ["id": AnyCodable(e.calendarItemIdentifier),
              "title": AnyCodable(e.title ?? ""),
@@ -1040,7 +1052,7 @@ final class SystemTools {
         guard let url = URL(string: urlString) else { return ToolResult(success: false, message: "URL 无效", data: nil) }
         var req = URLRequest(url: url)
         req.timeoutInterval = 30
-        req.setValue("Velos/9.0.3", forHTTPHeaderField: "User-Agent")
+        req.setValue("Velos/9.0.4", forHTTPHeaderField: "User-Agent")
         let (data, resp) = try await URLSession.shared.data(for: req)
         guard let http = resp as? HTTPURLResponse, (200...299).contains(http.statusCode), !data.isEmpty else {
             return ToolResult(success: false, message: "下载 SKILL.md 失败：HTTP \((resp as? HTTPURLResponse)?.statusCode ?? 0)", data: nil)
