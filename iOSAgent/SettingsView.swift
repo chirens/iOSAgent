@@ -35,6 +35,10 @@ struct SettingsView: View {
                 }
                 .padding(.horizontal, AppSpacing.lg)
 
+                // v9.0.5 崩溃诊断卡：如果 Documents/crash.log 存在，顶卡显示最后一次崩溃信息，方便用户/开发者看到真凶。
+                crashLogCard
+                    .padding(.horizontal, AppSpacing.lg)
+
                 VStack(spacing: AppSpacing.md) {
                     SettingsSection(title: "核心设置") {
                         SettingsLinkRow(icon: "key.fill", color: .pastelBlue, title: "API 设置", destination: .api)
@@ -252,6 +256,50 @@ struct SettingsView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+    }
+
+    /// 崩溃诊断卡：读取 Documents/crash.log，若存在则在设置页顶部显示最近一次崩溃摘要。
+    /// 用户点"复制"可以复制完整日志，点"清除"删除文件。
+    @ViewBuilder
+    private var crashLogCard: some View {
+        if let content = try? String(contentsOf: CrashGuard.crashLogURL, encoding: .utf8), !content.isEmpty {
+            VStack(alignment: .leading, spacing: AppSpacing.xs) {
+                HStack(spacing: 6) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                    Text("上次崩溃记录")
+                        .font(.appCaption2().weight(.semibold))
+                        .foregroundStyle(.orange)
+                    Spacer(minLength: 0)
+                    Button {
+                        UIPasteboard.general.string = content
+                    } label: {
+                        Image(systemName: "doc.on.doc")
+                            .font(.appCaption())
+                            .foregroundStyle(Color.appSecondaryText)
+                    }
+                    Button {
+                        try? FileManager.default.removeItem(at: CrashGuard.crashLogURL)
+                    } label: {
+                        Image(systemName: "xmark.circle")
+                            .font(.appCaption())
+                            .foregroundStyle(Color.appSecondaryText)
+                    }
+                }
+                .padding(.horizontal, AppSpacing.md)
+                .padding(.top, AppSpacing.md)
+
+                Text(content)
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(Color.appPrimaryText)
+                    .lineLimit(8)
+                    .padding(.horizontal, AppSpacing.md)
+                    .padding(.bottom, AppSpacing.md)
+            }
+            .background(Color.appSurface)
+            .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
+            .appCardShadow()
+        }
     }
 }
 

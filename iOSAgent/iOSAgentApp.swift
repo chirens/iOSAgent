@@ -17,7 +17,7 @@ struct iOSAgentApp: App {
     }
 }
 
-/// 全局未捕获 ObjC 异常处理：
+/// 全局未捕获 ObjC 异常处理 + 运行时关键错误落盘：
 /// EventKit / CoreLocation / Photos 等系统库的内部 NSException 一旦抛出，Swift 的 try/catch 捕获不了，
 /// 会直接终止进程；这里在最后一刻把异常名、reason、callStackSymbols 写入 Documents/crash.log，
 /// 下次启动时由 SettingsView 顶卡显示，让用户/开发者看到真正的崩溃原因，避免连续多个版本"修了又闪"却不知道闪在哪。
@@ -27,6 +27,16 @@ enum CrashGuard {
         NSSetUncaughtExceptionHandler { exc in
             CrashGuard.persist(exc: exc)
         }
+    }
+
+    /// 记录 EventKit / 其它非致命内部错误（已被 ObjC 桥捕获，不会闪退，但仍要落盘）。
+    static func logEventKitCrash(_ message: String) {
+        write("CRASH [EventKit internal error]", body: message)
+    }
+
+    /// crash.log 路径（SettingsView 读取用）
+    static var crashLogURL: URL {
+        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("crash.log")
     }
 
     private static func persist(exc: NSException) {
@@ -42,8 +52,7 @@ enum CrashGuard {
 
     /// 写入 Documents/crash.log（每次启动覆盖，只保留最后一次崩溃）。
     private static func write(_ title: String, body: String) {
-        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        let url = docs.appendingPathComponent("crash.log")
+        let url = crashLogURL
         let ts = ISO8601DateFormatter().string(from: Date())
         let content = "=== \(title) @ \(ts) ===\n\(body)\n"
         try? content.write(to: url, atomically: true, encoding: .utf8)

@@ -702,9 +702,18 @@ final class SystemTools {
         let end = Calendar.current.date(byAdding: .day, value: days, to: start)!
         // 用显式日历列表而非 nil：规避 iOS 18 某些边缘情况下 calendars:nil 触发的内部。
         let predicate = store.predicateForEvents(withStart: start, end: end, calendars: availableCalendars)
-        // 同步在主线程读出事件数组；不再用 autoreleasepool（Swift 闭包版的 autoreleasepool 在不同
-        // Swift 版本行为有差异，统一用临时数组接住结果，让 EventKit 对象正常出 autoreleasepool）。
-        let events = store.events(matching: predicate)
+        // 【v9.0.5 日程闪退真正根治】EventKit 内部 NSException Swift 抓不住，必须走 Objective-C @try/@catch 桥。
+        // 异常时返回空数组 + 错误信息，让 LLM 看到具体原因，而不是整个 App 闪退。
+        var errorString: String?
+        let bridgedEvents = EKEventStoreBridge.safeEvents(for: store, predicate: predicate, error: &errorString)
+        if let errorString {
+            // 写到 crash.log 方便开发者；同时返回工具结果给 LLM/用户，解释读取失败
+            CrashGuard.logEventKitCrash("listEvents: \(errorString)")
+            return ToolResult(success: false,
+                              message: "读取日历时发生内部错误：\(errorString)。这可能是 iOS 日历数据库暂时不稳定，请稍后再试。",
+                              data: nil)
+        }
+        let events = bridgedEvents as? [EKEvent] ?? []
         let mapped = events.map { e in
             ["id": AnyCodable(e.calendarItemIdentifier),
              "title": AnyCodable(e.title ?? ""),
@@ -1051,7 +1060,7 @@ final class SystemTools {
         guard let url = URL(string: urlString) else { return ToolResult(success: false, message: "URL 无效", data: nil) }
         var req = URLRequest(url: url)
         req.timeoutInterval = 30
-        req.setValue("Velos/9.0.4", forHTTPHeaderField: "User-Agent")
+        req.setValue("Velos/9.0.5", forHTTPHeaderField: "User-Agent")
         let (data, resp) = try await URLSession.shared.data(for: req)
         guard let http = resp as? HTTPURLResponse, (200...299).contains(http.statusCode), !data.isEmpty else {
             return ToolResult(success: false, message: "下载 SKILL.md 失败：HTTP \((resp as? HTTPURLResponse)?.statusCode ?? 0)", data: nil)

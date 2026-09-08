@@ -40,6 +40,9 @@ struct ChatView: View {
     @State private var showAttachmentSheet = false
     @State private var pinnedSkillID: String?
 
+    // v9.0.5 图片附件加载状态： PhotosPicker / FileImporter 读取大图时展示进度，避免用户以为没点中
+    @State private var isLoadingAttachment = false
+
     // v9.0 对话内 skill 链接一键安装
     @State private var skillInstallStatus: String?
     @State private var isInstallingSkill = false
@@ -190,7 +193,11 @@ struct ChatView: View {
                 }
                 .buttonStyle(.plain)
 
-                if let selectedImage {
+                if isLoadingAttachment {
+                    ProgressView()
+                        .frame(width: 36, height: 36)
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                } else if let selectedImage {
                     Image(uiImage: selectedImage)
                         .resizable()
                         .scaledToFill()
@@ -267,35 +274,48 @@ struct ChatView: View {
         }
         .photosPicker(isPresented: $showPhotoPicker, selection: $photoItem, matching: .images)
         .onChange(of: photoItem) { item in
+            guard let item else { return }
             Task {
-                if let data = try? await item?.loadTransferable(type: Data.self),
+                isLoadingAttachment = true
+                defer { isLoadingAttachment = false }
+                if let data = try? await item.loadTransferable(type: Data.self),
                    let image = UIImage(data: data) {
-                    clearAttachment()
-                    selectedImage = image
+                    await MainActor.run {
+                        clearAttachment()
+                        selectedImage = image
+                    }
                 }
             }
         }
         .fileImporter(isPresented: $showFilePicker, allowedContentTypes: [UTType.item], allowsMultipleSelection: false) { result in
             if case .success(let urls) = result, let url = urls.first {
-                let secured = url.startAccessingSecurityScopedResource()
-                defer { if secured { url.stopAccessingSecurityScopedResource() } }
-                let name = url.lastPathComponent
-                let isImg = (try? url.resourceValues(forKeys: [.typeIdentifierKey]))?.typeIdentifier
-                    .flatMap { UTType($0)?.conforms(to: .image) } ?? false
-                if isImg, let data = try? Data(contentsOf: url), let img = UIImage(data: data) {
-                    clearAttachment()
-                    selectedImage = img
-                } else {
-                    // 拷进 App 沙盒，避免安全作用域失效
-                    let dst = FileManager.default.temporaryDirectory
-                        .appendingPathComponent(UUID().uuidString)
-                        .appendingPathExtension((url.pathExtension.isEmpty ? "file" : url.pathExtension))
-                    _ = try? FileManager.default.removeItem(at: dst)
-                    if (try? FileManager.default.copyItem(at: url, to: dst)) != nil {
-                        clearAttachment()
-                        selectedFileURL = dst
-                        selectedFileName = name
-                        fileIsImage = false
+                isLoadingAttachment = true
+                Task {
+                    defer { isLoadingAttachment = false }
+                    let secured = url.startAccessingSecurityScopedResource()
+                    defer { if secured { url.stopAccessingSecurityScopedResource() } }
+                    let name = url.lastPathComponent
+                    let isImg = (try? url.resourceValues(forKeys: [.typeIdentifierKey]))?.typeIdentifier
+                        .flatMap { UTType($0)?.conforms(to: .image) } ?? false
+                    if isImg, let data = try? Data(contentsOf: url), let img = UIImage(data: data) {
+                        await MainActor.run {
+                            clearAttachment()
+                            selectedImage = img
+                        }
+                    } else {
+                        // 拷进 App 沙盒，避免安全作用域失效
+                        let dst = FileManager.default.temporaryDirectory
+                            .appendingPathComponent(UUID().uuidString)
+                            .appendingPathExtension((url.pathExtension.isEmpty ? "file" : url.pathExtension))
+                        _ = try? FileManager.default.removeItem(at: dst)
+                        if (try? FileManager.default.copyItem(at: url, to: dst)) != nil {
+                            await MainActor.run {
+                                clearAttachment()
+                                selectedFileURL = dst
+                                selectedFileName = name
+                                fileIsImage = false
+                            }
+                        }
                     }
                 }
             }
@@ -500,6 +520,14 @@ struct ChatView: View {
         selectedFileName = nil
         fileIsImage = false
         photoItem = nil
+    }
+
+    /// 当前模型是否声明支持图片/视觉理解。名字含 vision/4o/claude-3/qwen-vl/gemini/multimodal 视为支持；
+    /// deepseek-chat 等纯文本模型不支持。用户发图时会给出切换提示。
+    private var modelSupportsVision: Bool {
+        let m = settings.activeProfile.modelName.lowercased()
+        let keywords = ["vision", "gpt-4o", "claude-3", "qwen-vl", "gemini", "multimodal", "llava", "yi-vision"]
+        return keywords.contains { m.contains($0) }
     }
 
     /// 对 UI 可见的消息：过滤掉工具中间结果的气泡文本，只保留带文件附件的工具卡片。
@@ -746,6 +774,20 @@ struct ChatView: View {
         selectedFileURL = nil
         selectedFileName = nil
         photoItem = nil
+
+        // v9.0.5 如果用户发了图但当前模型不支持 vision，直接提示切换，不要浪费 token 让模型乱回。
+        if imageToSend != nil, !modelSupportsVision {
+            var finalMsgs = msgs
+            let hint = StoredMessage(
+                role: "assistant",
+                content: "当前模型 \(settings.activeProfile.modelName) 不支持图片理解。如需分析图片，请轻点左下角「+」→「切换模型」，选择 gpt-4o、claude-3、qwen-vl 或 gemini 系列等 vision 模型后再发图。",
+                isStreaming: false
+            )
+            finalMsgs.append(hint)
+            store.update(conversationId, messages: finalMsgs)
+            isLoading = false
+            return
+        }
 
         Task {
             do {

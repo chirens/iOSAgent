@@ -26,6 +26,7 @@
 		1A0000000000000000000214 /* DocumentGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000212 /* DocumentGenerator.swift */; };
 		1A0000000000000000000302 /* FilePreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000301 /* FilePreviewView.swift */; };
 		1A0000000000000000000304 /* DesignTokens.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000303 /* DesignTokens.swift */; };
+		1A0000000000000000000308 /* EKEventStoreBridge.m in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000307 /* EKEventStoreBridge.m */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -50,6 +51,9 @@
 		1A0000000000000000000212 /* DocumentGenerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DocumentGenerator.swift; sourceTree = "<group>"; };
 		1A0000000000000000000301 /* FilePreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilePreviewView.swift; sourceTree = "<group>"; };
 		1A0000000000000000000303 /* DesignTokens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesignTokens.swift; sourceTree = "<group>"; };
+		1A0000000000000000000305 /* iOSAgent-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "iOSAgent-Bridging-Header.h"; sourceTree = "<group>"; };
+		1A0000000000000000000306 /* EKEventStoreBridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = EKEventStoreBridge.h; sourceTree = "<group>"; };
+		1A0000000000000000000307 /* EKEventStoreBridge.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = EKEventStoreBridge.m; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -92,6 +96,9 @@
 				1A0000000000000000000212 /* DocumentGenerator.swift */,
 				1A0000000000000000000301 /* FilePreviewView.swift */,
 				1A0000000000000000000303 /* DesignTokens.swift */,
+				1A0000000000000000000305 /* iOSAgent-Bridging-Header.h */,
+				1A0000000000000000000306 /* EKEventStoreBridge.h */,
+				1A0000000000000000000307 /* EKEventStoreBridge.m */,
 				1A0000000000000000000116 /* Assets.xcassets */,
 				1A0000000000000000000120 /* iOSAgent.entitlements */,
 			);
@@ -193,6 +200,7 @@
 				1A0000000000000000000214 /* DocumentGenerator.swift in Sources */,
 				1A0000000000000000000302 /* FilePreviewView.swift in Sources */,
 				1A0000000000000000000304 /* DesignTokens.swift in Sources */,
+				1A0000000000000000000308 /* EKEventStoreBridge.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -302,10 +310,11 @@
 				"$(inherited)",
 				"@executable_path/Frameworks",
 			);
-			MARKETING_VERSION = 9.0.4;
+			MARKETING_VERSION = 9.0.5;
 			PRODUCT_BUNDLE_IDENTIFIER = com.chen.iOSAgent;
 			PRODUCT_NAME = "$(TARGET_NAME)";
 			SWIFT_EMIT_LOC_STRINGS = YES;
+			SWIFT_OBJC_BRIDGING_HEADER = "iOSAgent/iOSAgent-Bridging-Header.h";
 			SWIFT_VERSION = 5.0;
 			TARGETED_DEVICE_FAMILY = "1,2";
 		};
@@ -343,10 +352,11 @@
 				"$(inherited)",
 				"@executable_path/Frameworks",
 			);
-			MARKETING_VERSION = 9.0.4;
+			MARKETING_VERSION = 9.0.5;
 			PRODUCT_BUNDLE_IDENTIFIER = com.chen.iOSAgent;
 			PRODUCT_NAME = "$(TARGET_NAME)";
 			SWIFT_EMIT_LOC_STRINGS = YES;
+			SWIFT_OBJC_BRIDGING_HEADER = "iOSAgent/iOSAgent-Bridging-Header.h";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
