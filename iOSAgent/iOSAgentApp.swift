@@ -39,6 +39,27 @@ enum CrashGuard {
         FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("crash.log")
     }
 
+    /// 面包屑路径：记录崩溃前最后执行的动作（只保留最后一次）。
+    /// 即使崩溃不是 ObjC 异常（比如 Swift 运行时 trap、内存问题，crash.log 抓不到），
+    /// 也能靠这条面包屑知道"崩在哪一步"，避免连续多个版本盲修。
+    static var breadcrumbURL: URL {
+        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("last_action.log")
+    }
+
+    /// 在关键/高风险操作前调用，例如 `CrashGuard.mark("listEvents: 开始读取日历")`。
+    static func mark(_ action: String) {
+        let ts = ISO8601DateFormatter().string(from: Date())
+        let content = "\(ts)  \(action)"
+        try? content.write(to: breadcrumbURL, atomically: true, encoding: .utf8)
+    }
+
+    /// 读取面包屑（SettingsView 展示用）
+    static var lastBreadcrumb: String? {
+        let s = (try? String(contentsOf: breadcrumbURL, encoding: .utf8))?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return s.isEmpty ? nil : s
+    }
+
     private static func persist(exc: NSException) {
         let stack = Thread.callStackSymbols.joined(separator: "\n")
         let body = """
@@ -50,11 +71,20 @@ enum CrashGuard {
         write("CRASH [ObjC NSException]", body: body)
     }
 
-    /// 写入 Documents/crash.log（每次启动覆盖，只保留最后一次崩溃）。
+    /// 写入 Documents/crash.log。
+    /// ⚠️ 必须**追加**而不是覆盖：EventKit 内部错误和真正的 ObjC 崩溃都要留痕，
+    /// 覆盖会让"已被桥捕获的内部错误"把真正的崩溃栈抹掉（v9.0.5 的坑）。
+    /// 文件超过 64KB 时只保留尾部，避免无限增长。
     private static func write(_ title: String, body: String) {
         let url = crashLogURL
         let ts = ISO8601DateFormatter().string(from: Date())
-        let content = "=== \(title) @ \(ts) ===\n\(body)\n"
+        let entry = "\n=== \(title) @ \(ts) ===\n\(body)\n"
+        let old = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
+        var content = old + entry
+        let limit = 64_000
+        if content.count > limit {
+            content = String(content.suffix(limit))
+        }
         try? content.write(to: url, atomically: true, encoding: .utf8)
     }
 }

@@ -260,19 +260,27 @@ struct SettingsView: View {
 
     /// 崩溃诊断卡：读取 Documents/crash.log，若存在则在设置页顶部显示最近一次崩溃摘要。
     /// 用户点"复制"可以复制完整日志，点"清除"删除文件。
+    /// 崩溃前最后一步操作（面包屑）。即使 crash.log 抓不到（Swift 运行时 trap / 内存问题），
+    /// 这条也能告诉用户崩在哪一步，避免连续多个版本盲修。
+    private var breadcrumbText: String { CrashGuard.lastBreadcrumb ?? "" }
+
+    private var crashLogText: String {
+        (try? String(contentsOf: CrashGuard.crashLogURL, encoding: .utf8)) ?? ""
+    }
+
     @ViewBuilder
     private var crashLogCard: some View {
-        if let content = try? String(contentsOf: CrashGuard.crashLogURL, encoding: .utf8), !content.isEmpty {
+        if !crashLogText.isEmpty || !breadcrumbText.isEmpty {
             VStack(alignment: .leading, spacing: AppSpacing.xs) {
                 HStack(spacing: 6) {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .foregroundStyle(.orange)
-                    Text("上次崩溃记录")
+                    Text(crashLogText.isEmpty ? "崩溃前最后操作" : "上次崩溃记录")
                         .font(.appCaption2().weight(.semibold))
                         .foregroundStyle(.orange)
                     Spacer(minLength: 0)
                     Button {
-                        UIPasteboard.general.string = content
+                        UIPasteboard.general.string = crashLogText + "\n\n[最后操作] " + breadcrumbText
                     } label: {
                         Image(systemName: "doc.on.doc")
                             .font(.appCaption())
@@ -280,6 +288,7 @@ struct SettingsView: View {
                     }
                     Button {
                         try? FileManager.default.removeItem(at: CrashGuard.crashLogURL)
+                        try? FileManager.default.removeItem(at: CrashGuard.breadcrumbURL)
                     } label: {
                         Image(systemName: "xmark.circle")
                             .font(.appCaption())
@@ -289,12 +298,24 @@ struct SettingsView: View {
                 .padding(.horizontal, AppSpacing.md)
                 .padding(.top, AppSpacing.md)
 
-                Text(content)
-                    .font(.system(size: 11, design: .monospaced))
-                    .foregroundStyle(Color.appPrimaryText)
-                    .lineLimit(8)
-                    .padding(.horizontal, AppSpacing.md)
-                    .padding(.bottom, AppSpacing.md)
+                if !breadcrumbText.isEmpty {
+                    Text("最后操作：\(breadcrumbText)")
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(.orange)
+                        .padding(.horizontal, AppSpacing.md)
+                }
+
+                if !crashLogText.isEmpty {
+                    Text(crashLogText)
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(Color.appPrimaryText)
+                        .lineLimit(8)
+                        .padding(.horizontal, AppSpacing.md)
+                        .padding(.bottom, AppSpacing.md)
+                } else {
+                    Spacer(minLength: 0)
+                        .frame(height: AppSpacing.md)
+                }
             }
             .background(Color.appSurface)
             .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))

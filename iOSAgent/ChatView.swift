@@ -522,12 +522,23 @@ struct ChatView: View {
         photoItem = nil
     }
 
-    /// 当前模型是否声明支持图片/视觉理解。名字含 vision/4o/claude-3/qwen-vl/gemini/multimodal 视为支持；
-    /// deepseek-chat 等纯文本模型不支持。用户发图时会给出切换提示。
+    /// 当前模型是否可能支持图片/视觉理解。
+    ///
+    /// ⚠️ v9.0.6 起改为**黑名单**（已知纯文本模型才判否），不再用白名单。
+    /// 原因：白名单漏掉 kimi / moonshot / 各家新模型，会误伤 —— 尤其「生图」这类需求
+    /// 走的是服务端 generate_image 工具，**根本不需要模型能看图**，白名单一刀切直接把功能堵死了。
+    /// 现在未知模型一律放行；即便判断为不支持也只给软提示，不阻断发送。
     private var modelSupportsVision: Bool {
         let m = settings.activeProfile.modelName.lowercased()
-        let keywords = ["vision", "gpt-4o", "claude-3", "qwen-vl", "gemini", "multimodal", "llava", "yi-vision"]
-        return keywords.contains { m.contains($0) }
+        let nonVision = [
+            "deepseek-chat", "deepseek-reasoner", "deepseek-coder",
+            "deepseek-v3", "deepseek-r1", "deepseek-distill",
+            "qwen-turbo", "qwen-plus", "qwen-max", "qwen2.5-", "qwen3-",
+            "glm-4-air", "glm-4-flash", "glm-4-plus", "glm-4-9b",
+            "yi-34b", "yi-large", "mixtral", "llama-3-8b", "llama-2",
+            "text-davinci", "babbage", "curie", "o1-mini"
+        ]
+        return !nonVision.contains { m.contains($0) }
     }
 
     /// 对 UI 可见的消息：过滤掉工具中间结果的气泡文本，只保留带文件附件的工具卡片。
@@ -775,18 +786,18 @@ struct ChatView: View {
         selectedFileName = nil
         photoItem = nil
 
-        // v9.0.5 如果用户发了图但当前模型不支持 vision，直接提示切换，不要浪费 token 让模型乱回。
+        // v9.0.6：模型可能不支持看图时只给软提示，**不阻断发送**。
+        // 之前硬 return 会误伤「发图 → 让服务端生图/处理」这类走工具的诉求（kimi 等被误判）。
         if imageToSend != nil, !modelSupportsVision {
             var finalMsgs = msgs
             let hint = StoredMessage(
                 role: "assistant",
-                content: "当前模型 \(settings.activeProfile.modelName) 不支持图片理解。如需分析图片，请轻点左下角「+」→「切换模型」，选择 gpt-4o、claude-3、qwen-vl 或 gemini 系列等 vision 模型后再发图。",
+                content: "⚠️ 当前模型「\(settings.activeProfile.modelName)」可能不支持看图，已继续发送，但图片内容理解可能不准确。如需准确识别图片，请轻点左下角「+」→「切换模型」，选择带视觉能力的模型（如 gpt-4o / claude / gemini / qwen-vl / kimi-vision）。",
                 isStreaming: false
             )
             finalMsgs.append(hint)
             store.update(conversationId, messages: finalMsgs)
-            isLoading = false
-            return
+            // 注意：这里刻意不 return，继续走下面的正常发送流程
         }
 
         Task {
