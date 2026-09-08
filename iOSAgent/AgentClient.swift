@@ -446,11 +446,19 @@ final class AgentClient {
         var base = result.success ? "[执行成功]" : "[执行失败]"
         base += " \(cleanToolMessage(result.message))"
         // 生成文件类工具的数据仅包含内部路径，不要展示给用户；其它工具结果仍保留结构化数据供模型参考。
-        if result.fileURL == nil,
-           let data = result.data,
-           let dataJson = try? JSONSerialization.data(withJSONObject: data.mapValues { $0.value }, options: .fragmentsAllowed),
-           let s = String(data: dataJson, encoding: .utf8) {
-            base += "\n数据：\(s)"
+        // 【v9.0.7 修复】原用 JSONSerialization 直接序列化 [String: Any]（unwrap AnyCodable.value 后的字典）。
+        // 如果 data 内含嵌套数组/字典（list_events / list_reminders 返回 [[String: AnyCodable]]），
+        // AnyCodable 是 Swift 结构体，桥到 NSObject 后是 __SwiftValue，JSONSerialization 拒收并抛
+        // NSInvalidArgumentException "Invalid type in JSON write (__SwiftValue)" —— 整个 App 闪退。
+        // 改用 JSONEncoder：AnyCodable 自己实现了 encode(to:)，会递归把 [String: Any] / [Any]
+        // 拆成 [String: AnyCodable] / [AnyCodable] 再编码，彻底避开 __SwiftValue。
+        if result.fileURL == nil, let data = result.data {
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.withoutEscapingSlashes]
+            if let jsonData = try? encoder.encode(data),
+               let s = String(data: jsonData, encoding: .utf8) {
+                base += "\n数据：\(s)"
+            }
         }
         return base
     }
@@ -948,7 +956,7 @@ struct SkillInstaller {
         var req = URLRequest(url: url)
         req.timeoutInterval = 30
         req.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
-        req.setValue("iOSAgent/9.0.6", forHTTPHeaderField: "User-Agent")
+        req.setValue("iOSAgent/9.0.7", forHTTPHeaderField: "User-Agent")
         let token = Self.authToken
         if !token.isEmpty { req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
         let (data, resp) = try await URLSession.shared.data(for: req)
