@@ -17,6 +17,7 @@ jobs:
 
       - name: Build app (unsigned, device SDK)
         run: |
+          set -o pipefail
           xcodebuild \
             -project iOSAgent.xcodeproj \
             -target iOSAgent \
@@ -24,7 +25,16 @@ jobs:
             -configuration Release \
             CODE_SIGNING_ALLOWED=NO \
             SYMROOT="$PWD/build" \
-            build
+            build 2>&1 | tee build.log
+          BUILD_EXIT=${PIPESTATUS[0]}
+          echo "xcodebuild exit code: $BUILD_EXIT"
+          if [ $BUILD_EXIT -ne 0 ]; then
+            echo "--- build errors (last 120 lines) ---"
+            grep -E "(error:|warning:|note:|undefined|undeclared|expected)" build.log | tail -120 || true
+            echo "--- raw tail ---"
+            tail -80 build.log
+          fi
+          exit $BUILD_EXIT
 
       - name: Package unsigned IPA
         run: |
@@ -41,14 +51,14 @@ jobs:
       - name: Upload IPA artifact
         uses: actions/upload-artifact@v4
         with:
-          name: iOSAgent-unsigned
+          name: iOSAgent-unsigned-${{ github.run_id }}
           path: build/*/iOSAgent-unsigned.ipa
 
       - name: Upload build log artifact (always)
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: iOSAgent-build-log
+          name: iOSAgent-build-log-${{ github.run_id }}
           path: |
             build.log
             build_errors.log
