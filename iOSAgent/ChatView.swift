@@ -1,5 +1,6 @@
 import SwiftUI
 import PhotosUI
+import Photos
 import UniformTypeIdentifiers
 import UIKit
 
@@ -842,8 +843,24 @@ struct MessageBubble: View {
     let onResend: (() -> Void)?
     let onRegenerate: (() -> Void)?
     @State private var previewURL: PreviewItem?
+    @State private var fullscreenImage: FullscreenImage?
     @State private var showShareSheet = false
+    @State private var saveStatus: String?
     @ObservedObject private var speaker = SpeechSynthesizer.shared
+
+    /// 是否是图片型文件（生成图 / 用户图附件 / 工具返回的 image/*）。仅用于 inline 渲染判断。
+    private var isImageFile: Bool {
+        guard let url = message.fileURL else { return false }
+        let ext = url.pathExtension.lowercased()
+        return ["png","jpg","jpeg","gif","webp","heic"].contains(ext) || message.imageBase64 != nil
+    }
+
+    /// 当前 bubble 内可 inline 显示的图片：优先 fileURL（生成图）；其次 imageBase64（用户附件）。
+    private var inlineImage: InlineImage? {
+        if let url = message.fileURL, isImageFile { return .url(url) }
+        if let b64 = message.imageBase64, !b64.isEmpty { return .base64(b64) }
+        return nil
+    }
 
     var body: some View {
         HStack {
@@ -851,8 +868,12 @@ struct MessageBubble: View {
 
             VStack(alignment: message.role == "user" ? .trailing : .leading, spacing: 5) {
                 if message.role == "tool" {
-                    // 工具结果消息：不展示原始文本/JSON/HTML，只展示文件卡片（若有）
-                    toolFileCard
+                    // 工具结果：图片 inline 显示；其它文件走"打开文件"卡片
+                    if isImageFile {
+                        toolImageCard
+                    } else {
+                        toolFileCard
+                    }
                 } else {
                     if let toolName = message.toolName {
                         Label(toolName, systemImage: "hammer.fill")
@@ -861,10 +882,15 @@ struct MessageBubble: View {
                             .padding(.horizontal, 14)
                     }
 
+                    // 用户消息 / assistant 文本里的 inline 图片（生成图若作为 assistant 气泡附在文字上方）
+                    if let img = inlineImage, !(message.role == "tool") {
+                        chatImageView(img)
+                    }
+
                     // 流式占位：模型思考/工具执行中但尚未输出文字时显示动态心跳，避免空矩形。
                     // 工具执行阶段 isStreaming 会被置 false、但 status 仍保留心跳文字，故条件需同时覆盖 status。
                     // 用 trimming 判断，防止模型只返回换行/空格时误判为非空。
-                    if message.role == "assistant" && message.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && (message.isStreaming || message.status != nil) {
+                    if message.role == "assistant" && message.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && (message.isStreaming || message.status != nil) && inlineImage == nil {
                         HStack(spacing: 6) {
                             ProgressView()
                                 .scaleEffect(0.7)
@@ -905,7 +931,8 @@ struct MessageBubble: View {
                         .padding(.leading, 4)
                     }
 
-                    if let url = message.fileURL {
+                    // 非图片型 fileURL：保留"打开文件"按钮
+                    if let url = message.fileURL, !isImageFile {
                         Button {
                             previewURL = PreviewItem(url: url)
                         } label: {
@@ -919,6 +946,13 @@ struct MessageBubble: View {
                         .padding(.leading, 4)
                     }
 
+                    if let status = saveStatus {
+                        Text(status)
+                            .font(.appCaption2())
+                            .foregroundStyle(Color.appSecondaryText)
+                            .padding(.leading, 4)
+                    }
+
                     if !message.isStreaming && !message.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                         actionButtons
                     }
@@ -929,12 +963,122 @@ struct MessageBubble: View {
             if message.role != "user" { Spacer(minLength: 28) }
         }
         .sheet(item: $previewURL) { FilePreviewView(url: $0.url) }
+        .sheet(item: $fullscreenImage) { fs in
+            FullscreenImageView(image: fs.image)
+        }
         .sheet(isPresented: $showShareSheet) {
-            ShareSheet(activityItems: [message.content])
+            ShareSheet(activityItems: shareItemsForThisMessage())
         }
     }
 
-    /// 工具结果文件卡片：只保留“打开文件”入口，不显示执行成功/失败文字
+    /// 聊天气泡里 inline 图片：圆角缩略图，点击全屏，长按弹出保存菜单。
+    @ViewBuilder
+    private func chatImageView(_ img: InlineImage) -> some View {
+        let maxWidth: CGFloat = 260
+        let maxHeight: CGFloat = 260
+        Group {
+            if let ui = img.uiImage {
+                Image(uiImage: ui)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(maxWidth: maxWidth, maxHeight: maxHeight)
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .stroke(Color.white.opacity(0.18), lineWidth: 0.5)
+                    )
+                    .onTapGesture {
+                        fullscreenImage = FullscreenImage(image: ui)
+                    }
+                    .contextMenu {
+                        Button {
+                            fullscreenImage = FullscreenImage(image: ui)
+                        } label: { Label("查看大图", systemImage: "arrow.up.left.and.arrow.down.right") }
+                        Button {
+                            Task { await saveToPhotos(ui) }
+                        } label: { Label("保存到相册", systemImage: "square.and.arrow.down") }
+                        if case .url(let u) = img {
+                            Button {
+                                previewURL = PreviewItem(url: u)
+                            } label: { Label("用 QuickLook 打开", systemImage: "doc.text.viewfinder") }
+                        }
+                    }
+            }
+        }
+    }
+
+    /// tool 结果里的图片卡片（生成图场景）：和 chatImageView 类似但放在工具标签下方独立显示。
+    @ViewBuilder
+    private var toolImageCard: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 4) {
+                Image(systemName: "photo.on.rectangle.angled")
+                    .font(.appCaption())
+                Text(message.toolName ?? "图片")
+                    .font(.appCaption().weight(.medium))
+            }
+            .foregroundStyle(Color.appSecondaryText)
+            if let img = inlineImage, let ui = img.uiImage {
+                Image(uiImage: ui)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(maxWidth: 260, maxHeight: 260)
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .stroke(Color.white.opacity(0.15), lineWidth: 0.5)
+                    )
+                    .onTapGesture {
+                        fullscreenImage = FullscreenImage(image: ui)
+                    }
+                    .contextMenu {
+                        Button {
+                            fullscreenImage = FullscreenImage(image: ui)
+                        } label: { Label("查看大图", systemImage: "arrow.up.left.and.arrow.down.right") }
+                        Button {
+                            Task { await saveToPhotos(ui) }
+                        } label: { Label("保存到相册", systemImage: "square.and.arrow.down") }
+                    }
+            }
+            if let status = saveStatus {
+                Text(status)
+                    .font(.appCaption2())
+                    .foregroundStyle(Color.appSecondaryText)
+            }
+        }
+    }
+
+    /// 保存到相册：先请求相册权限，UIImage → JPEG → PHPhotoLibrary save。
+    private func saveToPhotos(_ ui: UIImage) async {
+        let granted = await PhotoSaveHelper.requestAuth()
+        guard granted else {
+            saveStatus = "保存失败：未获得相册权限"
+            return
+        }
+        let ok = await PhotoSaveHelper.save(ui)
+        saveStatus = ok ? "已保存到相册" : "保存失败"
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 1_800_000_000)
+            saveStatus = nil
+        }
+    }
+
+    /// 分享按钮用：本条消息的友好导出。
+    /// - 文本消息：仅分享内容（保留向后兼容）
+    /// - 图片型消息：分享图片 UIImage（微信能直接看到图）
+    /// - 带文件附件：分享文件 URL（系统会自动选 App）
+    private func shareItemsForThisMessage() -> [Any] {
+        if let img = inlineImage, let ui = img.uiImage {
+            return [ui]
+        }
+        if let url = message.fileURL {
+            return [url]
+        }
+        let text = message.content.trimmingCharacters(in: .whitespacesAndNewlines)
+        return text.isEmpty ? ["（空消息）"] : [text]
+    }
+
+    /// 工具结果文件卡片：非图片文件走"打开文件"入口，图片已走 toolImageCard 不重复。
     @ViewBuilder
     private var toolFileCard: some View {
         if let url = message.fileURL {
@@ -1100,4 +1244,142 @@ struct ShareSheet: UIViewControllerRepresentable {
         UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
     }
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
+}
+
+// MARK: - 图片 inline / 全屏 / 保存
+
+/// 聊天气泡内可渲染的图片数据源。优先用 fileURL（生成图），其次用 imageBase64（用户附件）。
+/// 解析后的 UIImage 走 .uiImage 缓存给 Image 直接绑定，避免每帧重新解压。
+struct InlineImage {
+    enum Source { case url(URL), base64(String) }
+    let source: Source
+    let uiImage: UIImage?
+
+    init?(fileURL: URL) {
+        guard let data = try? Data(contentsOf: fileURL) else { return nil }
+        self.source = .url(fileURL)
+        self.uiImage = UIImage(data: data)
+    }
+
+    init?(base64: String) {
+        guard let data = Data(base64Encoded: base64), let img = UIImage(data: data) else { return nil }
+        self.source = .base64(base64)
+        self.uiImage = img
+    }
+
+    static func url(_ u: URL) -> InlineImage? { InlineImage(fileURL: u) }
+    static func base64(_ s: String) -> InlineImage? { InlineImage(base64: s) }
+}
+
+/// 全屏图片预览的 Sheet 容器。
+struct FullscreenImage: Identifiable {
+    let id = UUID()
+    let image: UIImage
+}
+
+/// 全屏图片视图：双指缩放 + 单击关闭 + 长按保存到相册。
+struct FullscreenImageView: View {
+    let image: UIImage
+    @Environment(\.dismiss) private var dismiss
+    @State private var saveStatus: String?
+    @State private var scale: CGFloat = 1.0
+    @State private var lastScale: CGFloat = 1.0
+    @State private var offset: CGSize = .zero
+    @State private var lastOffset: CGSize = .zero
+
+    var body: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+            Image(uiImage: image)
+                .resizable()
+                .scaledToFit()
+                .scaleEffect(scale)
+                .offset(offset)
+                .gesture(
+                    SimultaneousGesture(
+                        MagnificationGesture()
+                            .onChanged { v in scale = max(1.0, min(lastScale * v, 4.0)) }
+                            .onEnded { _ in lastScale = scale; if scale < 1.05 { withAnimation(.spring) { scale = 1; lastScale = 1; offset = .zero; lastOffset = .zero } } },
+                        DragGesture()
+                            .onChanged { v in offset = CGSize(width: lastOffset.width + v.translation.width, height: lastOffset.height + v.translation.height) }
+                            .onEnded { _ in lastOffset = offset }
+                    )
+                )
+                .onTapGesture(count: 2) {
+                    withAnimation(.spring) {
+                        if scale > 1.0 { scale = 1; lastScale = 1; offset = .zero; lastOffset = .zero }
+                        else { scale = 2; lastScale = 2 }
+                    }
+                }
+                .onTapGesture { dismiss() }
+            VStack {
+                Spacer()
+                if let status = saveStatus {
+                    Text(status)
+                        .font(.appBody().weight(.medium))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .background(Capsule().fill(.black.opacity(0.6)))
+                        .padding(.bottom, 36)
+                }
+            }
+            VStack {
+                HStack {
+                    Spacer()
+                    Button { dismiss() } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 30))
+                            .foregroundStyle(.white.opacity(0.85))
+                            .padding(.trailing, 16)
+                            .padding(.top, 16)
+                    }
+                }
+                Spacer()
+            }
+        }
+        .contextMenu {
+            Button {
+                Task { await save() }
+            } label: { Label("保存到相册", systemImage: "square.and.arrow.down") }
+        }
+    }
+
+    private func save() async {
+        let granted = await PhotoSaveHelper.requestAuth()
+        guard granted else { saveStatus = "未授权相册"; return }
+        let ok = await PhotoSaveHelper.save(image)
+        saveStatus = ok ? "已保存" : "保存失败"
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            saveStatus = nil
+        }
+    }
+}
+
+/// 相册保存助手：请求权限 + 写图。避免在 MessageBubble 里堆权限逻辑。
+enum PhotoSaveHelper {
+    static func requestAuth() async -> Bool {
+        let status = PHPhotoLibrary.authorizationStatus(for: .addOnly)
+        switch status {
+        case .authorized, .limited: return true
+        case .notDetermined:
+            return await withCheckedContinuation { c in
+                PHPhotoLibrary.requestAuthorization(for: .addOnly) { s in
+                    c.resume(returning: s == .authorized || s == .limited)
+                }
+            }
+        default: return false
+        }
+    }
+
+    static func save(_ image: UIImage) async -> Bool {
+        await withCheckedContinuation { c in
+            PHPhotoLibrary.shared().performChanges({
+                PHAssetChangeRequest.creationRequestForAsset(from: image)
+            }, completionHandler: { ok, _ in
+                c.resume(returning: ok)
+            })
+        }
+    }
 }

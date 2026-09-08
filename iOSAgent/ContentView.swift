@@ -151,6 +151,7 @@ struct ChatRootList: View {
     @State private var renameText = ""
     @State private var showRename = false
     @State private var shareText = ""
+    @State private var shareFileURL: URL?
     @State private var showShare = false
     @State private var swipeExpandedID: UUID? = nil
 
@@ -183,7 +184,9 @@ struct ChatRootList: View {
             Task { await loadReminders() }
         }
         .sheet(isPresented: $showShare) {
-            ShareSheet(activityItems: [shareText])
+            // 同时传文件 URL + 纯文本，让系统分享面板自适应：微信/邮件 → 文件；剪贴板/笔记 → 文本
+            let items: [Any] = shareFileURL.map { [$0 as Any, shareText] } ?? [shareText]
+            ShareSheet(activityItems: items)
         }
         .alert("重命名对话", isPresented: $showRename) {
             TextField("对话名称", text: $renameText)
@@ -199,15 +202,41 @@ struct ChatRootList: View {
     }
 
     private func exportConversation(_ c: Conversation) -> String {
-        var lines = ["【\(c.title)】"]
+        var lines = ["# \(c.title)", ""]
+        lines.append("> 由 Velos 导出 · \(Self.shareDateFmt.string(from: Date()))")
+        lines.append("")
         for m in c.messages where m.role != "tool" {
             let text = m.content.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !text.isEmpty else { continue }
-            let who = m.role == "user" ? "我" : "Velos"
-            lines.append("\(who)：\(text)")
+            let who = m.role == "user" ? "🧑 我" : "✨ Velos"
+            lines.append("**\(who)**：")
+            for line in text.split(separator: "\n", omittingEmptySubsequences: false) {
+                lines.append("> \(line)")
+            }
+            lines.append("")
         }
-        return lines.joined(separator: "\n\n")
+        return lines.joined(separator: "\n")
     }
+
+    /// 把 Markdown 字符串落盘到 Documents/ 目录，返回 URL；ShareSheet 同时拿到 fileURL 和 markdown 字符串，
+    /// 系统会自动选最佳展示：微信/笔记 → 文件预览；剪贴板 → 纯文本；邮件 → 同时附文件 + 正文。
+    private func exportConversationAsMarkdownFile(_ c: Conversation) -> URL {
+        let md = exportConversation(c)
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let safe = c.title.replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: ":", with: "_")
+            .replacingOccurrences(of: "\n", with: " ")
+        let fileName = "Velos对话_\(safe.isEmpty ? "未命名" : String(safe.prefix(30)))_\(Int(Date().timeIntervalSince1970)).md"
+        let url = docs.appendingPathComponent(fileName)
+        try? md.write(to: url, atomically: true, encoding: .utf8)
+        return url
+    }
+
+    private static let shareDateFmt: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "zh_CN")
+        f.dateFormat = "yyyy-MM-dd HH:mm"
+        return f
+    }()
 
     private var searchBar: some View {
         HStack(spacing: AppSpacing.sm) {
@@ -302,6 +331,7 @@ struct ChatRootList: View {
                             },
                             onShare: {
                                 shareText = exportConversation(conversation)
+                                shareFileURL = exportConversationAsMarkdownFile(conversation)
                                 showShare = true
                             }
                         ) {
@@ -611,6 +641,7 @@ struct SideMenuOverlay: View {
     @State private var renameText = ""
     @State private var showRename = false
     @State private var shareText = ""
+    @State private var shareFileURL: URL?
     @State private var showShare = false
 
     var body: some View {
@@ -645,7 +676,9 @@ struct SideMenuOverlay: View {
             )
         }
         .sheet(isPresented: $showShare) {
-            ShareSheet(activityItems: [shareText])
+            // 同时传文件 URL + 纯文本，让系统分享面板自适应：微信/邮件 → 文件；剪贴板/笔记 → 文本
+            let items: [Any] = shareFileURL.map { [$0 as Any, shareText] } ?? [shareText]
+            ShareSheet(activityItems: items)
         }
         .alert("重命名对话", isPresented: $showRename) {
             TextField("对话名称", text: $renameText)
@@ -661,15 +694,41 @@ struct SideMenuOverlay: View {
     }
 
     private func exportConversation(_ c: Conversation) -> String {
-        var lines = ["【\(c.title)】"]
+        var lines = ["# \(c.title)", ""]
+        lines.append("> 由 Velos 导出 · \(Self.shareDateFmt.string(from: Date()))")
+        lines.append("")
         for m in c.messages where m.role != "tool" {
             let text = m.content.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !text.isEmpty else { continue }
-            let who = m.role == "user" ? "我" : "Velos"
-            lines.append("\(who)：\(text)")
+            let who = m.role == "user" ? "🧑 我" : "✨ Velos"
+            lines.append("**\(who)**：")
+            for line in text.split(separator: "\n", omittingEmptySubsequences: false) {
+                lines.append("> \(line)")
+            }
+            lines.append("")
         }
-        return lines.joined(separator: "\n\n")
+        return lines.joined(separator: "\n")
     }
+
+    /// 把 Markdown 字符串落盘到 Documents/ 目录，返回 URL；ShareSheet 同时拿到 fileURL 和 markdown 字符串，
+    /// 系统会自动选最佳展示：微信/笔记 → 文件预览；剪贴板 → 纯文本；邮件 → 同时附文件 + 正文。
+    private func exportConversationAsMarkdownFile(_ c: Conversation) -> URL {
+        let md = exportConversation(c)
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let safe = c.title.replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: ":", with: "_")
+            .replacingOccurrences(of: "\n", with: " ")
+        let fileName = "Velos对话_\(safe.isEmpty ? "未命名" : String(safe.prefix(30)))_\(Int(Date().timeIntervalSince1970)).md"
+        let url = docs.appendingPathComponent(fileName)
+        try? md.write(to: url, atomically: true, encoding: .utf8)
+        return url
+    }
+
+    private static let shareDateFmt: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "zh_CN")
+        f.dateFormat = "yyyy-MM-dd HH:mm"
+        return f
+    }()
 
     private var sideMenuHeader: some View {
         Button {

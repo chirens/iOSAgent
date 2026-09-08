@@ -201,6 +201,31 @@ final class AgentClient {
             finalText = synthesized.content
         }
 
+        // 终极防护：跑了 8 轮模型仍未输出任何文字（含生图失败 / LLM 直接被掐断 / token 失效 / 解析异常等所有原因）。
+        // 给一句人话兜底，让用户至少知道发生了什么，而不是面对空白的对话。
+        if finalText.isEmpty {
+            // 找出最近一条 tool 消息，把它的成功/失败状态拼成人话，比纯"网络异常"更具体
+            let lastTool = out.last(where: { $0.role == "tool" })
+            let reason: String
+            if let t = lastTool {
+                let s = t.content
+                if s.contains("执行失败") {
+                    // 截一段让人能看懂的
+                    let snippet = String(s.prefix(140))
+                    reason = "工具未成功：\(snippet)"
+                } else if t.fileURL != nil {
+                    reason = "已生成文件但模型未能给出文字说明。请尝试再发一条或换种说法。"
+                } else {
+                    reason = "工具已返回结果，但模型未能继续生成文字回复。请再试一次。"
+                }
+            } else {
+                reason = "模型未返回任何内容。可能原因：API key 失效、网络中断、或服务端临时不可用。"
+            }
+            let fallback = StoredMessage(role: "assistant", content: "（Velos：\(reason)）")
+            out.append(fallback)
+            finalText = fallback.content
+        }
+
         return (out, finalText)
     }
 
@@ -923,7 +948,7 @@ struct SkillInstaller {
         var req = URLRequest(url: url)
         req.timeoutInterval = 30
         req.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
-        req.setValue("iOSAgent/9.0.3", forHTTPHeaderField: "User-Agent")
+        req.setValue("iOSAgent/9.0.4", forHTTPHeaderField: "User-Agent")
         let token = Self.authToken
         if !token.isEmpty { req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
         let (data, resp) = try await URLSession.shared.data(for: req)
