@@ -545,7 +545,22 @@ struct ChatView: View {
     /// 注意：原始消息仍保存在 store 中并发给模型，这里只是不在界面上渲染噪声。
     private var messages: [StoredMessage] {
         let all = store.conversations.first(where: { $0.id == conversationId })?.messages ?? []
-        return all.filter { $0.role != "tool" || $0.fileURL != nil }
+        return all.filter { msg in
+            // 工具结果：没文件附件的不展示（只剩文本/JSON 噪声）
+            if msg.role == "tool" { return msg.fileURL != nil }
+            // 【v9.0.7】过滤掉「空泡」：assistant 消息没内容、且已不在流式中、也没图片附件的。
+            // 场景：模型发完 tool_call 后没产生文字回合（流中断 / 全是 tool_call），
+            // 会留一条 content="" + isStreaming=false 的空 assistant 消息，
+            // 之前 MessageBubble 会把它的占位心跳区也画成背景矩形（2-3 行空白），现在直接隐藏。
+            // 注意：status 字段也忽略 —— 一旦流结束、status 失去 UI 价值，留着只会撑出空泡。
+            if msg.role == "assistant",
+               msg.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+               !msg.isStreaming,
+               msg.fileURL == nil {
+                return false
+            }
+            return true
+        }
     }
 
     /// 顶部标题必须绑定到当前 conversationId，避免共享 store.selected 导致多个对话互相串标题
