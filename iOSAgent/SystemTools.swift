@@ -704,9 +704,11 @@ final class SystemTools {
         let predicate = store.predicateForEvents(withStart: start, end: end, calendars: availableCalendars)
         // 【v9.0.5 日程闪退真正根治】EventKit 内部 NSException Swift 抓不住，必须走 Objective-C @try/@catch 桥。
         // 异常时返回空数组 + 错误信息，让 LLM 看到具体原因，而不是整个 App 闪退。
-        var errorString: String?
-        let bridgedEvents = EKEventStoreBridge.safeEvents(for: store, predicate: predicate, error: &errorString)
-        if let errorString {
+        // 注意：ObjC 桥需要 NSString? 指针，不能直接传 Swift String?。
+        var nsErrorString: NSString?
+        let bridgedEvents = EKEventStoreBridge.safeEvents(for: store, predicate: predicate, error: &nsErrorString)
+        if let nsErrorString {
+            let errorString = nsErrorString as String
             // 写到 crash.log 方便开发者；同时返回工具结果给 LLM/用户，解释读取失败
             CrashGuard.logEventKitCrash("listEvents: \(errorString)")
             return ToolResult(success: false,
