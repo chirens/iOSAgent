@@ -42,6 +42,9 @@ struct ChatView: View {
 
     // v9.0.5 图片附件加载状态： PhotosPicker / FileImporter 读取大图时展示进度，避免用户以为没点中
     @State private var isLoadingAttachment = false
+    // v9.0.12 心跳：输入框上方的小卡片，展示中间过程（思考 / 工具调用 / 工具执行 / 工具结果）。
+    // 最终回复到达时由 AgentClient 推空数组 → 清空。
+    @State private var heartbeatSteps: [HeartbeatStep] = []
 
     // v9.0 对话内 skill 链接一键安装
     @State private var skillInstallStatus: String?
@@ -75,23 +78,28 @@ struct ChatView: View {
                 ScrollView {
                     LazyVStack(spacing: AppSpacing.md) {
                         ForEach(messages) { msg in
-                            MessageBubble(
-                                message: msg,
-                                onResend: msg.role == "user" ? { resendMessage(msg) } : nil,
-                                onRegenerate: msg.role == "assistant" ? { regenerate(from: msg) } : nil
-                            )
-                            .id(msg.id)
-                        }
-                        if isLoading {
-                            HStack(spacing: 6) {
-                                Dot()
-                                Dot(delay: 0.15)
-                                Dot(delay: 0.3)
+                            // v9.0.12 心跳根因：content 空的 streaming assistant 消息不渲染气泡，
+                            // 避免"出现又消失"的占位符视觉。中间过程全部由 heartbeatCard 承载。
+                            // final answer 到达时（msg.content 非空），渲染一条正常气泡。
+                            // v9.0.13 心跳根因（强化）：streaming 期间只要**内容为空 或 正在调用工具**，
+                            // 就一律不渲染 assistant 气泡——中间过程 100% 由 heartbeatCard 承载，
+                            // 杜绝"气泡出现又消失"的占位视觉。最终回答（content 非空且无工具调用）才出气泡。
+                            let hideAsHeartbeat = msg.role == "assistant"
+                                && msg.isStreaming
+                                && msg.fileURL == nil
+                                && (msg.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                    || !(msg.toolCalls ?? []).isEmpty)
+                            if !hideAsHeartbeat {
+                                MessageBubble(
+                                    message: msg,
+                                    onResend: msg.role == "user" ? { resendMessage(msg) } : nil,
+                                    onRegenerate: msg.role == "assistant" ? { regenerate(from: msg) } : nil
+                                )
+                                .id(msg.id)
                             }
-                            .padding(.horizontal, AppSpacing.md)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .id("typing")
                         }
+                        // v9.0.13：去掉列表底部的三个点占位（它本身就是"出现又消失"的占位元素），
+                        // 请求发出的瞬间 heartbeatCard 就会显示「正在思考」，中间反馈统一由心跳卡负责。
                         // 始终存在的底部锚点：scrollTo 一定命中（LazyVStack 首帧未实例化的元素 id 找不到）
                         Color.clear
                             .frame(height: 1)
@@ -124,6 +132,16 @@ struct ChatView: View {
 
             // 已选附件
             attachmentRow
+
+            // v9.0.12 心跳卡：在输入框上方显示中间过程（思考 / 工具调用 / 工具执行 / 工具结果）。
+            // 设计参照用户截图里的 manus 心跳条：浅色小卡片 + 小图标 + 状态文字 + 旋转指示器。
+            if !heartbeatSteps.isEmpty {
+                heartbeatCard
+                    .padding(.horizontal, AppSpacing.md)
+                    .padding(.top, AppSpacing.xs)
+                    .transition(.asymmetric(insertion: .move(edge: .bottom).combined(with: .opacity),
+                                             removal: .opacity))
+            }
 
             // 已激活技能提示（点按清除）
             if !activeSkills.isEmpty {
@@ -250,8 +268,8 @@ struct ChatView: View {
         .id(conversationId)
         .navigationTitle(conversationTitle)
         .background(Color.appBackground)
-        .toolbarBackground(Color.appBackground, for: .navigationBar)
-        .toolbarColorScheme(.dark, for: .navigationBar)
+        // v9.0.12：完全删掉 AdaptiveNavBarModifier 和所有 .toolbarBackground，
+        // 让 AppDelegate 配的 UINavigationBarAppearance 全权处理导航栏。
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button {
@@ -627,6 +645,7 @@ struct ChatView: View {
         Task {
             do {
                 isLoading = true
+                heartbeatSteps = [HeartbeatStep(kind: .thinking, text: "正在思考…")]
                 let (updated, _) = try await AgentClient.shared.run(
                     messages: trimmed,
                     image: nil,
@@ -634,19 +653,34 @@ struct ChatView: View {
                     activeSkills: activeSkills
                 ) { partial in
                     store.update(conversationId, messages: partial)
+                } onHeartbeat: { steps in
+                    // 收到空数组 = final answer 到达，清空心跳
+                    if steps.isEmpty {
+                        withAnimation(.easeOut(duration: 0.25)) {
+                            heartbeatSteps = []
+                        }
+                    } else {
+                        // 替换式追加（一次只显示当前最新一步，避免列表无限增长）
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            heartbeatSteps = steps
+                        }
+                    }
                 }
                 store.update(conversationId, messages: updated)
             } catch {
                 errorText = error.localizedDescription
-                var finalMsgs = messages
-                if let idx = finalMsgs.indices.last,
-                   finalMsgs[idx].role == "assistant",
-                   finalMsgs[idx].isStreaming {
+                heartbeatSteps = []
+                var finalMsgs = store.conversations.first(where: { $0.id == conversationId })?.messages ?? messages
+                finalMsgs.removeAll { m in
+                    m.role == "assistant"
+                        && m.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                        && (m.toolCalls ?? []).isEmpty
+                        && m.fileURL == nil
+                }
+                // 清掉所有残留的流式状态
+                for idx in finalMsgs.indices where finalMsgs[idx].role == "assistant" {
                     finalMsgs[idx].isStreaming = false
                     finalMsgs[idx].status = nil
-                    if finalMsgs[idx].content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        finalMsgs.remove(at: idx)
-                    }
                 }
                 store.update(conversationId, messages: finalMsgs)
             }
@@ -817,6 +851,7 @@ struct ChatView: View {
 
         Task {
             do {
+                heartbeatSteps = [HeartbeatStep(kind: .thinking, text: "正在思考…")]
                 let (updated, _) = try await AgentClient.shared.run(
                     messages: msgs,
                     image: imageToSend,
@@ -824,12 +859,22 @@ struct ChatView: View {
                     activeSkills: activeSkills
                 ) { partial in
                     store.update(conversationId, messages: partial)
+                } onHeartbeat: { steps in
+                    if steps.isEmpty {
+                        withAnimation(.easeOut(duration: 0.25)) {
+                            heartbeatSteps = []
+                        }
+                    } else {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            heartbeatSteps = steps
+                        }
+                    }
                 }
                 store.update(conversationId, messages: updated)
             } catch {
                 errorText = error.localizedDescription
-                // 失败时清理占位流式消息：保留已生成内容，仅停止流式状态。
-                var finalMsgs = messages
+                heartbeatSteps = []
+                var finalMsgs = store.conversations.first(where: { $0.id == conversationId })?.messages ?? messages
                 if let idx = finalMsgs.indices.last,
                    finalMsgs[idx].role == "assistant",
                    finalMsgs[idx].isStreaming {
@@ -973,7 +1018,7 @@ struct MessageBubble: View {
                             RoundedRectangle(cornerRadius: 18, style: .circular)
                                 .fill(bubbleBackground)
                         )
-                        .shadow(color: .black.opacity(0.15), radius: 6, x: 0, y: 2)
+                        .shadow(color: .black.opacity(0.04), radius: 3, x: 0, y: 1)
                     } else if !message.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                         Text(message.content)
                             .font(.appBody())
@@ -984,7 +1029,7 @@ struct MessageBubble: View {
                                 RoundedRectangle(cornerRadius: 18, style: .circular)
                                     .fill(bubbleBackground)
                             )
-                            .shadow(color: .black.opacity(0.15), radius: 6, x: 0, y: 2)
+                            .shadow(color: .black.opacity(0.04), radius: 3, x: 0, y: 1)
                             .textSelection(.enabled)
                     }
 
@@ -1167,7 +1212,7 @@ struct MessageBubble: View {
                     RoundedRectangle(cornerRadius: 18, style: .circular)
                         .fill(Color.appSurface)
                 )
-                .shadow(color: .black.opacity(0.15), radius: 6, x: 0, y: 2)
+                .shadow(color: .black.opacity(0.04), radius: 3, x: 0, y: 1)
             }
             .buttonStyle(.plain)
         } else {
@@ -1335,6 +1380,57 @@ struct InlineImage {
 
     static func url(_ u: URL) -> InlineImage? { InlineImage(fileURL: u) }
     static func base64(_ s: String) -> InlineImage? { InlineImage(base64: s) }
+}
+
+// MARK: - v9.0.12 心跳卡
+//
+// 用户反馈：streaming 过程中消息列表里的 assistant 气泡"出现又消失"，像占位符。
+// 改为：所有中间过程（模型思考 / 工具调用 / 工具执行 / 工具结果）以**输入框上方的小卡片**展示，
+// 最终回复只产生一条气泡（msg.content 非空时）；同时 Heartbeat 列表里**只显示当前最新一步**，
+// 避免列表无限增长占屏。
+extension ChatView {
+    var heartbeatCard: some View {
+        let latest = heartbeatSteps.last
+        return HStack(spacing: 8) {
+            Image(systemName: heartbeatIcon(latest?.kind))
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(heartbeatColor(latest?.kind))
+                .symbolEffect(.pulse, options: .repeating)
+            Text(latest?.text ?? "")
+                .font(.appCaption2())
+                .foregroundStyle(Color.appSecondaryText)
+                .lineLimit(1)
+                .truncationMode(.tail)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, AppSpacing.md)
+        .padding(.vertical, 8)
+        .background(Color.appSurface)
+        .clipShape(RoundedRectangle(cornerRadius: AppRadius.sm, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: AppRadius.sm, style: .continuous)
+                .stroke(Color.appSeparator, lineWidth: 0.5)
+        )
+    }
+
+    private func heartbeatIcon(_ kind: HeartbeatStep.Kind?) -> String {
+        switch kind {
+        case .thinking:      return "ellipsis.bubble"
+        case .callingTool:   return "wrench.and.screwdriver"
+        case .executingTool: return "gearshape.2"
+        case .toolResult:    return "checkmark.circle"
+        case .none:          return "ellipsis"
+        }
+    }
+    private func heartbeatColor(_ kind: HeartbeatStep.Kind?) -> Color {
+        switch kind {
+        case .thinking:      return .blue
+        case .callingTool:   return .purple
+        case .executingTool: return .orange
+        case .toolResult:    return .green
+        case .none:          return .secondary
+        }
+    }
 }
 
 /// 全屏图片预览的 Sheet 容器。

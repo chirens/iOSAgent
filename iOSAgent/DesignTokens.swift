@@ -28,18 +28,27 @@ private func dynamicColor(dark: String, light: String) -> Color {
 }
 
 extension Color {
-    /// 页面背景：深色纯黑 / 浅色纯白
-    static let appBackground = dynamicColor(dark: "000000", light: "FFFFFF")
-    /// 卡片/浮层面背景
-    static let appSurface = dynamicColor(dark: "1C1C1E", light: "F2F2F7")
-    /// 输入框/浅灰填充
-    static let appInputFill = dynamicColor(dark: "2C2C2E", light: "E5E5EA")
-    /// 主文字
-    static let appPrimaryText = dynamicColor(dark: "FFFFFF", light: "000000")
-    /// 次文字
-    static let appSecondaryText = Color(uiColor: UIColor(hex: "8E8E93"))
-    /// 分隔线/微弱边框
-    static let appSeparator = dynamicColor(dark: "38383A", light: "C6C6C8")
+    // MARK: - 背景 / 卡片（v9.0.12 全部改用 Apple HIG 系统色）
+    //
+    // 之前几版我用自定义 hex（#E0E0E0 / #FFFFFF 等）自己拼"灰底白卡"层级，
+    // 但 iOS 17/18 NavigationStack 内部会用 `.systemBackground` 覆盖 ScrollView 的 `.background()`，
+    // 导致用户实际看到的是 iOS 默认（白底 + 浅灰分组 #F2F2F7），跟我设计意图完全不同。
+    //
+    // Apple 自家 Settings / Mail / Notes / Files 的标准就是：
+    //   - 页面底色：systemGroupedBackground          (#F2F2F7 浅 / #000000 深)
+    //   - 卡片/分组：secondarySystemGroupedBackground (#FFFFFF 浅 / #1C1C1E 深)
+    //   - 卡片浮起感：纯靠颜色差，不靠阴影
+    // 直接用系统色，SwiftUI 会自动适配深浅、永不被覆盖。
+    static let appBackground = Color(.systemGroupedBackground)
+    static let appSurface = Color(.secondarySystemGroupedBackground)
+    /// 输入框/浅灰填充：tertiarySystemFill 是 Apple 标准的"低层级填充色"
+    static let appInputFill = Color(.tertiarySystemFill)
+    /// 主文字：直接用系统 label
+    static let appPrimaryText = Color(.label)
+    /// 次文字：直接用系统 secondaryLabel（#3C3C4399 浅 / #EBEBF599 深，60% 不透明度）
+    static let appSecondaryText = Color.secondary
+    /// 分隔线：opaqueSeparator 比 separator 更实，跟 Apple Mail 列表一致
+    static let appSeparator = Color(.opaqueSeparator)
     /// 成功绿
     static let appSuccess = dynamicColor(dark: "10B981", light: "059669")
     /// 错误红
@@ -50,14 +59,35 @@ extension Color {
     /// 品牌强调色：WorkBuddy 绿
     static let brandAccent = Color(uiColor: UIColor(hex: "10B981"))
 
-    /// 粉彩分类色（深色模式降低亮度，浅色模式明亮）
-    static let pastelBlue = dynamicColor(dark: "2C4A5E", light: "E0F2FE")
-    static let pastelGreen = dynamicColor(dark: "2D4A34", light: "DCFCE7")
-    static let pastelOrange = dynamicColor(dark: "5A4A2A", light: "FFEDD5")
-    static let pastelPurple = dynamicColor(dark: "4A4460", light: "F3E8FF")
-    static let pastelPink = dynamicColor(dark: "5A3A44", light: "FCE7F3")
-    static let pastelTeal = dynamicColor(dark: "2A4A4A", light: "CCFBF1")
-    static let pastelGray = dynamicColor(dark: "3A3A3C", light: "E5E5EA")
+    // MARK: - 分类图标色（v9.0.12 重写：放弃 pastel 浅色块，Apple 标准做法）
+    //
+    // 之前 pastel 系列（#BFDBFE / #BBF7D0 等）做图标背景 + 同色 icon，
+    // 在白底 #FFFFFF 上几乎透明不可见（用户报 2 次）。
+    //
+    // Apple Mail / Reminders / Settings 的标准做法：
+    //   1. icon 本身用全饱和的 `.blue / .green / .orange / .purple / .pink / .teal / .red` SF Symbol
+    //   2. 背景完全透明（或用 `.tertiarySystemFill` 极淡填充）
+    //   3. icon 字号 18+，weight semibold，symbolRenderingMode .hierarchical 多级灰度
+    //
+    // 这里保留同名 enum 方便迁移，但每个图标色都是全饱和的 SwiftUI 系统色：
+    static let pastelBlue   = Color.blue
+    static let pastelGreen  = Color.green
+    static let pastelOrange = Color.orange
+    static let pastelPurple = Color.purple
+    static let pastelPink   = Color.pink
+    static let pastelTeal   = Color.teal
+    static let pastelRed    = Color.red
+    static let pastelGray   = Color(.systemGray)
+
+    /// 图标饱和版（v9.0.11 引入，v9.0.12 废弃合并到 pastel*）
+    /// 保留别名给旧调用点，避免全量替换报错
+    static let pastelBlueFG = Color.blue
+    static let pastelGreenFG = Color.green
+    static let pastelOrangeFG = Color.orange
+    static let pastelPurpleFG = Color.purple
+    static let pastelPinkFG = Color.pink
+    static let pastelTealFG = Color.teal
+    static let pastelGrayFG = Color(.systemGray)
 
     init(hex: String) {
         self.init(uiColor: UIColor(hex: hex))
@@ -107,24 +137,10 @@ enum AppRadius {
 }
 
 enum AppShadow {
-    /// 卡片阴影：深色用极淡白色勾边，浅色用淡黑色投影
-    static var card: ShadowStyle {
-        ShadowStyle(color: Color(uiColor: UIColor(dynamicProvider: { traits in
-            switch traits.userInterfaceStyle {
-            case .dark: return UIColor.white.withAlphaComponent(0.04)
-            default: return UIColor.black.withAlphaComponent(0.06)
-            }
-        })), radius: 6, x: 0, y: 3)
-    }
-    /// 浮起阴影
-    static var elevated: ShadowStyle {
-        ShadowStyle(color: Color(uiColor: UIColor(dynamicProvider: { traits in
-            switch traits.userInterfaceStyle {
-            case .dark: return UIColor.white.withAlphaComponent(0.06)
-            default: return UIColor.black.withAlphaComponent(0.08)
-            }
-        })), radius: 10, x: 0, y: 5)
-    }
+    /// 卡片阴影（v9.0.12 完全去掉）：Apple HIG 的 grouped 布局完全靠颜色差（#F2F2F7 底 + #FFFFFF 卡）
+    /// 表达浮起感，不加阴影——加阴影反而让卡片像"铁板"。这里把 card / elevated 都改成 .clear。
+    static var card: ShadowStyle { ShadowStyle(color: .clear, radius: 0, x: 0, y: 0) }
+    static var elevated: ShadowStyle { ShadowStyle(color: .clear, radius: 0, x: 0, y: 0) }
 }
 
 struct ShadowStyle {
