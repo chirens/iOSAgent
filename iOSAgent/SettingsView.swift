@@ -248,10 +248,10 @@ struct SettingsLinkRow: View {
         HStack(spacing: AppSpacing.md) {
             ZStack {
                 RoundedRectangle(cornerRadius: AppRadius.sm, style: .continuous)
-                    .fill(color.opacity(0.22))
+                    .fill(color.opacity(0.4))
                     .frame(width: 32, height: 32)
                 Image(systemName: icon)
-                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                    .font(.system(size: 15, weight: .bold, design: .rounded))
                     .foregroundStyle(color)
             }
 
@@ -1579,10 +1579,10 @@ struct CapabilityToggleRow: View {
         HStack(spacing: AppSpacing.md) {
             ZStack {
                 RoundedRectangle(cornerRadius: AppRadius.sm, style: .continuous)
-                    .fill(color.opacity(0.22))
+                    .fill(color.opacity(0.4))
                     .frame(width: 32, height: 32)
                 Image(systemName: icon)
-                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                    .font(.system(size: 15, weight: .bold, design: .rounded))
                     .foregroundStyle(color)
             }
             Text(title)

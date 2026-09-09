@@ -1074,7 +1074,7 @@ final class SystemTools {
         guard let url = URL(string: urlString) else { return ToolResult(success: false, message: "URL 无效", data: nil) }
         var req = URLRequest(url: url)
         req.timeoutInterval = 30
-        req.setValue("Velos/9.0.10", forHTTPHeaderField: "User-Agent")
+        req.setValue("Velos/9.0.11", forHTTPHeaderField: "User-Agent")
         let (data, resp) = try await URLSession.shared.data(for: req)
         guard let http = resp as? HTTPURLResponse, (200...299).contains(http.statusCode), !data.isEmpty else {
             return ToolResult(success: false, message: "下载 SKILL.md 失败：HTTP \((resp as? HTTPURLResponse)?.statusCode ?? 0)", data: nil)
