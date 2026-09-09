@@ -198,9 +198,10 @@ final class SystemTools {
         )),
         ToolSpec(type: "function", function: FunctionSpec(
             name: "get_weather",
-            description: "查询当前天气。支持城市名（如 北京、上海）或留空自动定位。",
+            description: "查询天气。支持城市名（如 北京、上海、济南）或留空自动定位。day 可选 today（默认）/ tomorrow / day_after。",
             parameters: [
-                "location": ParameterSpec(type: "string", description: "城市名，如 Beijing、Shanghai、Tokyo。留空则自动获取。")
+                "location": ParameterSpec(type: "string", description: "城市名（中文/英文均可），留空则用当前位置"),
+                "day": ParameterSpec(type: "string", description: "today（今天，默认）/ tomorrow（明天）/ day_after（后天）")
             ],
             required: []
         )),
@@ -1073,7 +1074,7 @@ final class SystemTools {
         guard let url = URL(string: urlString) else { return ToolResult(success: false, message: "URL 无效", data: nil) }
         var req = URLRequest(url: url)
         req.timeoutInterval = 30
-        req.setValue("Velos/9.0.8", forHTTPHeaderField: "User-Agent")
+        req.setValue("Velos/9.0.9", forHTTPHeaderField: "User-Agent")
         let (data, resp) = try await URLSession.shared.data(for: req)
         guard let http = resp as? HTTPURLResponse, (200...299).contains(http.statusCode), !data.isEmpty else {
             return ToolResult(success: false, message: "下载 SKILL.md 失败：HTTP \((resp as? HTTPURLResponse)?.statusCode ?? 0)", data: nil)
@@ -1114,8 +1115,11 @@ final class SystemTools {
                 location = "auto"
             }
         }
+        // v9.0.9: 支持 today / tomorrow / day_after。format=3 返回 3 天简版（今天/明天/后天各一行），
+        // 比 format=4 单天能直接覆盖"明天天气"这类高频问题。
+        let day = (string(call, "day")?.lowercased() ?? "today")
         let encoded = location.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? "auto"
-        let urlString = "https://wttr.in/\(encoded)?format=4&lang=zh"
+        let urlString = "https://wttr.in/\(encoded)?format=3&lang=zh"
         guard let url = URL(string: urlString) else { return ToolResult(success: false, message: "天气地址构造失败", data: nil) }
         var req = URLRequest(url: url)
         req.timeoutInterval = 30
@@ -1123,8 +1127,30 @@ final class SystemTools {
         guard let http = resp as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
             return ToolResult(success: false, message: "天气接口错误：HTTP \((resp as? HTTPURLResponse)?.statusCode ?? 0)", data: nil)
         }
-        let text = String(data: data, encoding: .utf8) ?? "无法解析天气"
-        return ToolResult(success: true, message: text, data: ["weather": AnyCodable(text)])
+        var text = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "无法解析天气"
+        // wttr.in 偶发返回 HTML 错误页（代理被拦/限流），用关键字识别出来
+        if text.lowercased().contains("<html") || text.lowercased().contains("<!doctype") {
+            return ToolResult(success: false, message: "天气接口被代理拦截，请检查网络/代理后重试", data: nil)
+        }
+        // 标记用户问的是哪一天，便于模型正确引用
+        let dayLabel: String = {
+            switch day {
+            case "tomorrow": return "明天"
+            case "day_after": return "后天"
+            default: return "今天"
+            }
+        }()
+        if text.contains("\n") {
+            // 3 天简版：每行一个城市名 + 描述；按用户问的 day 抽出对应行
+            let lines = text.split(separator: "\n").map(String.init)
+            var picked: String?
+            for line in lines where line.hasPrefix(dayLabel) {
+                picked = line; break
+            }
+            // fallback: 如果没匹配到（少见），原样返回
+            if let p = picked { text = p }
+        }
+        return ToolResult(success: true, message: text, data: ["weather": AnyCodable(text), "day": AnyCodable(dayLabel)])
     }
 
     private static func listScheduled(_ call: [String: AnyCodable]) async throws -> ToolResult {

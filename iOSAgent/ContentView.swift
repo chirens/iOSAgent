@@ -661,7 +661,8 @@ struct SideMenuOverlay: View {
                     .frame(width: min(geo.size.width * 0.78, 320))
                     .frame(maxHeight: .infinity)
                     .background(Color.appSurface)
-                    .shadow(color: .black.opacity(0.3), radius: 16, x: 8, y: 0)
+                    // v9.0.9 调整：侧边栏阴影太重，浅色下看着像浮起一块铁板。改为柔和窄投影。
+                    .shadow(color: Color.black.opacity(0.10), radius: 10, x: 4, y: 0)
 
                     Spacer(minLength: 0)
                 }
