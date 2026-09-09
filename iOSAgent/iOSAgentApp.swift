@@ -101,6 +101,32 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         Task { @MainActor in
             SettingsStore.shared.refreshAuthStatuses()
         }
+
+        // 【v9.0.12 重新配置】浅色模式下滚动导航栏变黑。
+        //
+        // v9.0.11 配了三段 UINavigationBarAppearance 用 UIColor(hex: "E0E0E0")，但截图仍是黑底——
+        // 根因有两层：
+        //   1) 整个 navigationBar 的背景由 UINavigationBar.appearance() 全局 appearance 控制；
+        //   2) iOS 18 NavigationStack 默认会用 .systemBackground 覆盖 ScrollView 的 .background()，
+        //      并把 SwiftUI 的 .toolbarBackground(...) 也按系统色处理，**自定义 hex 完全失效**。
+        //
+        // 修法：直接用 Apple HIG 的系统色 UIColor.systemGroupedBackground（浅色 #F2F2F7 / 深色 #000），
+        // 它会自动跟随系统深浅、永不被任何 SwiftUI 修饰符覆盖。
+        // 同时把 standardAppearance / scrollEdgeAppearance / compactAppearance 三个全部设上，
+        // 滚动时也用同一个外观（这是 iOS 滚动态不黑底的关键）。
+        let barAppearance = UINavigationBarAppearance()
+        barAppearance.configureWithOpaqueBackground()
+        barAppearance.backgroundColor = .systemGroupedBackground
+        barAppearance.shadowColor = .clear
+        // 标题文字色：深色模式自动白字，浅色模式自动黑字（UIColor.label 自带动态）
+        barAppearance.titleTextAttributes = [.foregroundColor: UIColor.label]
+        barAppearance.largeTitleTextAttributes = [.foregroundColor: UIColor.label]
+        UINavigationBar.appearance().standardAppearance = barAppearance
+        UINavigationBar.appearance().scrollEdgeAppearance = barAppearance
+        UINavigationBar.appearance().compactAppearance = barAppearance
+        // 品牌色：返回箭头、按钮高亮、tint
+        UINavigationBar.appearance().tintColor = UIColor(hex: "10B981")
+
         return true
     }
 

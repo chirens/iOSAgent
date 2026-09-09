@@ -37,9 +37,7 @@ struct RemindersView: View {
             Task { await load() }
         }
         .navigationTitle("提醒 / 待办")
-        .toolbarBackground(Color.appBackground, for: .navigationBar)
-        .toolbarColorScheme(.dark, for: .navigationBar)
-    }
+                    }
 
     private func statusCard(_ text: String, color: Color = .appSecondaryText) -> some View {
         Text(text)
