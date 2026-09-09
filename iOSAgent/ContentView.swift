@@ -134,8 +134,7 @@ struct ChatRootView: View {
                 }
         }
         .background(Color.appBackground)
-        .toolbarBackground(Color.appBackground, for: .navigationBar)
-        .toolbarColorScheme(colorScheme, for: .navigationBar)
+        // v9.0.12：删除 .toolbarBackground + .toolbarColorScheme，让 AppDelegate 全权负责
     }
 }
 
@@ -661,9 +660,9 @@ struct SideMenuOverlay: View {
                     .frame(width: min(geo.size.width * 0.78, 320))
                     .frame(maxHeight: .infinity)
                     .background(Color.appSurface)
-                    // v9.0.11 进一步降低侧边栏阴影：浅色模式下 #FFFFFF 卡片 + #E0E0E0 灰底本身就有清晰层级，
-                    // 阴影从 0.10/10px 减到 0.05/6px，几乎只是微弱分割线的暗示，不再像铁板。
-                    .shadow(color: Color.black.opacity(0.05), radius: 6, x: 2, y: 0)
+                    // v9.0.12 完全去掉侧边栏阴影：Apple HIG 的 grouped 布局完全靠颜色差（#F2F2F7 vs #FFFFFF），
+                    // 加阴影反而像浮起的铁板。这里保留 0.02/3px 极弱投影作为视觉收尾。
+                    .shadow(color: Color.black.opacity(0.02), radius: 3, x: 2, y: 0)
 
                     Spacer(minLength: 0)
                 }
@@ -899,13 +898,15 @@ struct SideMenuButton: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: AppSpacing.md) {
+                // v9.0.12 同上：底色块改 tertiarySystemFill，icon 用饱和系统色 + hierarchical 渲染
                 ZStack {
                     RoundedRectangle(cornerRadius: AppRadius.sm, style: .continuous)
-                        .fill(color.opacity(0.22))
+                        .fill(Color(.tertiarySystemFill))
                         .frame(width: 30, height: 30)
                     Image(systemName: icon)
                         .font(.system(size: 14, weight: .semibold, design: .rounded))
                         .foregroundStyle(color)
+                        .symbolRenderingMode(.hierarchical)
                 }
                 Text(title)
                     .font(.appSubheadline().weight(.semibold))
@@ -1089,8 +1090,7 @@ struct SettingsRootView: View {
                 }
         }
         .background(Color.appBackground)
-        .toolbarBackground(Color.appBackground, for: .navigationBar)
-        .toolbarColorScheme(colorScheme, for: .navigationBar)
+        // v9.0.12：删除 .toolbarBackground + .toolbarColorScheme，让 AppDelegate 全权负责
     }
 }
 
