@@ -661,8 +661,9 @@ struct SideMenuOverlay: View {
                     .frame(width: min(geo.size.width * 0.78, 320))
                     .frame(maxHeight: .infinity)
                     .background(Color.appSurface)
-                    // v9.0.9 调整：侧边栏阴影太重，浅色下看着像浮起一块铁板。改为柔和窄投影。
-                    .shadow(color: Color.black.opacity(0.10), radius: 10, x: 4, y: 0)
+                    // v9.0.11 进一步降低侧边栏阴影：浅色模式下 #FFFFFF 卡片 + #E0E0E0 灰底本身就有清晰层级，
+                    // 阴影从 0.10/10px 减到 0.05/6px，几乎只是微弱分割线的暗示，不再像铁板。
+                    .shadow(color: Color.black.opacity(0.05), radius: 6, x: 2, y: 0)
 
                     Spacer(minLength: 0)
                 }

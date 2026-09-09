@@ -287,6 +287,10 @@ final class AgentClient {
                 if finish == "tool_calls" {
                     msg.toolCalls = Array(accumulated.sorted { $0.key < $1.key }.map { $0.value })
                     msg.status = statusForToolCalls(msg.toolCalls?.map { $0.name } ?? [])
+                    // 【v9.0.11 占位气泡根治】模型经常在 tool_call 前说一段开场白（"我来帮您查询…"、"让我看看…"），
+                    //  如果把这段也保留，下一轮工具执行完毕后会产生**两条气泡**：第一条是 preamble，第二条才是真答案。
+                    // 用户看到像"占位符"的空泡，实际就是这段 preamble。直接清空，最终答案会在工具执行后由下一轮模型回复单独产生。
+                    msg.content = ""
                 } else if finish == "stop" || finish == "length" {
                     msg.isStreaming = false
                     msg.status = nil
@@ -584,7 +588,7 @@ final class AgentClient {
         11. 【输出纯净度】用户只看最终结果。任何工具的失败、重试、中间状态、原始响应体，只允许出现在流式心跳占位里一闪而过，不允许作为独立消息气泡留在对话中；最终回复必须是人话总结，禁止包含 JSON 转义、HTML 标签、CSS 代码、JS 代码、路径字符串、未解析编码或"status":200 之类的技术字段。
         12. 【跨会话记忆】memory/ 中的内容已自动加载到本提示词底部。当用户要求“记住 XXX”、对话变长、或你认为某事实对未来对话有价值时，使用 write_memory 或 write_file(namespace="memory") 保存。记忆标题要简洁，内容用中文要点式。
         13. 【技能安装】当用户分享一个 GitHub 项目链接并询问能否作为 skill 安装，或明确要求安装某个 skill 时：①若对方给出的是 GitHub 仓库链接，直接调用 install_skill(url=链接)；②若用户要求你“写一个 skill”，用 write_file(namespace="skills", path="{id}.md") 写入完整 SKILL.md（必须含 YAML frontmatter：id/name/description/icon/triggers/tools/prompt），写完后调用 install_skill(url=该文件的本地路径或 raw github 链接) 立即加载；③安装成功后用一句话确认技能名称和可用触发词。
-        14. 【天气查询】用户问“今天天气怎么样”“明天会下雨吗” → 用 get_weather(location=城市名)，返回结果直接用人话复述，不要只输出原始文本。
+        14. 【天气查询】用户问"今天天气怎么样""明天会下雨吗""后天多少度" → **必须**调用 get_weather(location=城市名, day=today|tomorrow|day_after)；date 参数不传默认 today（用当前时间计算，不要让用户告诉日期）。**绝不**用文字回答"我来帮您查询"而不调用工具——这就是用户看到的"占位气泡"问题根因。任何天气/气温/降雨/紫外线/风力问题都必须真正调用工具，哪怕你觉得自己知道答案。
         15. 【定时/重复提醒】set_alarm / create_reminder 支持 repeat 参数：none（默认）/ daily（每天）/ weekdays（工作日）/ weekly（每周）/ custom（自定义星期，配合 weekdays=[1..7]）。用户要“每天/工作日/每周提醒我 XXX”时，填对应 repeat 和具体时间。list_scheduled / cancel_scheduled 用于查看和取消已设置的定时通知。
 
         示例：
@@ -956,7 +960,7 @@ struct SkillInstaller {
         var req = URLRequest(url: url)
         req.timeoutInterval = 30
         req.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
-        req.setValue("iOSAgent/9.0.10", forHTTPHeaderField: "User-Agent")
+        req.setValue("iOSAgent/9.0.11", forHTTPHeaderField: "User-Agent")
         let token = Self.authToken
         if !token.isEmpty { req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
         let (data, resp) = try await URLSession.shared.data(for: req)
