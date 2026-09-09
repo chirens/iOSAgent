@@ -940,7 +940,12 @@ struct CrashLogView: View {
         }
         .background(Color.appBackground)
         .onAppear(perform: reload)
-        .sheet(isPresented: $showShare) { ShareSheet(activityItems: [CrashDiagnostic.fullText]) }
+        // v9.0.9.2: 纯文本分享在微信里不能直接发送（微信会把 [String] 当作纯文本让用户长按复制），
+        // 改为同时传文件 URL + 文本：微信会展示"文件"选项直接发，剪贴板/邮件则用文本。
+        .sheet(isPresented: $showShare) {
+            let url = exportCrashLogAsFile()
+            ShareSheet(activityItems: url.map { [$0 as Any, CrashDiagnostic.fullText] } ?? [CrashDiagnostic.fullText])
+        }
         .alert("清除崩溃日志？", isPresented: $showClearConfirm) {
             Button("清除", role: .destructive) {
                 CrashDiagnostic.clear()
@@ -955,6 +960,21 @@ struct CrashLogView: View {
     private func reload() {
         logText = CrashDiagnostic.crashLogText
         breadcrumb = CrashDiagnostic.breadcrumbText
+    }
+
+    /// v9.0.9.2: 把崩溃日志 + 面包屑写到一个 .txt 文件返回 URL，方便微信直接以"文件"形式发送。
+    private func exportCrashLogAsFile() -> URL? {
+        let text = CrashDiagnostic.fullText
+        guard !text.isEmpty else { return nil }
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let stamp = Int(Date().timeIntervalSince1970)
+        let url = docs.appendingPathComponent("Velos崩溃日志_\(stamp).txt")
+        do {
+            try text.write(to: url, atomically: true, encoding: .utf8)
+            return url
+        } catch {
+            return nil
+        }
     }
 
     private var emptyState: some View {
