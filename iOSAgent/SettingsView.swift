@@ -1229,6 +1229,7 @@ struct SkillsView: View {
                     .padding(.leading, AppSpacing.md)
             }
         }
+        .padding(.horizontal, AppSpacing.sm)
         .padding(.vertical, AppSpacing.sm)
         .background(Color.appSurface)
         .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
