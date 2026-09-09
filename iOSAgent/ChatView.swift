@@ -1392,10 +1392,9 @@ extension ChatView {
     var heartbeatCard: some View {
         let latest = heartbeatSteps.last
         return HStack(spacing: 8) {
-            Image(systemName: heartbeatIcon(latest?.kind))
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(heartbeatColor(latest?.kind))
-                .symbolEffect(.pulse, options: .repeating)
+            // iOS 17 以下不能用 .symbolEffect，用兼容 View 包一层，避免 "only available in iOS 17" 编译错误
+            HeartbeatIcon(name: heartbeatIcon(latest?.kind),
+                          color: heartbeatColor(latest?.kind))
             Text(latest?.text ?? "")
                 .font(.appCaption2())
                 .foregroundStyle(Color.appSecondaryText)
@@ -1411,6 +1410,24 @@ extension ChatView {
             RoundedRectangle(cornerRadius: AppRadius.sm, style: .continuous)
                 .stroke(Color.appSeparator, lineWidth: 0.5)
         )
+    }
+
+    /// 心跳图标：iOS 17+ 用 symbolEffect 脉冲；低版本退化为静态图标（低版本不能用 .symbolEffect）。
+    private struct HeartbeatIcon: View {
+        let name: String
+        let color: Color
+        var body: some View {
+            Group {
+                if #available(iOS 17.0, *) {
+                    Image(systemName: name)
+                        .symbolEffect(.pulse, options: .repeating)
+                } else {
+                    Image(systemName: name)
+                }
+            }
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundStyle(color)
+        }
     }
 
     private func heartbeatIcon(_ kind: HeartbeatStep.Kind?) -> String {
