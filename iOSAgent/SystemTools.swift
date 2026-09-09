@@ -1074,7 +1074,7 @@ final class SystemTools {
         guard let url = URL(string: urlString) else { return ToolResult(success: false, message: "URL 无效", data: nil) }
         var req = URLRequest(url: url)
         req.timeoutInterval = 30
-        req.setValue("Velos/9.0.13", forHTTPHeaderField: "User-Agent")
+        req.setValue("Velos/9.0.14", forHTTPHeaderField: "User-Agent")
         let (data, resp) = try await URLSession.shared.data(for: req)
         guard let http = resp as? HTTPURLResponse, (200...299).contains(http.statusCode), !data.isEmpty else {
             return ToolResult(success: false, message: "下载 SKILL.md 失败：HTTP \((resp as? HTTPURLResponse)?.statusCode ?? 0)", data: nil)
@@ -1238,8 +1238,11 @@ final class SystemTools {
             let forceFile = (saveAs != nil)
             let isBinary = forceFile ? !Self.isLikelyText(contentType) : Self.isBinaryContent(contentType)
 
+            let disposition = ((resp as? HTTPURLResponse)?.allHeaderFields["Content-Disposition"] as? String) ?? ""
+
             if isBinary || forceFile {
-                let filename = saveAs ?? Self.defaultFilename(from: u, contentType: contentType)
+                let filename = saveAs ?? Self.defaultFilename(from: u, contentType: contentType,
+                                                              contentDisposition: disposition, data: data)
                 let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
                 let fileURL = docs.appendingPathComponent(filename)
                 try data.write(to: fileURL, options: .atomic)
@@ -1449,18 +1452,98 @@ final class SystemTools {
         return lower.contains("text/") || lower.contains("json") || lower.contains("xml")
     }
 
-    private static func defaultFilename(from url: URL, contentType ct: String) -> String {
-        let ext: String
-        if ct.contains("pptx") { ext = "pptx" }
-        else if ct.contains("pdf") { ext = "pdf" }
-        else if ct.contains("image/png") { ext = "png" }
-        else if ct.contains("image/jpeg") { ext = "jpg" }
-        else if ct.contains("image/") { ext = "img" }
-        else if ct.contains("audio/") { ext = "audio" }
-        else if ct.contains("video/") { ext = "mp4" }
-        else { ext = "bin" }
+    /// v9.0.14 修复：dashi-ppt / 各类下载接口返回的是**标准 OOXML mime**
+    /// （application/vnd.openxmlformats-officedocument.presentationml.presentation），
+    /// 里面根本没有 "pptx" 字样，旧逻辑一律落到 `else → .bin`，用户拿到打不开的 .bin 文件。
+    /// 现在按「Content-Disposition → mime 映射 → 文件头嗅探」三级推断。
+    private static func defaultFilename(from url: URL, contentType ct: String,
+                                        contentDisposition cd: String = "",
+                                        data: Data = Data()) -> String {
+        if let n = filenameFromDisposition(cd) { return n }
         let ts = Int(Date().timeIntervalSince1970)
-        return "web_\(ts).\(ext)"
+        if let ext = extFromMime(ct) { return "web_\(ts).\(ext)" }
+        if let ext = extFromBytes(data) { return "web_\(ts).\(ext)" }
+        return "web_\(ts).bin"
+    }
+
+    /// 解析 Content-Disposition（优先 RFC 5987 `filename*=UTF-8''...`，其次 `filename="..."`）
+    private static func filenameFromDisposition(_ cd: String) -> String? {
+        guard !cd.isEmpty else { return nil }
+        if let r = cd.range(of: "filename\\*=\\s*UTF-8''([^;\\r\\n]+)",
+                            options: [.regularExpression, .caseInsensitive]) {
+            var s = String(cd[r])
+            if let eq = s.range(of: "''") { s = String(s[eq.upperBound...]) }
+            s = s.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let decoded = s.removingPercentEncoding, !decoded.isEmpty { return safeFileName(decoded) }
+        }
+        if let r = cd.range(of: "filename=\"([^\"]+)\"", options: [.regularExpression, .caseInsensitive]) {
+            var s = String(cd[r])
+            s = s.replacingOccurrences(of: "filename=", with: "", options: .caseInsensitive)
+            s = s.trimmingCharacters(in: CharacterSet(charactersIn: "\""))
+            if !s.isEmpty { return safeFileName(s) }
+        }
+        return nil
+    }
+
+    /// mime → 扩展名（OOXML 全家桶必须显式列出，不能靠子串 "pptx"）
+    private static func extFromMime(_ ct: String) -> String? {
+        let m = ct.lowercased()
+        let map: [(String, String)] = [
+            ("presentationml.presentation", "pptx"),
+            ("presentationml.slideshow", "ppsx"),
+            ("wordprocessingml.document", "docx"),
+            ("spreadsheetml.sheet", "xlsx"),
+            ("application/pdf", "pdf"),
+            ("application/msword", "doc"),
+            ("application/vnd.ms-excel", "xls"),
+            ("application/vnd.ms-powerpoint", "ppt"),
+            ("application/zip", "zip"),
+            ("x-zip-compressed", "zip"),
+            ("text/html", "html"),
+            ("text/csv", "csv"),
+            ("text/markdown", "md"),
+            ("text/plain", "txt"),
+            ("image/png", "png"),
+            ("image/jpeg", "jpg"),
+            ("image/gif", "gif"),
+            ("image/webp", "webp"),
+            ("image/svg+xml", "svg"),
+            ("audio/mpeg", "mp3"),
+            ("audio/mp4", "m4a"),
+            ("audio/wav", "wav"),
+            ("video/mp4", "mp4"),
+        ]
+        for (k, v) in map where m.contains(k) { return v }
+        if m.contains("image/") { return "img" }
+        if m.contains("audio/") { return "audio" }
+        if m.contains("video/") { return "mp4" }
+        return nil
+    }
+
+    /// 文件头嗅探兜底：OOXML 本质是 zip，靠中央目录里的目录名区分 ppt/word/xl
+    private static func extFromBytes(_ data: Data) -> String? {
+        guard data.count > 4 else { return nil }
+        let b = [UInt8](data.prefix(4))
+        if b[0] == 0x50, b[1] == 0x4B {                       // PK… zip
+            let head = String(data: data.prefix(8192), encoding: .isoLatin1) ?? ""
+            if head.contains("ppt/") { return "pptx" }
+            if head.contains("word/") { return "docx" }
+            if head.contains("xl/") { return "xlsx" }
+            return "zip"
+        }
+        if b[0] == 0x25, b[1] == 0x50, b[2] == 0x44, b[3] == 0x46 { return "pdf" }
+        if b[0] == 0x89, b[1] == 0x50 { return "png" }
+        if b[0] == 0xFF, b[1] == 0xD8 { return "jpg" }
+        if b[0] == 0x47, b[1] == 0x49 { return "gif" }
+        return nil
+    }
+
+    /// 只保留合法文件名字符，去掉路径分隔符，限长 60
+    private static func safeFileName(_ raw: String) -> String {
+        let s = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "[\\\\/:*?\"<>|\\r\\n]+", with: "_", options: .regularExpression)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "_."))
+        return s.isEmpty ? "web_file" : String(s.prefix(60))
     }
 
     // MARK: - Helpers

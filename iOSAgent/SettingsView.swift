@@ -1171,7 +1171,7 @@ struct SkillsView: View {
 
                 installedSection
             }
-            .padding(.horizontal, AppSpacing.lg)
+            .padding(.horizontal, AppSpacing.xxxl)
             .padding(.top, AppSpacing.md)
             .padding(.bottom, AppSpacing.xl)
         }
@@ -1186,7 +1186,7 @@ struct SkillsView: View {
                 Image(systemName: isURLInput ? "link" : "magnifyingglass")
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(Color.appSecondaryText)
-                TextField("搜索关键词 或 粘贴 GitHub 链接", text: $input)
+                TextField("关键词 或 GitHub 链接", text: $input)
                     .font(.appBody())
                     .foregroundStyle(Color.appPrimaryText)
                     .autocapitalization(.none)
@@ -1206,12 +1206,12 @@ struct SkillsView: View {
                 }
                 .disabled(!canSubmit || ghLoading || installing)
             }
-            .padding(.horizontal, AppSpacing.md)
+            .padding(.horizontal, AppSpacing.lg)
             .padding(.vertical, AppSpacing.sm)
             .background(Color.appInputFill)
             .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
 
-            Text(isURLInput ? "识别到链接，点「安装」直接安装该 skill" : "输入关键词后点「搜索」，在 GitHub 上找 skill")
+            Text(isURLInput ? "识别到链接，点「安装」直接安装该 skill" : "输入关键词或粘贴Github链接，寻找安装对应的Skill")
                 .font(.appMicro())
                 .foregroundStyle(Color.appSecondaryText)
                 .padding(.leading, AppSpacing.md)
