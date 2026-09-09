@@ -603,7 +603,8 @@ final class AgentClient {
             【远程执行服务（已配置）】
             你已接入用户部署的远程执行服务，地址：\(connectorEP)。\(authNote)
             该服务按用户账户隔离沙箱并限速，可跑任意 shell 命令（dashi-ppt 生成 PPT、图像/视频/音频生成等重算力任务）。
-            当用户要求用 dashi-ppt / 生成图文 PPT / 演示文稿 / 幻灯片时：把需求整理为 {title: 标题, theme: 主题(默认 theme02), slides: [{title: 页标题, bullets: [要点...]}]}，用 web_request 以 POST 发到 \(connectorEP)/render。
+            当用户要求用 dashi-ppt / 生成图文 PPT / 演示文稿 / 幻灯片时：用 web_request 以 POST 发到 \(connectorEP)/render，body 为 {title: 标题, theme: 主题编号, goal: 详细内容脚本, slides: [{title, bullets}]}。
+            其中 goal 决定成品内容，必须写清受众、核心结论和逐页要点；theme 需按内容场景从 theme01~theme12 中选（详见 dashi-ppt 技能说明），不要固定用 theme02。
             需要跑其他命令时，用 web_request POST 到 \(connectorEP)/exec，body 为 {"command":"实际 shell 命令"}；命令需把结果写到沙箱当前目录的文件，服务会自动回传第一个产物文件。
             服务直接返回产物文件（.pptx/.png/.mp3/...），你会在聊天中收到可预览/分享的文件。绝不要声称缺少连接器或无法生成图文 PPT。
             """
@@ -1008,7 +1009,7 @@ struct SkillInstaller {
         var req = URLRequest(url: url)
         req.timeoutInterval = 30
         req.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
-        req.setValue("iOSAgent/9.0.13", forHTTPHeaderField: "User-Agent")
+        req.setValue("iOSAgent/9.0.14", forHTTPHeaderField: "User-Agent")
         let token = Self.authToken
         if !token.isEmpty { req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
         let (data, resp) = try await URLSession.shared.data(for: req)
@@ -1259,13 +1260,29 @@ Skill(
             triggers: ["dashi-ppt", "dashi", "ppt", "演示", "幻灯片", "图文ppt", "图文"],
             tools: ["web_request"],
             prompt: """
-            当用户要求生成 PPT / 演示文稿 / 幻灯片，尤其提到 dashi-ppt 时，使用远程执行服务：
-            1. 把用户需求整理成结构：{title: 标题, theme: 主题(默认 theme02), slides: [{title: 页标题, bullets: [要点...]}]}。
-            2. 用 web_request 工具以 POST 发送到系统提示中「远程执行服务」给定的地址 + /render（如 <地址>/render）；headers 只需 {"Content-Type":"application/json"}，不要手动加 Authorization——鉴权由 App 自动附加；body 为该结构的 JSON 字符串。
-            3. 服务返回 .pptx 文件，直接告诉用户已生成、可在聊天中点击打开/分享，不要复述内部路径或 JSON。
-            4. 用户未指定主题时默认 theme02；页数按内容需要，通常 5-10 页。
-            5. 除非用户明确说要纯文字版且不要 dashi-ppt 渲染，否则优先用远程渲染服务而非 create_ppt 纯文字版。
-            6. 若用户要求其他重算力任务（图像/视频/音频生成等），用 web_request POST 到 <地址>/exec，body {"command":"..."}；结果文件会自动回传。
+            当用户要求生成 PPT / 演示文稿 / 幻灯片，尤其提到 dashi-ppt 时，用远程渲染服务。务必按以下规则执行：
+
+            【1. 选主题（必须按内容场景选，不要永远用同一个）】dashi-ppt 共 12 套视觉主题：
+            theme01 轻拟态（产品介绍/企业汇报）、theme02 炫光紫绿（AI/自动驾驶/机器人）、theme03 深浅代码（技术方案/开发者大会）、
+            theme04 玻璃糖果（年轻化品牌/消费产品）、theme05 色谱图表（数据报告/市场分析）、theme06 深色图谱（战略分析/投资报告）、
+            theme07 冷白调研（调研报告/白皮书）、theme08 黑金实验（高端发布/品牌提案）、theme09 深蓝杂志（品牌故事/人物访谈）、
+            theme10 金色指数（金融/投资报告）、theme11 高能增长（商业计划/增长复盘）、theme12 声波霓虹（音乐娱乐/潮流活动）。
+            根据用户给的主题内容挑最贴切的一套；用户明确说了风格/配色时以用户为准。
+
+            【2. 写内容（关键！成品内容来自你写的 goal，不是服务端猜的）】
+            用 web_request 以 POST 发到系统提示中「远程执行服务」地址 + /render（如 <地址>/render）：
+            · headers 只需 {"Content-Type":"application/json"}，**不要**手动加 Authorization（App 自动附加）；
+            · body JSON 必须包含三个字段：
+              - "title": 中文标题（≤20 字）
+              - "theme": 第 1 步选中的主题编号（如 "theme03"）
+              - "goal": **详细内容脚本**（服务端只按它生成，写得太简略成品就会跑题）。格式：
+                "受众：<谁看>；核心结论：<一句话>；第1页（封面）：<主标题/副标题>；第2页（目录）：<章节>；第3页《<页标题>》：要点1；要点2；要点3；…；末页（总结与行动建议）：<结论>。"
+                必须把用户给的材料、行业术语、关键数据、案例全部写进 goal，页数通常 6-10 页。
+              - "slides": [{ "title": 页标题, "bullets": ["要点1","要点2"] }, …]（页数与 goal 保持一致，供服务端计算页数）
+
+            【3. 收尾】服务返回 .pptx 文件，直接告诉用户已生成、可点击打开/分享；不要复述内部路径、JSON 或主题编号。
+            【4. 优先级】除非用户明确要纯文字版，否则一律用远程渲染，不要用 create_ppt 生成纯文字版。
+            【5. 其他重算力任务】（图像/视频/音频生成等）用 web_request POST 到 <地址>/exec，body {"command":"..."}，结果文件自动回传。
             """
         )
     ]
