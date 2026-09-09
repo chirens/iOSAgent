@@ -14,6 +14,28 @@ enum AgentError: Error, LocalizedError {
     }
 }
 
+// MARK: - 心跳步骤（v9.0.12 新增）
+//
+// 用户反馈：v9.0.11 修了"两条气泡"问题后，streaming 过程中气泡"出现又消失"依然让人困惑。
+// 期望：所有中间过程（模型思考 / 工具调用 / 工具执行 / 工具结果）以**输入框上方的心跳卡**展示，
+// 最终回复只产生一条气泡。msg.content 为空时**不渲染**气泡，避免"占位符"错觉。
+struct HeartbeatStep: Identifiable, Equatable {
+    enum Kind: String {
+        /// 模型开始 streaming（preamble 文本阶段）
+        case thinking
+        /// 工具调用已发出（tool_calls 到达）
+        case callingTool
+        /// 工具实际执行中
+        case executingTool
+        /// 工具结果已拿到
+        case toolResult
+    }
+    let id = UUID()
+    let kind: Kind
+    let text: String
+    let timestamp: Date = Date()
+}
+
 /// 云端 API 客户端：支持**工具调用循环**（agent 核心）。
 /// 与 OpenMinis 用 iSH+CLI 让 LLM 调系统能力不同，这里直接在 Swift 里实现：
 /// LLM 决定调用工具 → app 用 EventKit/HealthKit/通知执行 → 结果喂回 LLM → 生成自然语言回复。
@@ -33,9 +55,12 @@ final class AgentClient {
     /// 运行 agent 循环：传入完整消息历史，返回更新后的历史 + 最终文本。
     /// image 仅由 ChatView 在新增的 user 消息上携带，此处不再重写历史。
     /// onUpdate 在流式生成和工具执行过程中被多次调用，用于实时刷新 UI。
+    /// onHeartbeat（v9.0.12 新增）推送中间步骤（思考 / 工具调用 / 工具执行 / 工具结果），
+    ///   ChatView 用它在输入框上方渲染心跳卡；final answer 到达时由 ChatView 主动清空。
     /// 若当前模型失败，会自动按配置顺序尝试其他 profile 一次（模型降级）。
     func run(messages: [StoredMessage], image: UIImage?, tools: [ToolSpec], activeSkills: [Skill] = [],
-             onUpdate: @MainActor @escaping ([StoredMessage]) -> Void = { _ in }) async throws
+             onUpdate: @MainActor @escaping ([StoredMessage]) -> Void = { _ in },
+             onHeartbeat: @MainActor @escaping ([HeartbeatStep]) -> Void = { _ in }) async throws
         -> (messages: [StoredMessage], finalText: String) {
 
         let settings = SettingsStore.shared
@@ -50,7 +75,7 @@ final class AgentClient {
             do {
                 var result = try await runOnce(messages: messages, image: image, tools: tools,
                                                activeSkills: activeSkills, profile: profile,
-                                               onUpdate: onUpdate)
+                                               onUpdate: onUpdate, onHeartbeat: onHeartbeat)
                 // 如果发生过降级，在最终文本里轻量提示
                 if profile.id != settings.activeProfileID, !result.finalText.isEmpty {
                     let note = "[已自动切换至 \(profile.name) / \(profile.modelName)]\n"
@@ -70,7 +95,8 @@ final class AgentClient {
 
     private func runOnce(messages: [StoredMessage], image: UIImage?, tools: [ToolSpec], activeSkills: [Skill],
                          profile: APIProfile,
-                         onUpdate: @MainActor @escaping ([StoredMessage]) -> Void) async throws
+                         onUpdate: @MainActor @escaping ([StoredMessage]) -> Void,
+                         onHeartbeat: @MainActor @escaping ([HeartbeatStep]) -> Void) async throws
         -> (messages: [StoredMessage], finalText: String) {
 
         let base = profile.baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -136,6 +162,11 @@ final class AgentClient {
             out.append(streamingMsg)
             await onUpdate(out)
 
+            // v9.0.12 心跳：模型开始 streaming 时推第一条 "thinking"
+            let initialStep = HeartbeatStep(kind: .thinking,
+                                            text: skillNames.isEmpty ? "正在生成回复…" : "使用技能：\(skillNames)")
+            await onHeartbeat([initialStep])
+
             let (updatedMsg, toolCalls) = try await consumeStream(stream: stream, msg: &streamingMsg, out: &out, onUpdate: onUpdate)
             streamingMsg = updatedMsg
 
@@ -145,6 +176,8 @@ final class AgentClient {
                 out[out.count - 1] = streamingMsg
                 finalText = streamingMsg.content
                 await onUpdate(out)
+                // v9.0.12 心跳：final answer 到达，清空心跳条（ChatView 收到空数组即清）
+                await onHeartbeat([])
                 break
             }
 
@@ -154,11 +187,21 @@ final class AgentClient {
             out[out.count - 1] = streamingMsg
             await onUpdate(out)
 
+            // v9.0.12 心跳：tool_calls 到达时推 "callingTool"
+            let toolNames = toolCalls.map { $0.name }.filter { !$0.isEmpty }
+            await onHeartbeat([HeartbeatStep(kind: .callingTool,
+                                             text: toolNames.isEmpty
+                                                ? "正在规划工具调用…"
+                                                : "调用工具：\(toolNames.joined(separator: "、"))")])
+
             for tc in toolCalls {
                 if let lastIdx = out.indices.last {
                     out[lastIdx].status = statusForExecutingTool(tc.name)
                     await onUpdate(out)
                 }
+                // v9.0.12 心跳：工具开始执行
+                await onHeartbeat([HeartbeatStep(kind: .executingTool,
+                                                 text: statusForExecutingTool(tc.name))])
                 let args = parseArgs(tc.arguments)
                 let result = await SystemTools.execute(tool: tc.name, call: args)
                 let content = toolResultString(result)
@@ -166,6 +209,11 @@ final class AgentClient {
                                          toolCallId: tc.id, toolName: tc.name,
                                          fileURL: result.fileURL))
                 await onUpdate(out)
+                // v9.0.12 心跳：工具结果已拿到
+                await onHeartbeat([HeartbeatStep(kind: .toolResult,
+                                                 text: result.success
+                                                    ? "已获取 \(tc.name) 结果"
+                                                    : "工具 \(tc.name) 失败：\(result.message)")])
             }
 
             // 工具执行完毕：清除“工具调用指令”类 assistant 消息的 status，避免心跳占位残留到最终结果之后
@@ -960,7 +1008,7 @@ struct SkillInstaller {
         var req = URLRequest(url: url)
         req.timeoutInterval = 30
         req.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
-        req.setValue("iOSAgent/9.0.11", forHTTPHeaderField: "User-Agent")
+        req.setValue("iOSAgent/9.0.12", forHTTPHeaderField: "User-Agent")
         let token = Self.authToken
         if !token.isEmpty { req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
         let (data, resp) = try await URLSession.shared.data(for: req)

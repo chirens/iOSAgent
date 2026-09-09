@@ -246,13 +246,17 @@ struct SettingsLinkRow: View {
 
     private var rowContent: some View {
         HStack(spacing: AppSpacing.md) {
+            // v9.0.12：底色块改用 Apple 标准 tertiarySystemFill（极淡灰填充，所有 SF Symbol 都能看清），
+            // icon 用饱和系统色 .blue/.green/.orange 等。之前的 color.opacity(0.4) 在全饱和色上太重，
+            // 而且 pastel 系列改成全饱和后透明度 0.4 已经变成"实色块"，反而失去浮起感。
             ZStack {
                 RoundedRectangle(cornerRadius: AppRadius.sm, style: .continuous)
-                    .fill(color.opacity(0.4))
+                    .fill(Color(.tertiarySystemFill))
                     .frame(width: 32, height: 32)
                 Image(systemName: icon)
-                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                    .font(.system(size: 15, weight: .semibold, design: .rounded))
                     .foregroundStyle(color)
+                    .symbolRenderingMode(.hierarchical)
             }
 
             Text(title)
@@ -1577,13 +1581,15 @@ struct CapabilityToggleRow: View {
 
     var body: some View {
         HStack(spacing: AppSpacing.md) {
+            // v9.0.12 同 SettingsLinkRow：底色块改 tertiarySystemFill，icon 用饱和系统色
             ZStack {
                 RoundedRectangle(cornerRadius: AppRadius.sm, style: .continuous)
-                    .fill(color.opacity(0.4))
+                    .fill(Color(.tertiarySystemFill))
                     .frame(width: 32, height: 32)
                 Image(systemName: icon)
-                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                    .font(.system(size: 15, weight: .semibold, design: .rounded))
                     .foregroundStyle(color)
+                    .symbolRenderingMode(.hierarchical)
             }
             Text(title)
                 .font(.appBody().weight(.semibold))
@@ -2252,7 +2258,5 @@ struct AccountRootView: View {
                 }
         }
         .background(Color.appBackground)
-        .toolbarBackground(Color.appBackground, for: .navigationBar)
-        .toolbarColorScheme(colorScheme, for: .navigationBar)
-    }
+                    }
 }
