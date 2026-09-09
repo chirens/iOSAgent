@@ -11,6 +11,7 @@ enum SettingsRoute: Hashable {
     case about
     case skills
     case account
+    case crashLog
 }
 
 struct SettingsView: View {
@@ -34,10 +35,6 @@ struct SettingsView: View {
                     accountTopCard
                 }
                 .padding(.horizontal, AppSpacing.lg)
-
-                // v9.0.5 崩溃诊断卡：如果 Documents/crash.log 存在，顶卡显示最后一次崩溃信息，方便用户/开发者看到真凶。
-                crashLogCard
-                    .padding(.horizontal, AppSpacing.lg)
 
                 VStack(spacing: AppSpacing.md) {
                     SettingsSection(title: "核心设置") {
@@ -85,66 +82,6 @@ struct SettingsView: View {
                         .tint(Color.brandAccent)
                         .padding(.horizontal, AppSpacing.md)
                         .padding(.vertical, AppSpacing.sm)
-                    }
-
-                    SettingsSection(title: "图片生成") {
-                        VStack(alignment: .leading, spacing: AppSpacing.sm) {
-                            HStack(spacing: AppSpacing.sm) {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .font(.system(size: 14, weight: .semibold))
-                                    .foregroundStyle(Color.appSuccess)
-                                Text("已默认配置（服务器内置免费图源）")
-                                    .font(.appCaption2().weight(.semibold))
-                                    .foregroundStyle(Color.appPrimaryText)
-                                Spacer(minLength: 0)
-                            }
-                            .padding(.horizontal, AppSpacing.md)
-                            Text("开箱即用，对话里直接说「画一张…」即可生成图片。密钥仅在本机与请求头中保存，不参与聊天内容。")
-                                .font(.appCaption2())
-                                .foregroundStyle(Color.appSecondaryText)
-                                .lineLimit(nil)
-                                .padding(.horizontal, AppSpacing.md)
-                            // 高级：自带 SiliconFlow Key（默认折叠，不再默认引导）
-                            DisclosureGroup {
-                                VStack(alignment: .leading, spacing: AppSpacing.sm) {
-                                    HStack(spacing: AppSpacing.sm) {
-                                        Image(systemName: "sparkles")
-                                            .font(.system(size: 13, weight: .semibold))
-                                            .foregroundStyle(Color.appSecondaryText)
-                                        Text("SiliconFlow API Key（高级）")
-                                            .font(.appCaption2().weight(.semibold))
-                                            .foregroundStyle(Color.appSecondaryText)
-                                        Spacer(minLength: 0)
-                                        if !settings.mediaProviderKey.isEmpty {
-                                            Text("已配置")
-                                                .font(.appMicro())
-                                                .foregroundStyle(Color.appSuccess)
-                                        }
-                                    }
-                                    .padding(.leading, AppSpacing.md)
-                                    AppSecureField(placeholder: "sk-xxx",
-                                                   text: Binding(get: { settings.mediaProviderKey },
-                                                                set: { settings.mediaProviderKey = $0 }))
-                                        .padding(.horizontal, AppSpacing.md)
-                                    Text("填入后优先使用你自己的额度（更高画质 / 自定义尺寸）。留空即可，不影响基础使用。")
-                                        .font(.appMicro())
-                                        .foregroundStyle(Color.appSecondaryText)
-                                        .lineLimit(nil)
-                                        .padding(.horizontal, AppSpacing.md)
-                                        .padding(.bottom, AppSpacing.sm)
-                                }
-                            } label: {
-                                Text("高级：自带 Key")
-                                    .font(.appCaption())
-                                    .foregroundStyle(Color.appSecondaryText)
-                            }
-                            .padding(.horizontal, AppSpacing.md)
-                            .padding(.bottom, AppSpacing.sm)
-                        }
-                        .padding(.vertical, AppSpacing.sm)
-                        .background(Color.appSurface)
-                        .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
-                        .appCardShadow()
                     }
 
                     SettingsSection(title: "应用") {
@@ -258,70 +195,6 @@ struct SettingsView: View {
         .buttonStyle(.plain)
     }
 
-    /// 崩溃诊断卡：读取 Documents/crash.log，若存在则在设置页顶部显示最近一次崩溃摘要。
-    /// 用户点"复制"可以复制完整日志，点"清除"删除文件。
-    /// 崩溃前最后一步操作（面包屑）。即使 crash.log 抓不到（Swift 运行时 trap / 内存问题），
-    /// 这条也能告诉用户崩在哪一步，避免连续多个版本盲修。
-    private var breadcrumbText: String { CrashGuard.lastBreadcrumb ?? "" }
-
-    private var crashLogText: String {
-        (try? String(contentsOf: CrashGuard.crashLogURL, encoding: .utf8)) ?? ""
-    }
-
-    @ViewBuilder
-    private var crashLogCard: some View {
-        if !crashLogText.isEmpty || !breadcrumbText.isEmpty {
-            VStack(alignment: .leading, spacing: AppSpacing.xs) {
-                HStack(spacing: 6) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundStyle(.orange)
-                    Text(crashLogText.isEmpty ? "崩溃前最后操作" : "上次崩溃记录")
-                        .font(.appCaption2().weight(.semibold))
-                        .foregroundStyle(.orange)
-                    Spacer(minLength: 0)
-                    Button {
-                        UIPasteboard.general.string = crashLogText + "\n\n[最后操作] " + breadcrumbText
-                    } label: {
-                        Image(systemName: "doc.on.doc")
-                            .font(.appCaption())
-                            .foregroundStyle(Color.appSecondaryText)
-                    }
-                    Button {
-                        try? FileManager.default.removeItem(at: CrashGuard.crashLogURL)
-                        try? FileManager.default.removeItem(at: CrashGuard.breadcrumbURL)
-                    } label: {
-                        Image(systemName: "xmark.circle")
-                            .font(.appCaption())
-                            .foregroundStyle(Color.appSecondaryText)
-                    }
-                }
-                .padding(.horizontal, AppSpacing.md)
-                .padding(.top, AppSpacing.md)
-
-                if !breadcrumbText.isEmpty {
-                    Text("最后操作：\(breadcrumbText)")
-                        .font(.system(size: 11, design: .monospaced))
-                        .foregroundStyle(.orange)
-                        .padding(.horizontal, AppSpacing.md)
-                }
-
-                if !crashLogText.isEmpty {
-                    Text(crashLogText)
-                        .font(.system(size: 11, design: .monospaced))
-                        .foregroundStyle(Color.appPrimaryText)
-                        .lineLimit(8)
-                        .padding(.horizontal, AppSpacing.md)
-                        .padding(.bottom, AppSpacing.md)
-                } else {
-                    Spacer(minLength: 0)
-                        .frame(height: AppSpacing.md)
-                }
-            }
-            .background(Color.appSurface)
-            .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
-            .appCardShadow()
-        }
-    }
 }
 
 // MARK: - Reusable Components
@@ -903,6 +776,8 @@ struct LegalView: View {
 // MARK: - 关于
 
 struct AboutView: View {
+    @State private var hasCrashRecord = false
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: AppSpacing.md) {
@@ -925,6 +800,48 @@ struct AboutView: View {
                         Divider().padding(.leading, AppSpacing.md)
 
                         LinkRow(title: "仓库", value: "https://github.com/chirens/iOSAgent", url: "https://github.com/chirens/iOSAgent")
+                    }
+
+                    SettingsSection(title: "诊断") {
+                        NavigationLink(value: SettingsRoute.crashLog) {
+                            HStack(spacing: AppSpacing.md) {
+                                ZStack {
+                                    RoundedRectangle(cornerRadius: AppRadius.sm, style: .continuous)
+                                        .fill(Color.pastelOrange.opacity(0.22))
+                                        .frame(width: 32, height: 32)
+                                    Image(systemName: "exclamationmark.triangle.fill")
+                                        .font(.system(size: 14, weight: .semibold, design: .rounded))
+                                        .foregroundStyle(Color.pastelOrange)
+                                }
+
+                                Text("崩溃日志")
+                                    .font(.appBody().weight(.semibold))
+                                    .foregroundStyle(Color.appPrimaryText)
+
+                                Spacer(minLength: 0)
+
+                                if hasCrashRecord {
+                                    Circle()
+                                        .fill(Color.appError)
+                                        .frame(width: 8, height: 8)
+                                    Text("有记录")
+                                        .font(.appMicro())
+                                        .foregroundStyle(Color.appError)
+                                } else {
+                                    Text("无")
+                                        .font(.appMicro())
+                                        .foregroundStyle(Color.appSecondaryText)
+                                }
+
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                                    .foregroundStyle(Color.appSecondaryText)
+                            }
+                            .padding(.horizontal, AppSpacing.md)
+                            .padding(.vertical, AppSpacing.md)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
                     }
 
                     // 公众号「忘仙」二维码 — 居中固定，跟仓库行之间留出明确间距
@@ -962,10 +879,176 @@ struct AboutView: View {
             .padding(.bottom, AppSpacing.xl)
         }
         .background(Color.appBackground)
+        .onAppear { hasCrashRecord = CrashDiagnostic.hasAnyRecord }
     }
 
     private var appVersion: String {
         (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "8.0"
+    }
+}
+
+// MARK: - 崩溃诊断（v9.0.8：从设置页顶卡迁入「关于 → 崩溃日志」独立页面）
+
+enum CrashDiagnostic {
+    static var crashLogText: String {
+        (try? String(contentsOf: CrashGuard.crashLogURL, encoding: .utf8)) ?? ""
+    }
+    static var breadcrumbText: String { CrashGuard.lastBreadcrumb ?? "" }
+    static var hasAnyRecord: Bool { !crashLogText.isEmpty || !breadcrumbText.isEmpty }
+
+    /// 复制 / 分享用的完整文本（日志 + 面包屑）
+    static var fullText: String {
+        var parts: [String] = []
+        let log = crashLogText
+        let crumb = breadcrumbText
+        if !log.isEmpty { parts.append(log) }
+        if !crumb.isEmpty { parts.append("[最后操作] " + crumb) }
+        return parts.joined(separator: "\n\n")
+    }
+
+    static func clear() {
+        try? FileManager.default.removeItem(at: CrashGuard.crashLogURL)
+        try? FileManager.default.removeItem(at: CrashGuard.breadcrumbURL)
+    }
+}
+
+struct CrashLogView: View {
+    @State private var logText = ""
+    @State private var breadcrumb = ""
+    @State private var showShare = false
+    @State private var copied = false
+    @State private var showClearConfirm = false
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: AppSpacing.md) {
+                Text("崩溃日志")
+                    .font(.appTitle1())
+                    .foregroundStyle(Color.appPrimaryText)
+
+                if logText.isEmpty && breadcrumb.isEmpty {
+                    emptyState
+                } else {
+                    if !breadcrumb.isEmpty { breadcrumbCard }
+                    if !logText.isEmpty { logCard }
+                    actionBar
+                }
+            }
+            .padding(.horizontal, AppSpacing.lg)
+            .padding(.top, AppSpacing.md)
+            .padding(.bottom, AppSpacing.xl)
+        }
+        .background(Color.appBackground)
+        .onAppear(perform: reload)
+        .sheet(isPresented: $showShare) { ShareSheet(activityItems: [CrashDiagnostic.fullText]) }
+        .alert("清除崩溃日志？", isPresented: $showClearConfirm) {
+            Button("清除", role: .destructive) {
+                CrashDiagnostic.clear()
+                reload()
+            }
+            Button("取消", role: .cancel) { }
+        } message: {
+            Text("将删除本机保存的崩溃记录与面包屑，此操作不可恢复。")
+        }
+    }
+
+    private func reload() {
+        logText = CrashDiagnostic.crashLogText
+        breadcrumb = CrashDiagnostic.breadcrumbText
+    }
+
+    private var emptyState: some View {
+        VStack(spacing: AppSpacing.sm) {
+            Image(systemName: "checkmark.shield.fill")
+                .font(.system(size: 34, weight: .semibold, design: .rounded))
+                .foregroundStyle(Color.appSuccess)
+            Text("暂无崩溃记录")
+                .font(.appBody().weight(.semibold))
+                .foregroundStyle(Color.appPrimaryText)
+            Text("如果 App 发生崩溃，日志会自动保存在这里，可一键复制发给开发者。")
+                .font(.appCaption())
+                .foregroundStyle(Color.appSecondaryText)
+                .multilineTextAlignment(.center)
+                .lineLimit(nil)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, AppSpacing.xl)
+        .padding(.horizontal, AppSpacing.md)
+        .background(Color.appSurface)
+        .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
+        .appCardShadow()
+    }
+
+    private var breadcrumbCard: some View {
+        VStack(alignment: .leading, spacing: AppSpacing.xs) {
+            Text("崩溃前最后操作")
+                .font(.appCaption2().weight(.semibold))
+                .foregroundStyle(Color.appSecondaryText)
+            Text(breadcrumb)
+                .font(.system(size: 12, design: .monospaced))
+                .foregroundStyle(Color.appError)
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(AppSpacing.md)
+        .background(Color.appSurface)
+        .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
+        .appCardShadow()
+    }
+
+    private var logCard: some View {
+        VStack(alignment: .leading, spacing: AppSpacing.xs) {
+            Text("崩溃记录")
+                .font(.appCaption2().weight(.semibold))
+                .foregroundStyle(Color.appSecondaryText)
+            Text(logText)
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundStyle(Color.appPrimaryText)
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(AppSpacing.md)
+        .background(Color.appSurface)
+        .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
+        .appCardShadow()
+    }
+
+    private var actionBar: some View {
+        HStack(spacing: AppSpacing.sm) {
+            actionButton(title: copied ? "已复制" : "复制", icon: "doc.on.doc", filled: true) {
+                UIPasteboard.general.string = CrashDiagnostic.fullText
+                copied = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { copied = false }
+            }
+            actionButton(title: "分享", icon: "square.and.arrow.up", filled: false) { showShare = true }
+            actionButton(title: "清除", icon: "trash", filled: false, danger: true) { showClearConfirm = true }
+        }
+    }
+
+    private func actionButton(title: String, icon: String, filled: Bool, danger: Bool = false,
+                              action: @escaping () -> Void) -> some View {
+        let fg: Color = filled ? Color.white : (danger ? Color.appError : Color.appPrimaryText)
+        let stroke: Color = filled ? Color.clear : (danger ? Color.appError : Color.appSeparator)
+        return Button(action: action) {
+            HStack(spacing: 6) {
+                Image(systemName: icon)
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                Text(title)
+                    .font(.appCaption().weight(.semibold))
+            }
+            .foregroundStyle(fg)
+            .frame(maxWidth: .infinity)
+            .frame(height: 40)
+            .background(filled ? Color.brandAccent : Color.appSurface)
+            .overlay(
+                RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous)
+                    .strokeBorder(stroke, lineWidth: 0.5)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
+        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -1018,17 +1101,11 @@ struct LinkRow: View {
 
 // MARK: - 技能中心（搜索 + 从 GitHub 安装 + 删除）
 
-enum SkillSearchMode: String, CaseIterable {
-    case local = "已安装"
-    case github = "GitHub"
-}
-
 struct SkillsView: View {
     @ObservedObject private var router = SkillRouter.shared
     @EnvironmentObject var settings: SettingsStore
-    @State private var query = ""
-    @State private var searchMode: SkillSearchMode = .local
-    @State private var installURL = ""
+    /// 统一输入：既可以是搜索关键词，也可以是 GitHub 链接
+    @State private var input = ""
     @State private var installing = false
     @State private var message: String?
     @State private var errorText: String?
@@ -1037,11 +1114,21 @@ struct SkillsView: View {
     @State private var ghResults: [SkillGitHubSearchResult] = []
     @State private var ghLoading = false
     @State private var ghError: String?
+    @State private var hasSearched = false
     @State private var installingIDs: Set<String> = []
     @State private var searchCache: [String: [SkillGitHubSearchResult]] = [:]
-    // 限流防护：冷却截止时间 + 显式搜索计数（令牌直接绑定 settings.githubToken）
+    // 限流防护：冷却截止时间（令牌直接绑定 settings.githubToken）
     @State private var ghCooldownUntil: Date = .distantPast
-    @State private var searchNonce: Int = 0
+
+    /// 输入内容是否为链接 → 决定主按钮是「安装」还是「搜索」
+    private var isURLInput: Bool {
+        let s = input.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return s.hasPrefix("http://") || s.hasPrefix("https://") || s.hasPrefix("github.com")
+    }
+
+    private var canSubmit: Bool {
+        input.trimmingCharacters(in: .whitespacesAndNewlines).count >= 2
+    }
 
     var body: some View {
         ScrollView {
@@ -1050,180 +1137,112 @@ struct SkillsView: View {
                     .font(.appTitle1())
                     .foregroundStyle(Color.appPrimaryText)
 
-                // 搜索来源切换
-                Picker("搜索来源", selection: $searchMode) {
-                    ForEach(SkillSearchMode.allCases, id: \.self) { mode in
-                        Text(mode.rawValue).tag(mode)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .tint(Color.brandAccent)
+                searchCard
 
-                // 搜索框
-                HStack(spacing: AppSpacing.sm) {
-                    Image(systemName: "magnifyingglass")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(Color.appSecondaryText)
-                    TextField(searchMode == .local ? "搜索技能名称 / 描述 / 关键词" : "搜索 GitHub 上的 skill 文件",
-                              text: $query)
-                        .font(.appBody())
-                        .foregroundStyle(Color.appPrimaryText)
-                        .autocapitalization(.none)
-                        .disableAutocorrection(true)
-                    if ghLoading {
-                        ProgressView()
-                            .scaleEffect(0.8)
-                    } else if Date() < ghCooldownUntil {
-                        Text("限流中")
-                            .font(.appCaption())
-                            .foregroundStyle(Color.appSecondaryText)
-                    }
-                    Button {
-                        let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
-                        guard q.count >= 2 else { return }
-                        searchCache.removeValue(forKey: q)
-                        searchNonce += 1
-                    } label: {
-                        Text("搜索")
-                            .font(.appBody().weight(.semibold))
-                            .foregroundStyle(Color.appPrimaryText)
-                            .padding(.horizontal, AppSpacing.md)
-                            .padding(.vertical, 8)
-                            .background(Color.appInputFill)
-                            .clipShape(RoundedRectangle(cornerRadius: AppRadius.sm, style: .continuous))
-                    }
-                    .disabled(query.trimmingCharacters(in: .whitespacesAndNewlines).count < 2)
-                }
-                .padding(.horizontal, AppSpacing.md)
-                .padding(.vertical, AppSpacing.sm)
-                .background(Color.appInputFill)
-                .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
+                aiGenerationCard
 
-                // GitHub 搜索状态提示已并入搜索框内，无需单行
-                .padding(.horizontal, AppSpacing.md)
-                .padding(.vertical, AppSpacing.sm)
-                .background(Color.appSurface)
-                .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
-
-                // 远程执行服务（账户）入口已移到「账户」页：侧边栏头像或设置页顶部均可进入。
-
-                // GitHub 搜索结果
-                if searchMode == .github {
+                if hasSearched {
                     githubResultsSection
                 }
 
-                // 从 GitHub 安装（单文件 / 仓库）
-                VStack(alignment: .leading, spacing: AppSpacing.sm) {
-                    Text("从 GitHub 安装技能")
-                        .font(.appCaption2().weight(.semibold))
-                        .foregroundStyle(Color.appSecondaryText)
-                        .padding(.leading, AppSpacing.md)
-                    HStack(spacing: AppSpacing.sm) {
-                        AppTextField(placeholder: "粘贴 skill 的 .md 链接 或 仓库地址（支持 github blob / 仓库链接）", text: $installURL, keyboard: .URL)
-                        Button {
-                            installTapped()
-                        } label: {
-                            if installing {
-                                ProgressView()
-                                    .frame(width: 56, height: 40)
-                            } else {
-                                Text("安装")
-                                    .font(.appBody().weight(.bold))
-                                    .foregroundStyle(.white)
-                                    .padding(.horizontal, AppSpacing.lg)
-                                    .frame(height: 40)
-                                    .background(Color.brandAccent)
-                                    .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
-                            }
-                        }
-                        .disabled(installing || installURL.trimmingCharacters(in: .whitespaces).isEmpty)
-                    }
-                    .padding(.horizontal, AppSpacing.sm)
-                    if let message {
-                        Text(message)
-                            .font(.appCaption())
-                            .foregroundStyle(Color.appSuccess)
-                            .padding(.leading, AppSpacing.md)
-                    }
-                    if let errorText {
-                        Text(errorText)
-                            .font(.appCaption())
-                            .foregroundStyle(Color.appError)
-                            .padding(.leading, AppSpacing.md)
-                    }
-                }
-                .padding(.vertical, AppSpacing.sm)
-                .background(Color.appSurface)
-                .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
-                .appCardShadow()
-
-                // 已安装技能列表（用 List 以启用系统级左滑删除）
-                VStack(alignment: .leading, spacing: AppSpacing.xs) {
-                    Text("已安装技能（\(router.allSkills.count)）")
-                        .font(.appCaption2().weight(.semibold))
-                        .foregroundStyle(Color.appSecondaryText)
-                        .padding(.leading, AppSpacing.md)
-
-                    if localFiltered.isEmpty {
-                        Text(searchMode == .local && !query.isEmpty ? "没有匹配的技能" : "暂无已安装技能")
-                            .font(.appSubheadline())
-                            .foregroundStyle(Color.appSecondaryText)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(AppSpacing.md)
-                            .background(Color.appSurface)
-                            .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
-                            .appCardShadow()
-                    } else {
-                        List {
-                            ForEach(localFiltered) { skill in
-                                skillRow(skill)
-                                    .listRowSeparator(.hidden)
-                                    .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
-                                    .listRowBackground(Color.appSurface)
-                                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                                        if !skill.isBuiltIn {
-                                            Button(role: .destructive) { deleteSkill(skill) } label: { Label("删除", systemImage: "trash") }
-                                        }
-                                    }
-                            }
-                        }
-                        .listStyle(.plain)
-                        .scrollContentBackground(.hidden)
-                        .frame(height: max(CGFloat(localFiltered.count) * 72, 1))
-                        .background(Color.appSurface)
-                        .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
-                        .appCardShadow()
-                    }
-                }
+                installedSection
             }
             .padding(.horizontal, AppSpacing.lg)
             .padding(.top, AppSpacing.md)
             .padding(.bottom, AppSpacing.xl)
         }
         .background(Color.appBackground)
-        .task(id: query + searchMode.rawValue + "\(searchNonce)") {
-            guard searchMode == .github else { return }
+    }
+
+    // MARK: - 统一输入卡（搜索关键词 / 粘贴 GitHub 链接）
+
+    private var searchCard: some View {
+        VStack(alignment: .leading, spacing: AppSpacing.sm) {
+            HStack(spacing: AppSpacing.sm) {
+                Image(systemName: isURLInput ? "link" : "magnifyingglass")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(Color.appSecondaryText)
+                TextField("搜索关键词 或 粘贴 GitHub 链接", text: $input)
+                    .font(.appBody())
+                    .foregroundStyle(Color.appPrimaryText)
+                    .autocapitalization(.none)
+                    .disableAutocorrection(true)
+                if ghLoading || installing {
+                    ProgressView()
+                        .scaleEffect(0.8)
+                }
+                Button(action: submitTapped) {
+                    Text(isURLInput ? "安装" : "搜索")
+                        .font(.appBody().weight(.bold))
+                        .foregroundStyle(Color.white)
+                        .padding(.horizontal, AppSpacing.md)
+                        .frame(height: 34)
+                        .background(canSubmit ? Color.brandAccent : Color.appSeparator)
+                        .clipShape(RoundedRectangle(cornerRadius: AppRadius.sm, style: .continuous))
+                }
+                .disabled(!canSubmit || ghLoading || installing)
+            }
+            .padding(.horizontal, AppSpacing.md)
+            .padding(.vertical, AppSpacing.sm)
+            .background(Color.appInputFill)
+            .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
+
+            Text(isURLInput ? "识别到链接，点「安装」直接安装该 skill" : "输入关键词后点「搜索」，在 GitHub 上找 skill")
+                .font(.appMicro())
+                .foregroundStyle(Color.appSecondaryText)
+                .padding(.leading, AppSpacing.md)
+
+            if let message {
+                Text(message)
+                    .font(.appCaption())
+                    .foregroundStyle(Color.appSuccess)
+                    .padding(.leading, AppSpacing.md)
+            }
+            if let errorText {
+                Text(errorText)
+                    .font(.appCaption())
+                    .foregroundStyle(Color.appError)
+                    .padding(.leading, AppSpacing.md)
+            }
+        }
+        .padding(.vertical, AppSpacing.sm)
+        .background(Color.appSurface)
+        .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
+        .appCardShadow()
+    }
+
+    private func submitTapped() {
+        if isURLInput { installTapped() } else { performSearch() }
+    }
+
+    private func performSearch() {
+        let q = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard q.count >= 2 else { return }
+        hasSearched = true
+        message = nil
+        errorText = nil
+        ghError = nil
+
+        if Date() < ghCooldownUntil {
+            ghError = "GitHub 限流中，请稍后再试"
             ghResults = []
-            ghError = nil
-            let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard q.count >= 2 else {
-                ghLoading = false
-                return
-            }
-            if Date() < ghCooldownUntil {
-                ghError = "GitHub 限流中，请稍后再试"
-                return
-            }
-            if let cached = searchCache[q] {
-                ghResults = cached
-                return
-            }
+            return
+        }
+        if let cached = searchCache[q] {
+            ghResults = cached
+            return
+        }
+
+        ghResults = []
+        ghLoading = true
+        Task {
+            defer { ghLoading = false }
             do {
-                try await Task.sleep(nanoseconds: 1_200_000_000)
-                ghLoading = true
                 let results = try await SkillInstaller.searchGitHub(query: q)
                 searchCache[q] = results
                 ghResults = results
+            } catch is CancellationError {
+                return
             } catch {
                 if let err = error as? SkillInstallError, case .rateLimited(let sec) = err {
                     ghCooldownUntil = Date().addingTimeInterval(Double(max(sec, 10)))
@@ -1232,7 +1251,111 @@ struct SkillsView: View {
                     ghError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
                 }
             }
-            ghLoading = false
+        }
+    }
+
+    // MARK: - AI 生成（原设置页「图片生成」区块）
+
+    private var aiGenerationCard: some View {
+        VStack(alignment: .leading, spacing: AppSpacing.sm) {
+            HStack(spacing: AppSpacing.sm) {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(Color.appSuccess)
+                Text("AI 生成 · 已默认配置")
+                    .font(.appCaption2().weight(.semibold))
+                    .foregroundStyle(Color.appPrimaryText)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, AppSpacing.md)
+
+            Text("开箱即用，对话里直接说「画一张…」即可生成图片。密钥仅在本机与请求头中保存，不参与聊天内容。")
+                .font(.appCaption2())
+                .foregroundStyle(Color.appSecondaryText)
+                .lineLimit(nil)
+                .padding(.horizontal, AppSpacing.md)
+
+            DisclosureGroup {
+                VStack(alignment: .leading, spacing: AppSpacing.sm) {
+                    HStack(spacing: AppSpacing.sm) {
+                        Image(systemName: "sparkles")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(Color.appSecondaryText)
+                        Text("SiliconFlow API Key（高级）")
+                            .font(.appCaption2().weight(.semibold))
+                            .foregroundStyle(Color.appSecondaryText)
+                        Spacer(minLength: 0)
+                        if !settings.mediaProviderKey.isEmpty {
+                            Text("已配置")
+                                .font(.appMicro())
+                                .foregroundStyle(Color.appSuccess)
+                        }
+                    }
+                    .padding(.leading, AppSpacing.md)
+                    AppSecureField(placeholder: "sk-xxx",
+                                   text: Binding(get: { settings.mediaProviderKey },
+                                                set: { settings.mediaProviderKey = $0 }))
+                        .padding(.horizontal, AppSpacing.md)
+                    Text("填入后优先使用你自己的额度（更高画质 / 自定义尺寸）。留空即可，不影响基础使用。")
+                        .font(.appMicro())
+                        .foregroundStyle(Color.appSecondaryText)
+                        .lineLimit(nil)
+                        .padding(.horizontal, AppSpacing.md)
+                        .padding(.bottom, AppSpacing.sm)
+                }
+            } label: {
+                Text("高级：自带 Key")
+                    .font(.appCaption())
+                    .foregroundStyle(Color.appSecondaryText)
+            }
+            .padding(.horizontal, AppSpacing.md)
+            .padding(.bottom, AppSpacing.sm)
+        }
+        .padding(.vertical, AppSpacing.sm)
+        .background(Color.appSurface)
+        .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
+        .appCardShadow()
+    }
+
+    // MARK: - 已安装技能
+
+    private var installedSection: some View {
+        VStack(alignment: .leading, spacing: AppSpacing.xs) {
+            Text("已安装技能（\(router.allSkills.count)）")
+                .font(.appCaption2().weight(.semibold))
+                .foregroundStyle(Color.appSecondaryText)
+                .padding(.leading, AppSpacing.md)
+
+            if router.allSkills.isEmpty {
+                Text("暂无已安装技能")
+                    .font(.appSubheadline())
+                    .foregroundStyle(Color.appSecondaryText)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(AppSpacing.md)
+                    .background(Color.appSurface)
+                    .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
+                    .appCardShadow()
+            } else {
+                List {
+                    ForEach(router.allSkills) { skill in
+                        skillRow(skill)
+                            .listRowSeparator(.hidden)
+                            .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+                            .listRowBackground(Color.appSurface)
+                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                if !skill.isBuiltIn {
+                                    Button(role: .destructive) { deleteSkill(skill) } label: { Label("删除", systemImage: "trash") }
+                                }
+                            }
+                    }
+                }
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
+                .frame(height: max(CGFloat(router.allSkills.count) * 72, 1))
+                .background(Color.appSurface)
+                .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
+                .appCardShadow()
+            }
         }
     }
 
@@ -1257,10 +1380,8 @@ struct SkillsView: View {
                         .foregroundStyle(Color.appError)
                     Spacer(minLength: 0)
                     Button("重试") {
-                        searchCache.removeValue(forKey: query.trimmingCharacters(in: .whitespacesAndNewlines))
-                        let old = query
-                        query = ""
-                        query = old
+                        searchCache.removeValue(forKey: input.trimmingCharacters(in: .whitespacesAndNewlines))
+                        performSearch()
                     }
                     .font(.appCaption().weight(.semibold))
                     .foregroundStyle(Color.brandAccent)
@@ -1270,9 +1391,7 @@ struct SkillsView: View {
 
             VStack(spacing: 0) {
                 if ghResults.isEmpty && !ghLoading && ghError == nil {
-                    Text(query.trimmingCharacters(in: .whitespacesAndNewlines).count < 2
-                         ? "输入至少 2 个字符开始搜索"
-                         : "未找到匹配的 skill 文件")
+                    Text("未找到匹配的 skill 文件")
                         .font(.appSubheadline())
                         .foregroundStyle(Color.appSecondaryText)
                         .padding(AppSpacing.md)
@@ -1337,16 +1456,6 @@ struct SkillsView: View {
         .contentShape(Rectangle())
     }
 
-    private var localFiltered: [Skill] {
-        let q = query.trimmingCharacters(in: .whitespaces).lowercased()
-        guard !q.isEmpty else { return router.allSkills }
-        return router.allSkills.filter {
-            $0.name.lowercased().contains(q)
-            || $0.description.lowercased().contains(q)
-            || $0.triggers.contains { $0.lowercased().contains(q) }
-        }
-    }
-
     private func skillRow(_ skill: Skill) -> some View {
         HStack(spacing: AppSpacing.md) {
             ZStack {
@@ -1387,7 +1496,7 @@ struct SkillsView: View {
     }
 
     private func installTapped() {
-        let url = installURL
+        let url = input
         installing = true
         errorText = nil
         message = nil
@@ -1395,7 +1504,10 @@ struct SkillsView: View {
             do {
                 let installed = try await router.install(from: url)
                 message = "已安装 \(installed.count) 个技能：\(installed.map { $0.name }.joined(separator: "、"))"
-                installURL = ""
+                input = ""
+            } catch is CancellationError {
+                installing = false
+                return
             } catch {
                 if let err = error as? SkillInstallError, case .rateLimited(let sec) = err {
                     ghCooldownUntil = Date().addingTimeInterval(Double(max(sec, 10)))
