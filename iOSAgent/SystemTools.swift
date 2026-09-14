@@ -198,10 +198,10 @@ final class SystemTools {
         )),
         ToolSpec(type: "function", function: FunctionSpec(
             name: "get_weather",
-            description: "查询天气。支持城市名（如 北京、上海、济南）或留空自动定位。day 可选 today（默认）/ tomorrow / day_after。",
+            description: "查询天气。支持城市名（如 北京、上海、济南）或留空自动定位。day 可选 today（默认）/ tomorrow / day_after / week（未来 7 天汇总）。",
             parameters: [
                 "location": ParameterSpec(type: "string", description: "城市名（中文/英文均可），留空则用当前位置"),
-                "day": ParameterSpec(type: "string", description: "today（今天，默认）/ tomorrow（明天）/ day_after（后天）")
+                "day": ParameterSpec(type: "string", description: "today（今天，默认）/ tomorrow（明天）/ day_after（后天）/ week（未来 7 天）")
             ],
             required: []
         )),
@@ -1074,7 +1074,7 @@ final class SystemTools {
         guard let url = URL(string: urlString) else { return ToolResult(success: false, message: "URL 无效", data: nil) }
         var req = URLRequest(url: url)
         req.timeoutInterval = 30
-        req.setValue("Velos/9.0.16", forHTTPHeaderField: "User-Agent")
+        req.setValue("Velos/9.0.17", forHTTPHeaderField: "User-Agent")
         let (data, resp) = try await URLSession.shared.data(for: req)
         guard let http = resp as? HTTPURLResponse, (200...299).contains(http.statusCode), !data.isEmpty else {
             return ToolResult(success: false, message: "下载 SKILL.md 失败：HTTP \((resp as? HTTPURLResponse)?.statusCode ?? 0)", data: nil)
@@ -1103,11 +1103,144 @@ final class SystemTools {
         return ToolResult(success: true, message: "已重新加载 \(count) 个用户技能", data: ["count": AnyCodable(count)])
     }
 
+    // MARK: - 天气（Open-Meteo 7 天 + wttr.in 兜底）
+
+    private struct WeatherDay {
+        let date: String
+        let maxC: Double
+        let minC: Double
+        let code: Int
+        let rainProb: Int?
+    }
+
+    private static func describeWMO(_ code: Int) -> String {
+        switch code {
+        case 0: return "晴"
+        case 1: return "大部晴朗"
+        case 2: return "多云"
+        case 3: return "阴"
+        case 45, 48: return "雾"
+        case 51, 53, 55, 56, 57: return "毛毛雨"
+        case 61, 63, 80: return "小雨"
+        case 65, 81: return "中雨"
+        case 66, 67, 82: return "阵雨/冻雨"
+        case 71, 73, 77, 85: return "小雪"
+        case 75, 86: return "大雪"
+        case 95: return "雷暴"
+        case 96, 99: return "雷暴伴冰雹"
+        default: return "天气代码\(code)"
+        }
+    }
+
+    private static func formatWeatherLine(_ day: WeatherDay, label: String) -> String {
+        var parts = ["\(label)（\(day.date)）\(describeWMO(day.code))，\(Int(round(day.minC)))°C~\(Int(round(day.maxC)))°C"]
+        if let p = day.rainProb, p > 0 { parts.append("降雨概率\(p)%") }
+        return parts.joined(separator: "，")
+    }
+
+    private static func geocodeOpenMeteo(_ query: String) async -> (lat: Double, lon: Double, name: String)? {
+        let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? query
+        let urlString = "https://geocoding-api.open-meteo.com/v1/search?name=\(encoded)&count=1&language=zh&format=json"
+        guard let url = URL(string: urlString) else { return nil }
+        var req = URLRequest(url: url); req.timeoutInterval = 15
+        do {
+            let (data, resp) = try await URLSession.shared.data(for: req)
+            guard let http = resp as? HTTPURLResponse, (200...299).contains(http.statusCode) else { return nil }
+            guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let results = json["results"] as? [[String: Any]],
+                  let first = results.first,
+                  let lat = first["latitude"] as? Double,
+                  let lon = first["longitude"] as? Double else { return nil }
+            let name = (first["name"] as? String) ?? query
+            return (lat, lon, name)
+        } catch { return nil }
+    }
+
+    private static func fetchOpenMeteoForecast(lat: Double, lon: Double) async -> [WeatherDay]? {
+        let urlString = "https://api.open-meteo.com/v1/forecast?latitude=\(lat)&longitude=\(lon)&daily=temperature_2m_max,temperature_2m_min,weathercode,precipitation_probability_max&timezone=auto&forecast_days=7"
+        guard let url = URL(string: urlString) else { return nil }
+        var req = URLRequest(url: url); req.timeoutInterval = 30
+        do {
+            let (data, resp) = try await URLSession.shared.data(for: req)
+            guard let http = resp as? HTTPURLResponse, (200...299).contains(http.statusCode) else { return nil }
+            guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let daily = json["daily"] as? [String: Any],
+                  let dates = daily["time"] as? [String],
+                  let maxTemps = daily["temperature_2m_max"] as? [Double],
+                  let minTemps = daily["temperature_2m_min"] as? [Double],
+                  let codes = daily["weathercode"] as? [Int],
+                  dates.count == maxTemps.count,
+                  dates.count == minTemps.count,
+                  dates.count == codes.count else { return nil }
+            let probs = daily["precipitation_probability_max"] as? [Int]
+            var days: [WeatherDay] = []
+            for i in dates.indices {
+                days.append(WeatherDay(date: dates[i], maxC: maxTemps[i], minC: minTemps[i], code: codes[i], rainProb: (probs != nil && i < probs!.count) ? probs![i] : nil))
+            }
+            return days
+        } catch { return nil }
+    }
+
     private static func getWeather(_ call: [String: AnyCodable]) async throws -> ToolResult {
         var location = string(call, "location")?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let isAuto = location.isEmpty || location.lowercased() == "auto"
             || location.contains("本地") || location.contains("我这") || location.contains("这里") || location.contains("当前位置")
-        // 未指定城市或要求"本地/我这儿"时，优先用 GPS 坐标查天气，避免走 wttr.in 的 IP 定位（代理 IP 会错位）
+        let day = (string(call, "day")?.lowercased() ?? "today")
+
+        // 解析坐标
+        var lat: Double?
+        var lon: Double?
+        var resolvedName: String?
+        if isAuto {
+            if let coord = await currentCoordinate() {
+                lat = coord.latitude; lon = coord.longitude; resolvedName = "当前位置"
+            }
+        } else {
+            if let r = await geocodeOpenMeteo(location) {
+                lat = r.lat; lon = r.lon; resolvedName = r.name
+            }
+        }
+
+        // Open-Meteo 主通道：返回未来 7 天
+        if let lat = lat, let lon = lon, let days = await fetchOpenMeteoForecast(lat: lat, lon: lon), !days.isEmpty {
+            let fmt = DateFormatter(); fmt.dateFormat = "yyyy-MM-dd"; fmt.locale = Locale(identifier: "zh_CN")
+            let todayStr = fmt.string(from: Date())
+            let todayIdx = days.firstIndex { $0.date == todayStr } ?? 0
+            let header = (resolvedName ?? location).isEmpty ? "天气" : "\(resolvedName ?? location)天气"
+            var lines: [String] = []
+
+            switch day {
+            case "week":
+                lines.append("\(header)未来7天：")
+                for (i, d) in days.enumerated() {
+                    let label: String
+                    if i == 0 { label = "今天" }
+                    else if i == 1 { label = "明天" }
+                    else if i == 2 { label = "后天" }
+                    else { label = "\(i)天后" }
+                    lines.append(formatWeatherLine(d, label: label))
+                }
+            case "tomorrow":
+                let idx = todayIdx + 1 < days.count ? todayIdx + 1 : min(1, days.count - 1)
+                lines.append(formatWeatherLine(days[idx], label: "明天"))
+            case "day_after":
+                let idx = todayIdx + 2 < days.count ? todayIdx + 2 : min(2, days.count - 1)
+                lines.append(formatWeatherLine(days[idx], label: "后天"))
+            default:
+                lines.append(formatWeatherLine(days[todayIdx], label: "今天"))
+            }
+            let text = lines.joined(separator: "\n")
+            return ToolResult(success: true, message: text, data: ["weather": AnyCodable(text), "location": AnyCodable(resolvedName ?? location), "day": AnyCodable(day)])
+        }
+
+        // 兜底：走 wttr.in 3 天简版
+        return try await getWeatherLegacy(call)
+    }
+
+    private static func getWeatherLegacy(_ call: [String: AnyCodable]) async throws -> ToolResult {
+        var location = string(call, "location")?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let isAuto = location.isEmpty || location.lowercased() == "auto"
+            || location.contains("本地") || location.contains("我这") || location.contains("这里") || location.contains("当前位置")
         if isAuto {
             if let coord = await currentCoordinate() {
                 location = String(format: "%.4f,%.4f", coord.latitude, coord.longitude)
@@ -1115,24 +1248,19 @@ final class SystemTools {
                 location = "auto"
             }
         }
-        // v9.0.9: 支持 today / tomorrow / day_after。format=3 返回 3 天简版（今天/明天/后天各一行），
-        // 比 format=4 单天能直接覆盖"明天天气"这类高频问题。
         let day = (string(call, "day")?.lowercased() ?? "today")
         let encoded = location.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? "auto"
         let urlString = "https://wttr.in/\(encoded)?format=3&lang=zh"
         guard let url = URL(string: urlString) else { return ToolResult(success: false, message: "天气地址构造失败", data: nil) }
-        var req = URLRequest(url: url)
-        req.timeoutInterval = 30
+        var req = URLRequest(url: url); req.timeoutInterval = 30
         let (data, resp) = try await URLSession.shared.data(for: req)
         guard let http = resp as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
             return ToolResult(success: false, message: "天气接口错误：HTTP \((resp as? HTTPURLResponse)?.statusCode ?? 0)", data: nil)
         }
         var text = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "无法解析天气"
-        // wttr.in 偶发返回 HTML 错误页（代理被拦/限流），用关键字识别出来
         if text.lowercased().contains("<html") || text.lowercased().contains("<!doctype") {
             return ToolResult(success: false, message: "天气接口被代理拦截，请检查网络/代理后重试", data: nil)
         }
-        // 标记用户问的是哪一天，便于模型正确引用
         let dayLabel: String = {
             switch day {
             case "tomorrow": return "明天"
@@ -1141,14 +1269,8 @@ final class SystemTools {
             }
         }()
         if text.contains("\n") {
-            // 3 天简版：每行一个城市名 + 描述；按用户问的 day 抽出对应行
             let lines = text.split(separator: "\n").map(String.init)
-            var picked: String?
-            for line in lines where line.hasPrefix(dayLabel) {
-                picked = line; break
-            }
-            // fallback: 如果没匹配到（少见），原样返回
-            if let p = picked { text = p }
+            for line in lines where line.hasPrefix(dayLabel) { text = line; break }
         }
         return ToolResult(success: true, message: text, data: ["weather": AnyCodable(text), "day": AnyCodable(dayLabel)])
     }
