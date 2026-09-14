@@ -1162,7 +1162,7 @@ struct MessageBubble: View {
                             Task { await saveToPhotos(ui) }
                         } label: { Label("保存到相册", systemImage: "square.and.arrow.down") }
                     }
-                // v9.0.18：生成图下方常驻「保存 / 分享」按钮，避免用户不知道图落在沙盒里、
+                // v9.0.18/v9.0.19：生成图下方常驻「保存 / 打开」按钮，避免用户不知道图落在沙盒里、
                 // 在系统文件 App 里找不到而误以为"没生成 / 假成功"。
                 HStack(spacing: 10) {
                     Button {
@@ -1189,6 +1189,29 @@ struct MessageBubble: View {
                     }
                 }
                 .padding(.top, 2)
+            } else if isImageFile, let url = message.fileURL {
+                // 文件存在但解码/读取失败（损坏、路径丢失、权限等），给出明确提示和打开按钮，
+                // 避免"啥都不显示"让用户以为没生成。
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 5) {
+                        Image(systemName: "exclamationmark.triangle")
+                            .foregroundStyle(Color.orange)
+                        Text("图片加载失败：\(url.lastPathComponent)")
+                            .font(.appCaption())
+                            .foregroundStyle(Color.appSecondaryText)
+                    }
+                    Button {
+                        previewURL = PreviewItem(url: url)
+                    } label: {
+                        HStack(spacing: 5) {
+                            Image(systemName: "doc.text.viewfinder")
+                            Text("用文件 App 打开")
+                        }
+                        .font(.appCaption().weight(.medium))
+                        .foregroundStyle(Color.brandAccent)
+                    }
+                }
+                .padding(.vertical, 4)
             }
             if let status = saveStatus {
                 Text(status)
