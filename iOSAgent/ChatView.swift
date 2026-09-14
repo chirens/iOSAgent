@@ -1020,17 +1020,29 @@ struct MessageBubble: View {
                         )
                         .shadow(color: .black.opacity(0.04), radius: 3, x: 0, y: 1)
                     } else if !message.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        Text(message.content)
-                            .font(.appBody())
-                            .foregroundStyle(message.role == "user" ? .white : Color.appPrimaryText)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 12)
-                            .background(
-                                RoundedRectangle(cornerRadius: 18, style: .circular)
-                                    .fill(bubbleBackground)
-                            )
-                            .shadow(color: .black.opacity(0.04), radius: 3, x: 0, y: 1)
-                            .textSelection(.enabled)
+                        if message.role == "user" {
+                            Text(message.content)
+                                .font(.appBody())
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 12)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 18, style: .circular)
+                                        .fill(bubbleBackground)
+                                )
+                                .shadow(color: .black.opacity(0.04), radius: 3, x: 0, y: 1)
+                                .textSelection(.enabled)
+                        } else {
+                            MarkdownMessageView(text: message.content)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 12)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 18, style: .circular)
+                                        .fill(bubbleBackground)
+                                )
+                                .shadow(color: .black.opacity(0.04), radius: 3, x: 0, y: 1)
+                                .textSelection(.enabled)
+                        }
                     }
 
                     if message.role == "assistant" && !message.isStreaming && !message.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -1560,5 +1572,129 @@ enum PhotoSaveHelper {
                 c.resume(returning: ok)
             })
         }
+    }
+}
+
+// MARK: - Markdown 渲染（助手回复美化：代码块独立显示 + 复制按钮）
+/// 把模型回复里的 ``` 代码块抽出来用独立卡片渲染，并带复制按钮；其余文本走原生 Markdown。
+struct MarkdownMessageView: View {
+    let text: String
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            ForEach(parseSegments(), id: \.id) { seg in
+                switch seg {
+                case .text(let s):
+                    textView(s)
+                case .code(let lang, let code):
+                    CodeBlockView(language: lang, code: code)
+                }
+            }
+        }
+    }
+
+    private func textView(_ s: String) -> some View {
+        Group {
+            if let attr = try? AttributedString(markdown: s,
+                                                options: AttributedString.MarkdownParsingOptions(interpretedSyntax: .full)) {
+                Text(attr)
+                    .font(.appBody())
+                    .foregroundStyle(Color.appPrimaryText)
+                    .textSelection(.enabled)
+            } else {
+                Text(s)
+                    .font(.appBody())
+                    .foregroundStyle(Color.appPrimaryText)
+                    .textSelection(.enabled)
+            }
+        }
+    }
+
+    private enum Segment: Identifiable {
+        case text(String)
+        case code(language: String, code: String)
+        var id: Int {
+            switch self {
+            case .text(let s): return s.hashValue
+            case .code(let l, let c): return (l + c).hashValue
+            }
+        }
+    }
+
+    private func parseSegments() -> [Segment] {
+        let pattern = "```([a-zA-Z0-9_+-]*)\\n([\\s\\S]*?)```"
+        guard let re = try? NSRegularExpression(pattern: pattern, options: []) else {
+            return [.text(text)]
+        }
+        let ns = text as NSString
+        let matches = re.matches(in: text, range: NSRange(location: 0, length: ns.length))
+        guard !matches.isEmpty else { return [.text(text)] }
+        var segs: [Segment] = []
+        var cursor = 0
+        for m in matches {
+            let full = m.range
+            if full.location > cursor {
+                let pre = ns.substring(with: NSRange(location: cursor, length: full.location - cursor))
+                if !pre.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    segs.append(.text(pre))
+                }
+            }
+            let lang = ns.substring(with: m.range(at: 1)).trimmingCharacters(in: .whitespacesAndNewlines)
+            var code = ns.substring(with: m.range(at: 2))
+            if code.hasSuffix("\n") { code.removeLast() }
+            segs.append(.code(language: lang, code: code))
+            cursor = full.location + full.length
+        }
+        if cursor < ns.length {
+            let tail = ns.substring(from: cursor)
+            if !tail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                segs.append(.text(tail))
+            }
+        }
+        return segs.isEmpty ? [.text(text)] : segs
+    }
+}
+
+/// 代码块卡片：系统色底 + 右上角复制按钮（写 UIPasteboard）。
+struct CodeBlockView: View {
+    let language: String
+    let code: String
+    @State private var copied = false
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 6) {
+                if !language.isEmpty {
+                    Text(language.uppercased())
+                        .font(.system(size: 10, weight: .semibold, design: .rounded))
+                        .foregroundStyle(Color.appSecondaryText)
+                }
+                Spacer(minLength: 0)
+                Button {
+                    UIPasteboard.general.string = code
+                    withAnimation { copied = true }
+                    Task {
+                        try? await Task.sleep(nanoseconds: 1_500_000_000)
+                        await MainActor.run { copied = false }
+                    }
+                } label: {
+                    Label(copied ? "已复制" : "复制", systemImage: copied ? "checkmark" : "doc.on.doc")
+                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                        .foregroundStyle(copied ? Color.brandAccent : Color.appSecondaryText)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            ScrollView(.horizontal, showsIndicators: false) {
+                Text(code)
+                    .font(.system(.footnote, design: .monospaced))
+                    .foregroundStyle(Color.appPrimaryText)
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 12)
+                    .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .background(Color(.tertiarySystemFill))
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .textSelection(.enabled)
     }
 }

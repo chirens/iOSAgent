@@ -257,12 +257,18 @@ final class AgentClient {
             let reason: String
             if let t = lastTool {
                 let s = t.content
-                if s.contains("执行失败") {
+                if s.contains("执行失败") || s.contains("下载失败") || s.contains("无效") {
                     // 截一段让人能看懂的
-                    let snippet = String(s.prefix(140))
+                    let snippet = String(s.prefix(160))
                     reason = "工具未成功：\(snippet)"
                 } else if t.fileURL != nil {
-                    reason = "已生成文件但模型未能给出文字说明。请尝试再发一条或换种说法。"
+                    reason = "已生成文件：\(t.fileURL!.lastPathComponent)，可点击上方的「打开文件」查看或分享。"
+                } else if t.toolName == "install_skill",
+                          let nm = Self.extractSkillName(from: s) {
+                    // 装技能成功但模型没续写：直接告诉用户已装好，避免"请再试一次"的废话
+                    reason = "已为你安装技能「\(nm)」，现在可以直接在对话里调用它了。"
+                } else if let toolName = t.toolName, !toolName.isEmpty {
+                    reason = "已通过 \(toolName) 完成操作。如需进一步说明，可以再发一条消息。"
                 } else {
                     reason = "工具已返回结果，但模型未能继续生成文字回复。请再试一次。"
                 }
@@ -365,6 +371,14 @@ final class AgentClient {
         if clean.contains("generate_speech") { return "语音API调用中…" }
         if clean.contains("generate_video") { return "视频API调用中…" }
         return "正在调用：\(clean.joined(separator: "、"))…"
+    }
+
+    /// 从 install_skill 的返回文案里抽出技能名：技能「xxx」已安装并加载
+    static func extractSkillName(from s: String) -> String? {
+        guard let re = try? NSRegularExpression(pattern: "技能「(.+?)」") else { return nil }
+        let r = re.firstMatch(in: s, range: NSRange(s.startIndex..., in: s))
+        if let r, let rng = Range(r.range(at: 1), in: s) { return String(s[rng]) }
+        return nil
     }
 
     /// 工具实际执行阶段的状态文字（比"执行：xxx"更具体）
@@ -1009,7 +1023,7 @@ struct SkillInstaller {
         var req = URLRequest(url: url)
         req.timeoutInterval = 30
         req.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
-        req.setValue("iOSAgent/9.0.15", forHTTPHeaderField: "User-Agent")
+        req.setValue("iOSAgent/9.0.16", forHTTPHeaderField: "User-Agent")
         let token = Self.authToken
         if !token.isEmpty { req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
         let (data, resp) = try await URLSession.shared.data(for: req)
