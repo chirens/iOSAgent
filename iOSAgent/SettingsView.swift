@@ -2012,16 +2012,21 @@ struct AccountView: View {
 
             if mode == 1 {
                 Button { agreed.toggle() } label: {
-                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    HStack(alignment: .center, spacing: 8) {
                         Image(systemName: agreed ? "checkmark.square.fill" : "square")
-                            .font(.system(size: 15, weight: .semibold))
+                            .font(.system(size: 17, weight: .semibold))
                             .foregroundStyle(agreed ? Color.brandAccent : Color.appSecondaryText)
                         Text("我已阅读并同意《用户协议》与《隐私政策》")
                             .font(.appCaption())
                             .foregroundStyle(Color.appSecondaryText)
                         Spacer(minLength: 0)
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .contentShape(Rectangle())
+                    .padding(.horizontal, AppSpacing.md)
+                    .padding(.vertical, AppSpacing.sm)
+                    .background(Color.appSurface)
+                    .clipShape(RoundedRectangle(cornerRadius: AppRadius.sm, style: .continuous))
                 }
                 .buttonStyle(.plain)
             }
