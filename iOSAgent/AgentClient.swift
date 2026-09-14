@@ -240,44 +240,39 @@ final class AgentClient {
             finalText = last.content
         }
 
-        // 防护：8 轮工具循环跑完仍没有 assistant 最终回复（流中断 / 模型在工具后未继续生成），
-        // 但最后一条是 tool 消息且生成了文件（生图/PPT/语音等），自动合成一条"已生成文件"的最终回复，
-        // 避免用户看到"已生成文件但没文字说明"的诡异状态。
-        if finalText.isEmpty, let last = out.last, last.role == "tool", let url = last.fileURL {
-            let synthesized = StoredMessage(role: "assistant", content: "已生成文件：\(url.lastPathComponent)，可点击上方的「打开文件」查看或分享。", fileURL: url)
-            out.append(synthesized)
-            finalText = synthesized.content
-        }
-
-        // 终极防护：跑了 8 轮模型仍未输出任何文字（含生图失败 / LLM 直接被掐断 / token 失效 / 解析异常等所有原因）。
-        // 给一句人话兜底，让用户至少知道发生了什么，而不是面对空白的对话。
+        // 终极防护：8 轮工具循环跑完模型仍未输出任何文字（流中断 / LLM 被掐断 / token 失效 / 解析异常等）。
+        // 对“已生成文件”类工具，工具卡片本身已经在聊天里可见，不需要再补一条 assistant 文字，
+        // 避免过去“(Velos: 已生成文件：... 可点击上方的「打开文件」...)”这种找不到按钮的误导文案。
         if finalText.isEmpty {
-            // 找出最近一条 tool 消息，把它的成功/失败状态拼成人话，比纯"网络异常"更具体
             let lastTool = out.last(where: { $0.role == "tool" })
-            let reason: String
-            if let t = lastTool {
+            if let t = lastTool, t.fileURL != nil {
+                // 文件类工具：不追加 assistant 消息，让 toolImageCard/toolFileCard 自己呈现；
+                // finalText 仅作内部返回值，不在 UI 额外画气泡。
+                finalText = "（已生成文件：\(t.fileURL!.lastPathComponent)）"
+            } else if let t = lastTool, t.toolName == "get_weather" {
+                // 天气工具：把工具返回的格式化文本直接作为人话兜底，避免空回复或误用旧 fileURL。
+                let summary = t.content.trimmingCharacters(in: .whitespacesAndNewlines)
+                let fallback = StoredMessage(role: "assistant", content: summary.isEmpty ? "已获取天气数据，但内容为空。" : summary)
+                out.append(fallback)
+                finalText = fallback.content
+            } else if let t = lastTool, t.toolName == "install_skill",
+                      let nm = Self.extractSkillName(from: t.content) {
+                // 装技能成功但模型没续写：直接告诉用户已装好，避免"请再试一次"的废话
+                let fallback = StoredMessage(role: "assistant", content: "已为你安装技能「\(nm)」，现在可以直接在对话里调用它了。")
+                out.append(fallback)
+                finalText = fallback.content
+            } else if let t = lastTool, let toolName = t.toolName, !toolName.isEmpty {
                 let s = t.content
-                if s.contains("执行失败") || s.contains("下载失败") || s.contains("无效") {
-                    // 截一段让人能看懂的
-                    let snippet = String(s.prefix(160))
-                    reason = "工具未成功：\(snippet)"
-                } else if t.fileURL != nil {
-                    reason = "已生成文件：\(t.fileURL!.lastPathComponent)，可点击上方的「打开文件」查看或分享。"
-                } else if t.toolName == "install_skill",
-                          let nm = Self.extractSkillName(from: s) {
-                    // 装技能成功但模型没续写：直接告诉用户已装好，避免"请再试一次"的废话
-                    reason = "已为你安装技能「\(nm)」，现在可以直接在对话里调用它了。"
-                } else if let toolName = t.toolName, !toolName.isEmpty {
-                    reason = "已通过 \(toolName) 完成操作。如需进一步说明，可以再发一条消息。"
-                } else {
-                    reason = "工具已返回结果，但模型未能继续生成文字回复。请再试一次。"
-                }
+                let failed = s.contains("执行失败") || s.contains("下载失败") || s.contains("无效")
+                let reason = failed ? "工具未成功：\(String(s.prefix(160)))" : "已通过 \(toolName) 完成操作。如需进一步说明，可以再发一条消息。"
+                let fallback = StoredMessage(role: "assistant", content: "（Velos：\(reason)）")
+                out.append(fallback)
+                finalText = fallback.content
             } else {
-                reason = "模型未返回任何内容。可能原因：API key 失效、网络中断、或服务端临时不可用。"
+                let fallback = StoredMessage(role: "assistant", content: "（Velos：模型未返回任何内容。可能原因：API key 失效、网络中断、或服务端临时不可用。）")
+                out.append(fallback)
+                finalText = fallback.content
             }
-            let fallback = StoredMessage(role: "assistant", content: "（Velos：\(reason)）", fileURL: lastTool?.fileURL)
-            out.append(fallback)
-            finalText = fallback.content
         }
 
         return (out, finalText)
@@ -651,7 +646,7 @@ final class AgentClient {
         11. 【输出纯净度】用户只看最终结果。任何工具的失败、重试、中间状态、原始响应体，只允许出现在流式心跳占位里一闪而过，不允许作为独立消息气泡留在对话中；最终回复必须是人话总结，禁止包含 JSON 转义、HTML 标签、CSS 代码、JS 代码、路径字符串、未解析编码或"status":200 之类的技术字段。
         12. 【跨会话记忆】memory/ 中的内容已自动加载到本提示词底部。当用户要求“记住 XXX”、对话变长、或你认为某事实对未来对话有价值时，使用 write_memory 或 write_file(namespace="memory") 保存。记忆标题要简洁，内容用中文要点式。
         13. 【技能安装】当用户分享一个 GitHub 项目链接并询问能否作为 skill 安装，或明确要求安装某个 skill 时：①若对方给出的是 GitHub 仓库链接，直接调用 install_skill(url=链接)；②若用户要求你“写一个 skill”，用 write_file(namespace="skills", path="{id}.md") 写入完整 SKILL.md（必须含 YAML frontmatter：id/name/description/icon/triggers/tools/prompt），写完后调用 install_skill(url=该文件的本地路径或 raw github 链接) 立即加载；③安装成功后用一句话确认技能名称和可用触发词。
-        14. 【天气查询】用户问"今天天气怎么样""明天会下雨吗""后天多少度" → **必须**调用 get_weather(location=城市名, day=today|tomorrow|day_after|week)；day 不传默认 today（用当前时间计算，不要让用户告诉日期）。用户问"未来一周天气""这周天气""一周天气"时 day 传 week。get_weather 现在返回未来 7 天数据，**不要**再用"只能提供近三天"搪塞用户。**绝不**用文字回答"我来帮您查询"而不调用工具——这就是用户看到的"占位气泡"问题根因。任何天气/气温/降雨/紫外线/风力问题都必须真正调用工具，哪怕你觉得自己知道答案。
+        14. 【天气查询】用户问"今天天气怎么样""明天会下雨吗""后天多少度" → **必须**调用 get_weather(location=城市名, day=today|tomorrow|day_after|week)；day 不传默认 today（用当前时间计算，不要让用户告诉日期）。用户问"未来一周天气""这周天气""一周天气"时 day 传 week。get_weather 现在返回未来 7 天数据，**不要**再用"只能提供近三天"搪塞用户。工具返回后，你必须基于返回的天气文本用一句人话总结给用户，**禁止只返回空内容或让客户端兜底**。**绝不**用文字回答"我来帮您查询"而不调用工具——这就是用户看到的"占位气泡"问题根因。任何天气/气温/降雨/紫外线/风力问题都必须真正调用工具，哪怕你觉得自己知道答案。
         15. 【定时/重复提醒】set_alarm / create_reminder 支持 repeat 参数：none（默认）/ daily（每天）/ weekdays（工作日）/ weekly（每周）/ custom（自定义星期，配合 weekdays=[1..7]）。用户要“每天/工作日/每周提醒我 XXX”时，填对应 repeat 和具体时间。list_scheduled / cancel_scheduled 用于查看和取消已设置的定时通知。
         16. 【数据不足时必须联网】如果工具返回的数据范围、精度或时效性无法满足用户要求（例如用户要一周天气但旧接口只返回 3 天、要最新股价但工具只有旧数据、要完整新闻但只返回摘要），**不要**对用户说"只有 X 天/只有部分"；立即换用 web_request 调用公开在线接口补全数据，再汇总成人话返回。天气、股价、汇率、新闻、赛事、航班等实时信息均适用此规则。
 
@@ -1024,7 +1019,7 @@ struct SkillInstaller {
         var req = URLRequest(url: url)
         req.timeoutInterval = 30
         req.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
-        req.setValue("iOSAgent/9.0.18", forHTTPHeaderField: "User-Agent")
+        req.setValue("iOSAgent/9.0.19", forHTTPHeaderField: "User-Agent")
         let token = Self.authToken
         if !token.isEmpty { req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
         let (data, resp) = try await URLSession.shared.data(for: req)
