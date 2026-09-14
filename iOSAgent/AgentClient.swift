@@ -384,7 +384,7 @@ final class AgentClient {
     /// 工具实际执行阶段的状态文字（比"执行：xxx"更具体）
     private func statusForExecutingTool(_ name: String) -> String {
         switch name {
-        case "generate_image": return "服务器正在生成图片…"
+        case "generate_image": return "已连接服务器，正在生成图片…"
         case "generate_speech": return "服务器正在合成语音…"
         case "generate_video": return "服务器正在渲染视频…"
         case "check_video": return "正在查询视频状态…"
@@ -1024,7 +1024,7 @@ struct SkillInstaller {
         var req = URLRequest(url: url)
         req.timeoutInterval = 30
         req.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
-        req.setValue("iOSAgent/9.0.17", forHTTPHeaderField: "User-Agent")
+        req.setValue("iOSAgent/9.0.18", forHTTPHeaderField: "User-Agent")
         let token = Self.authToken
         if !token.isEmpty { req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
         let (data, resp) = try await URLSession.shared.data(for: req)

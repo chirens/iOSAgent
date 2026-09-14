@@ -1162,6 +1162,33 @@ struct MessageBubble: View {
                             Task { await saveToPhotos(ui) }
                         } label: { Label("保存到相册", systemImage: "square.and.arrow.down") }
                     }
+                // v9.0.18：生成图下方常驻「保存 / 分享」按钮，避免用户不知道图落在沙盒里、
+                // 在系统文件 App 里找不到而误以为"没生成 / 假成功"。
+                HStack(spacing: 10) {
+                    Button {
+                        Task { await saveToPhotos(ui) }
+                    } label: {
+                        HStack(spacing: 5) {
+                            Image(systemName: "square.and.arrow.down")
+                            Text("保存到相册")
+                        }
+                        .font(.appCaption().weight(.medium))
+                        .foregroundStyle(Color.brandAccent)
+                    }
+                    if case .url(let u) = img.source {
+                        Button {
+                            previewURL = PreviewItem(url: u)
+                        } label: {
+                            HStack(spacing: 5) {
+                                Image(systemName: "doc.text.viewfinder")
+                                Text("用文件 App 打开")
+                            }
+                            .font(.appCaption().weight(.medium))
+                            .foregroundStyle(Color.appSecondaryText)
+                        }
+                    }
+                }
+                .padding(.top, 2)
             }
             if let status = saveStatus {
                 Text(status)
