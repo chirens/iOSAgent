@@ -1074,7 +1074,7 @@ final class SystemTools {
         guard let url = URL(string: urlString) else { return ToolResult(success: false, message: "URL 无效", data: nil) }
         var req = URLRequest(url: url)
         req.timeoutInterval = 30
-        req.setValue("Velos/9.0.20", forHTTPHeaderField: "User-Agent")
+        req.setValue("Velos/9.0.21", forHTTPHeaderField: "User-Agent")
         let (data, resp) = try await URLSession.shared.data(for: req)
         guard let http = resp as? HTTPURLResponse, (200...299).contains(http.statusCode), !data.isEmpty else {
             return ToolResult(success: false, message: "下载 SKILL.md 失败：HTTP \((resp as? HTTPURLResponse)?.statusCode ?? 0)", data: nil)
@@ -1133,9 +1133,12 @@ final class SystemTools {
     }
 
     private static func formatWeatherLine(_ day: WeatherDay, label: String) -> String {
-        var parts = ["\(label)（\(day.date)）\(describeWMO(day.code))，\(Int(round(day.minC)))°C~\(Int(round(day.maxC)))°C"]
+        var parts = ["\(describeWMO(day.code))，\(Int(round(day.minC)))°C~\(Int(round(day.maxC)))°C"]
         if let p = day.rainProb, p > 0 { parts.append("降雨概率\(p)%") }
-        return parts.joined(separator: "，")
+        if label.isEmpty {
+            return parts.joined(separator: "，")
+        }
+        return "\(label)（\(day.date)）\(parts.joined(separator: "，"))"
     }
 
     private static func geocodeOpenMeteo(_ query: String) async -> (lat: Double, lon: Double, name: String)? {
@@ -1218,7 +1221,7 @@ final class SystemTools {
                     else if i == 1 { label = "明天" }
                     else if i == 2 { label = "后天" }
                     else { label = "\(i)天后" }
-                    lines.append(formatWeatherLine(d, label: label))
+                    lines.append("- **\(label)（\(d.date)）**：\(formatWeatherLine(d, label: ""))")
                 }
             case "tomorrow":
                 let idx = todayIdx + 1 < days.count ? todayIdx + 1 : min(1, days.count - 1)

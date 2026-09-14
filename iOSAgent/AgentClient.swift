@@ -79,7 +79,7 @@ final class AgentClient {
                 // 如果发生过降级，在最终文本里轻量提示
                 if profile.id != settings.activeProfileID,
                    !result.finalText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    let note = "[已自动切换至 \(profile.name) / \(profile.modelName)]\n"
+                    let note = "[已自动切换至 \(profile.name) / \(profile.modelName)]\n\n"
                     result.finalText = note + result.finalText
                     if let idx = result.messages.indices.last, result.messages[idx].role == "assistant" {
                         result.messages[idx].content = note + result.messages[idx].content
@@ -629,7 +629,8 @@ final class AgentClient {
             你已接入用户部署的远程执行服务，地址：\(connectorEP)。\(authNote)
             该服务按用户账户隔离沙箱并限速，可跑任意 shell 命令（dashi-ppt 生成 PPT、图像/视频/音频生成等重算力任务）。
             当用户要求用 dashi-ppt / 生成图文 PPT / 演示文稿 / 幻灯片时：用 web_request 以 POST 发到 \(connectorEP)/render，body 为 {title: 标题, theme: 主题编号, goal: 详细内容脚本, slides: [{title, bullets}]}。
-            其中 goal 决定成品内容，必须写清受众、核心结论和逐页要点；theme 需按内容场景从 theme01~theme12 中选（详见 dashi-ppt 技能说明），不要固定用 theme02。
+            关键：PPT 的正文内容**完全由你提供的 slides 决定**，服务端不会自动补充内容，所以 slides 必须写满与用户主题相关的真实中文内容——每一页一个中文标题 + 3~6 条中文要点（bullet），禁止写空或写与主题无关的占位文字。例如用户要"中秋节 PPT"，slides 就应是[{title:"中秋节的由来",bullets:["起源于上古秋祀…","与嫦娥奔月神话相连…","农历八月十五故名中秋"]},{title:"传统习俗",bullets:["赏月","吃月饼象征团圆","点灯笼舞火龙"]}…]。
+            goal 是整份 PPT 的叙事主线（受众、核心结论），slides 是逐页正文；theme 按内容气质从 theme01~theme12 选（喜庆/节日用 theme03/theme06/theme11，商务/科技用 theme01/theme05/theme10，清新用 theme02/theme07/theme12，不要固定 theme02）。
             需要跑其他命令时，用 web_request POST 到 \(connectorEP)/exec，body 为 {"command":"实际 shell 命令"}；命令需把结果写到沙箱当前目录的文件，服务会自动回传第一个产物文件。
             服务直接返回产物文件（.pptx/.png/.mp3/...），你会在聊天中收到可预览/分享的文件。绝不要声称缺少连接器或无法生成图文 PPT。
             """
@@ -662,9 +663,16 @@ final class AgentClient {
         11. 【输出纯净度】用户只看最终结果。任何工具的失败、重试、中间状态、原始响应体，只允许出现在流式心跳占位里一闪而过，不允许作为独立消息气泡留在对话中；最终回复必须是人话总结，禁止包含 JSON 转义、HTML 标签、CSS 代码、JS 代码、路径字符串、未解析编码或"status":200 之类的技术字段。
         12. 【跨会话记忆】memory/ 中的内容已自动加载到本提示词底部。当用户要求“记住 XXX”、对话变长、或你认为某事实对未来对话有价值时，使用 write_memory 或 write_file(namespace="memory") 保存。记忆标题要简洁，内容用中文要点式。
         13. 【技能安装】当用户分享一个 GitHub 项目链接并询问能否作为 skill 安装，或明确要求安装某个 skill 时：①若对方给出的是 GitHub 仓库链接，直接调用 install_skill(url=链接)；②若用户要求你“写一个 skill”，用 write_file(namespace="skills", path="{id}.md") 写入完整 SKILL.md（必须含 YAML frontmatter：id/name/description/icon/triggers/tools/prompt），写完后调用 install_skill(url=该文件的本地路径或 raw github 链接) 立即加载；③安装成功后用一句话确认技能名称和可用触发词。
-        14. 【天气查询】用户问"今天天气怎么样""明天会下雨吗""后天多少度" → **必须**调用 get_weather(location=城市名, day=today|tomorrow|day_after|week)；day 不传默认 today（用当前时间计算，不要让用户告诉日期）。用户问"未来一周天气""这周天气""一周天气"时 day 传 week。get_weather 现在返回未来 7 天数据，**不要**再用"只能提供近三天"搪塞用户。工具返回后，你必须基于返回的天气文本用一句人话总结给用户，**禁止只返回空内容或让客户端兜底**。**绝不**用文字回答"我来帮您查询"而不调用工具——这就是用户看到的"占位气泡"问题根因。任何天气/气温/降雨/紫外线/风力问题都必须真正调用工具，哪怕你觉得自己知道答案。
+        14. 【天气查询】用户问"今天天气怎么样""明天会下雨吗""后天多少度" → **必须**调用 get_weather(location=城市名, day=today|tomorrow|day_after|week)；day 不传默认 today（用当前时间计算，不要让用户告诉日期）。用户问"未来一周天气""这周天气""一周天气"时 day 传 week。get_weather 现在返回未来 7 天数据，**不要**再用"只能提供近三天"搪塞用户。工具返回后，你必须基于返回数据用清晰的人话 + Markdown 逐日列表排版给用户（每天一行，含天气/温度区间/降雨概率），**禁止只返回空内容或让客户端兜底，也禁止把多天天气压缩成一句话**。用户要"一周天气"时务必把 7 天逐条列出。**绝不**用文字回答"我来帮您查询"而不调用工具——这就是用户看到的"占位气泡"问题根因。任何天气/气温/降雨/紫外线/风力问题都必须真正调用工具，哪怕你觉得自己知道答案。
         15. 【定时/重复提醒】set_alarm / create_reminder 支持 repeat 参数：none（默认）/ daily（每天）/ weekdays（工作日）/ weekly（每周）/ custom（自定义星期，配合 weekdays=[1..7]）。用户要“每天/工作日/每周提醒我 XXX”时，填对应 repeat 和具体时间。list_scheduled / cancel_scheduled 用于查看和取消已设置的定时通知。
         16. 【数据不足时必须联网】如果工具返回的数据范围、精度或时效性无法满足用户要求（例如用户要一周天气但旧接口只返回 3 天、要最新股价但工具只有旧数据、要完整新闻但只返回摘要），**不要**对用户说"只有 X 天/只有部分"；立即换用 web_request 调用公开在线接口补全数据，再汇总成人话返回。天气、股价、汇率、新闻、赛事、航班等实时信息均适用此规则。
+        17. 【排版美化（所有回复适用）】你的每一句回复都必须由你重新排版美化后再输出，绝不允许把工具/接口的原文堆成一段挤在一起的文字抛给用户。具体规范：
+            - 开头用一句话点明结论或上下文；
+            - 多条并列信息用 Markdown 列表（`- `）或表格呈现，例如天气逐日、日程清单、要点归纳，每行一条、行与行之间留空；
+            - 需要强调的关键词用 `**加粗**`；小标题可用 `###` 或 `**小标题**`；
+            - 禁止一整段文字写成"今天多云22~28°C明天晴…"这种无换行的长串；该换行换行、该分条分条；
+            - 列表项较长或含数字时优先用表格；同一主题的多日/多项数据务必逐条列出，不要压缩成一句话；
+            - 结尾可加一句补充或行动建议。无论内容来自天气、日程、文件还是网页，统一按此规范美化。
 
         示例：
         用户：5分钟后提醒我喝水
@@ -1035,7 +1043,7 @@ struct SkillInstaller {
         var req = URLRequest(url: url)
         req.timeoutInterval = 30
         req.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
-        req.setValue("iOSAgent/9.0.20", forHTTPHeaderField: "User-Agent")
+        req.setValue("iOSAgent/9.0.21", forHTTPHeaderField: "User-Agent")
         let token = Self.authToken
         if !token.isEmpty { req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
         let (data, resp) = try await URLSession.shared.data(for: req)
