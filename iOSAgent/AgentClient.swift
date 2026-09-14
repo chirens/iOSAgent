@@ -77,7 +77,8 @@ final class AgentClient {
                                                activeSkills: activeSkills, profile: profile,
                                                onUpdate: onUpdate, onHeartbeat: onHeartbeat)
                 // 如果发生过降级，在最终文本里轻量提示
-                if profile.id != settings.activeProfileID, !result.finalText.isEmpty {
+                if profile.id != settings.activeProfileID,
+                   !result.finalText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     let note = "[已自动切换至 \(profile.name) / \(profile.modelName)]\n"
                     result.finalText = note + result.finalText
                     if let idx = result.messages.indices.last, result.messages[idx].role == "assistant" {
@@ -236,32 +237,47 @@ final class AgentClient {
                 && m.fileURL == nil
         }
 
-        if finalText.isEmpty, let last = out.last, last.role == "assistant" {
-            finalText = last.content
-        }
+        // 终极防护：8 轮工具循环跑完模型仍未输出有效文字（流中断 / LLM 被掐断 / token 失效 /
+        // 模型只回空白/换行等）。必须用 trimmed 判断，否则空白 content 会让 cleanup 清掉气泡、
+        // 此处又因 finalText 非空而跳过兜底，导致用户看到“什么都不回”。
+        let trimmedFinal = finalText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmedFinal.isEmpty {
+            // 只取「本回合」的 tool 结果（即最近一条 user 消息之后），避免用历史 tool 消息做兜底，
+            // 防止天气查询被错误关联到上一张图之类的问题。
+            let lastUserIdx = out.indices.last(where: { out[$0].role == "user" }) ?? -1
+            let currentTurnTool = out
+                .enumerated()
+                .filter { $0.offset > lastUserIdx && $0.element.role == "tool" }
+                .map { $0.element }
+                .last
 
-        // 终极防护：8 轮工具循环跑完模型仍未输出任何文字（流中断 / LLM 被掐断 / token 失效 / 解析异常等）。
-        // 对“已生成文件”类工具，工具卡片本身已经在聊天里可见，不需要再补一条 assistant 文字，
-        // 避免过去“(Velos: 已生成文件：... 可点击上方的「打开文件」...)”这种找不到按钮的误导文案。
-        if finalText.isEmpty {
-            let lastTool = out.last(where: { $0.role == "tool" })
-            if let t = lastTool, t.fileURL != nil {
-                // 文件类工具：不追加 assistant 消息，让 toolImageCard/toolFileCard 自己呈现；
-                // finalText 仅作内部返回值，不在 UI 额外画气泡。
-                finalText = "（已生成文件：\(t.fileURL!.lastPathComponent)）"
-            } else if let t = lastTool, t.toolName == "get_weather" {
+            if let t = currentTurnTool, let url = t.fileURL {
+                // 文件类工具：toolImageCard/toolFileCard 自己会呈现文件，但再补一条可见文字，
+                // 避免卡片渲染失败/被过滤时用户完全看不到反馈。
+                let typeName: String
+                switch t.toolName {
+                case "generate_image": typeName = "图片"
+                case "generate_speech": typeName = "音频"
+                case "generate_video": typeName = "视频"
+                default: typeName = "文件"
+                }
+                let fallback = StoredMessage(role: "assistant",
+                                             content: "已生成\(typeName)：\(url.lastPathComponent)，可点击下方卡片查看、保存或分享。")
+                out.append(fallback)
+                finalText = fallback.content
+            } else if let t = currentTurnTool, t.toolName == "get_weather" {
                 // 天气工具：把工具返回的格式化文本直接作为人话兜底，避免空回复或误用旧 fileURL。
                 let summary = t.content.trimmingCharacters(in: .whitespacesAndNewlines)
                 let fallback = StoredMessage(role: "assistant", content: summary.isEmpty ? "已获取天气数据，但内容为空。" : summary)
                 out.append(fallback)
                 finalText = fallback.content
-            } else if let t = lastTool, t.toolName == "install_skill",
+            } else if let t = currentTurnTool, t.toolName == "install_skill",
                       let nm = Self.extractSkillName(from: t.content) {
                 // 装技能成功但模型没续写：直接告诉用户已装好，避免"请再试一次"的废话
                 let fallback = StoredMessage(role: "assistant", content: "已为你安装技能「\(nm)」，现在可以直接在对话里调用它了。")
                 out.append(fallback)
                 finalText = fallback.content
-            } else if let t = lastTool, let toolName = t.toolName, !toolName.isEmpty {
+            } else if let t = currentTurnTool, let toolName = t.toolName, !toolName.isEmpty {
                 let s = t.content
                 let failed = s.contains("执行失败") || s.contains("下载失败") || s.contains("无效")
                 let reason = failed ? "工具未成功：\(String(s.prefix(160)))" : "已通过 \(toolName) 完成操作。如需进一步说明，可以再发一条消息。"
@@ -1019,7 +1035,7 @@ struct SkillInstaller {
         var req = URLRequest(url: url)
         req.timeoutInterval = 30
         req.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
-        req.setValue("iOSAgent/9.0.19", forHTTPHeaderField: "User-Agent")
+        req.setValue("iOSAgent/9.0.20", forHTTPHeaderField: "User-Agent")
         let token = Self.authToken
         if !token.isEmpty { req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
         let (data, resp) = try await URLSession.shared.data(for: req)
