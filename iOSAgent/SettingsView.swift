@@ -12,17 +12,13 @@ enum SettingsRoute: Hashable {
     case skills
     case account
     case crashLog
+    case customServices
 }
 
 struct SettingsView: View {
     @EnvironmentObject var settings: SettingsStore
     @State private var showClearCacheAlert = false
     @State private var cacheSizeText: String = ""
-    @State private var showMCPAdd = false
-    @State private var mcpDraftName = ""
-    @State private var mcpDraftURL = ""
-    @State private var mcpDraftTransport = "streamable"
-    @State private var mcpDraftHeaders = ""
 
     var body: some View {
         ScrollView {
@@ -44,6 +40,8 @@ struct SettingsView: View {
                 VStack(spacing: AppSpacing.md) {
                     SettingsSection(title: "核心设置") {
                         SettingsLinkRow(icon: "key.fill", color: .pastelBlue, title: "API 设置", destination: .api)
+                        Divider().padding(.leading, 48)
+                        SettingsLinkRow(icon: "network", color: .pastelTeal, title: "自定义服务", destination: .customServices)
                         Divider().padding(.leading, 48)
                         SettingsLinkRow(icon: "lock.shield.fill", color: .pastelOrange, title: "系统权限", destination: .permissions)
                         Divider().padding(.leading, 48)
@@ -96,42 +94,6 @@ struct SettingsView: View {
                         .buttonStyle(.plain)
                     }
 
-                    SettingsSection(title: "MCP 外部工具服务（可选）") {
-                        if SettingsStore.shared.mcpServers.isEmpty {
-                            Text("还没有配置 MCP 服务。没有自己的服务时可忽略，不影响正常使用。")
-                                .font(.appCaption()).foregroundStyle(Color.appSecondaryText)
-                                .padding(.vertical, AppSpacing.sm)
-                        } else {
-                            ForEach(SettingsStore.shared.mcpServers) { s in
-                                HStack {
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(s.name).font(.appBody()).foregroundStyle(Color.appPrimaryText)
-                                        Text(s.url).font(.appCaption()).foregroundStyle(Color.appSecondaryText)
-                                            .lineLimit(1)
-                                    }
-                                    Spacer()
-                                    if !s.enabled {
-                                        Text("已停用").font(.appCaption()).foregroundStyle(Color.appSecondaryText)
-                                    }
-                                    Button {
-                                        SettingsStore.shared.deleteMcpServer(s.id)
-                                    } label: {
-                                        Image(systemName: "trash").foregroundStyle(Color.appError)
-                                    }
-                                    .buttonStyle(.plain)
-                                }
-                                .padding(.vertical, AppSpacing.sm)
-                            }
-                        }
-                        Button {
-                            mcpDraftName = ""; mcpDraftURL = ""; mcpDraftTransport = "streamable"; mcpDraftHeaders = ""
-                            showMCPAdd = true
-                        } label: {
-                            Label("添加 MCP 服务器", systemImage: "plus.circle.fill")
-                                .font(.appBody()).foregroundStyle(Color.brandAccent)
-                        }
-                        .buttonStyle(.plain)
-                    }
 
                     SettingsSection(title: "协议与声明") {
                         SettingsLinkRow(icon: "doc.text.fill", color: .pastelTeal, title: "用户协议", destination: .legal(.userAgreement))
@@ -156,48 +118,6 @@ struct SettingsView: View {
             Button("清除", role: .destructive) { clearCache() }
         } message: {
             Text("将删除所有生成的文件（文档 / 演示文稿 / 图片 / PDF 等）与临时附件，历史对话不会被删除。\n当前缓存：\(cacheSizeText)")
-        }
-        .sheet(isPresented: $showMCPAdd) {
-            NavigationStack {
-                Form {
-                    Section("基本信息") {
-                        TextField("名称（如 我的 MCP）", text: $mcpDraftName)
-                        TextField("端点 URL（https://.../mcp）", text: $mcpDraftURL)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                        Picker("传输方式", selection: $mcpDraftTransport) {
-                            Text("Streamable（推荐）").tag("streamable")
-                            Text("HTTP JSON-RPC").tag("http")
-                        }
-                    }
-                    Section("请求头（可选）") {
-                        TextField("{\"Authorization\":\"Bearer xxx\"}", text: $mcpDraftHeaders)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                            .font(.system(.caption, design: .monospaced))
-                    }
-                }
-                .navigationTitle("添加 MCP 服务器")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .navigationBarLeading) {
-                        Button("取消") { showMCPAdd = false }
-                    }
-                    ToolbarItem(placement: .navigationBarTrailing) {
-                        Button("保存") {
-                            let s = MCPServer(id: UUID().uuidString,
-                                              name: mcpDraftName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "MCP 服务" : mcpDraftName.trimmingCharacters(in: .whitespacesAndNewlines),
-                                              url: mcpDraftURL.trimmingCharacters(in: .whitespacesAndNewlines),
-                                              transport: mcpDraftTransport,
-                                              headers: mcpDraftHeaders,
-                                              enabled: true)
-                            SettingsStore.shared.saveMcpServer(s)
-                            showMCPAdd = false
-                        }
-                    }
-                }
-            }
-            .presentationDetents([.medium])
         }
         .onAppear { calculateCacheSize() }
     }
@@ -509,7 +429,7 @@ struct APISettingsView: View {
                 }
                 .listStyle(.plain)
                 .scrollContentBackground(.hidden)
-                .frame(height: max(CGFloat(settings.profiles.count) * 56, 1))
+                .frame(height: max(CGFloat(settings.profiles.count) * 72, 1))
                 .background(Color.appSurface)
                 .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
                 .appCardShadow()
@@ -546,7 +466,7 @@ struct APISettingsView: View {
                 }
             }
             .padding(.horizontal, AppSpacing.md)
-            .padding(.vertical, AppSpacing.sm)
+            .padding(.vertical, AppSpacing.md)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -597,6 +517,185 @@ struct APISettingsView: View {
             }
             isTesting = false
         }
+    }
+}
+
+// MARK: - 自定义服务
+
+struct CustomServicesView: View {
+    @EnvironmentObject var settings: SettingsStore
+
+    // MCP 添加表单
+    @State private var showMCPAdd = false
+    @State private var mcpDraftName = ""
+    @State private var mcpDraftURL = ""
+    @State private var mcpDraftTransport = "streamable"
+    @State private var mcpDraftHeaders = ""
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: AppSpacing.md) {
+                Text("自定义服务")
+                    .font(.appTitle1())
+                    .foregroundStyle(Color.appPrimaryText)
+
+                VStack(spacing: AppSpacing.md) {
+                    mcpCard
+                    imageKeyCard
+                }
+            }
+            .padding(.horizontal, AppSpacing.lg)
+            .padding(.top, AppSpacing.md)
+            .padding(.bottom, AppSpacing.xl)
+        }
+        .background(Color.appBackground)
+        .sheet(isPresented: $showMCPAdd) {
+            NavigationStack {
+                Form {
+                    Section("基本信息") {
+                        TextField("名称（如 我的 MCP）", text: $mcpDraftName)
+                        TextField("端点 URL（https://.../mcp）", text: $mcpDraftURL)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                        Picker("传输方式", selection: $mcpDraftTransport) {
+                            Text("Streamable（推荐）").tag("streamable")
+                            Text("HTTP JSON-RPC").tag("http")
+                        }
+                    }
+                    Section("请求头（可选）") {
+                        TextField("{\"Authorization\":\"Bearer xxx\"}", text: $mcpDraftHeaders)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .font(.system(.caption, design: .monospaced))
+                    }
+                }
+                .navigationTitle("添加 MCP 服务器")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .navigationBarLeading) {
+                        Button("取消") { showMCPAdd = false }
+                    }
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Button("保存") {
+                            let s = MCPServer(id: UUID().uuidString,
+                                              name: mcpDraftName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "MCP 服务" : mcpDraftName.trimmingCharacters(in: .whitespacesAndNewlines),
+                                              url: mcpDraftURL.trimmingCharacters(in: .whitespacesAndNewlines),
+                                              transport: mcpDraftTransport,
+                                              headers: mcpDraftHeaders,
+                                              enabled: true)
+                            SettingsStore.shared.saveMcpServer(s)
+                            showMCPAdd = false
+                        }
+                    }
+                }
+            }
+            .presentationDetents([.medium])
+        }
+    }
+
+    // MARK: - MCP 外部工具服务
+
+    private var mcpCard: some View {
+        VStack(alignment: .leading, spacing: AppSpacing.sm) {
+            SectionHeader("MCP 外部工具服务")
+
+            VStack(alignment: .leading, spacing: AppSpacing.sm) {
+                Text("MCP 是一种通用接口标准，作用是把外部工具（比如联网搜索、查数据库、控制软件、读取文件等）接到对话里。配置后，AI 就能像调用“技能”一样调用你自己的服务。")
+                    .font(.appCaption())
+                    .foregroundStyle(Color.appSecondaryText)
+                    .lineLimit(nil)
+
+                Text("普通用户可忽略：如果你有自己的服务地址就添加；没有则完全不影响正常使用。")
+                    .font(.appCaption2())
+                    .foregroundStyle(Color.brandAccent)
+                    .lineLimit(nil)
+            }
+            .padding(.horizontal, AppSpacing.md)
+
+            if settings.mcpServers.isEmpty {
+                HStack {
+                    Text("尚未配置 MCP 服务")
+                        .font(.appSubheadline())
+                        .foregroundStyle(Color.appSecondaryText)
+                    Spacer()
+                }
+                .padding(.horizontal, AppSpacing.md)
+                .padding(.vertical, AppSpacing.sm)
+            } else {
+                VStack(spacing: 0) {
+                    ForEach(settings.mcpServers) { s in
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(s.name).font(.appBody()).foregroundStyle(Color.appPrimaryText)
+                                Text(s.url).font(.appCaption()).foregroundStyle(Color.appSecondaryText)
+                                    .lineLimit(1)
+                            }
+                            Spacer()
+                            if !s.enabled {
+                                Text("已停用").font(.appCaption()).foregroundStyle(Color.appSecondaryText)
+                            }
+                            Button {
+                                settings.deleteMcpServer(s.id)
+                            } label: {
+                                Image(systemName: "trash").foregroundStyle(Color.appError)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        .padding(.horizontal, AppSpacing.md)
+                        .padding(.vertical, AppSpacing.sm)
+                        if s.id != settings.mcpServers.last?.id {
+                            Divider().padding(.leading, AppSpacing.md)
+                        }
+                    }
+                }
+            }
+
+            Button {
+                mcpDraftName = ""; mcpDraftURL = ""; mcpDraftTransport = "streamable"; mcpDraftHeaders = ""
+                showMCPAdd = true
+            } label: {
+                Label("添加 MCP 服务器", systemImage: "plus.circle.fill")
+                    .font(.appBody()).foregroundStyle(Color.brandAccent)
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, AppSpacing.md)
+            .padding(.bottom, AppSpacing.sm)
+        }
+        .padding(.top, AppSpacing.md)
+        .background(Color.appSurface)
+        .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
+        .appCardShadow()
+    }
+
+    // MARK: - 图片生成 API Key
+
+    private var imageKeyCard: some View {
+        VStack(alignment: .leading, spacing: AppSpacing.sm) {
+            SectionHeader("图片生成 · 自带 Key")
+
+            VStack(alignment: .leading, spacing: AppSpacing.sm) {
+                Text("默认 Velos 已内置图片生成服务，对话里直接说“画一张…”即可使用。如果你有自己的 SiliconFlow 等 OpenAI 兼容图片 API Key，填入后会优先使用你的额度。")
+                    .font(.appCaption())
+                    .foregroundStyle(Color.appSecondaryText)
+                    .lineLimit(nil)
+
+                AppSecureField(placeholder: "sk-xxx（留空使用内置服务）",
+                               text: Binding(get: { settings.mediaProviderKey },
+                                            set: { settings.mediaProviderKey = $0 }))
+                    .padding(.horizontal, AppSpacing.md)
+
+                Text("密钥仅保存在本机，不会上传到聊天内容中。")
+                    .font(.appCaption2())
+                    .foregroundStyle(Color.appSecondaryText)
+                    .lineLimit(nil)
+            }
+            .padding(.horizontal, AppSpacing.md)
+            .padding(.bottom, AppSpacing.sm)
+        }
+        .padding(.top, AppSpacing.md)
+        .background(Color.appSurface)
+        .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
+        .appCardShadow()
     }
 }
 
@@ -1363,7 +1462,7 @@ struct SkillsView: View {
         }
     }
 
-    // MARK: - AI 生成（原设置页「图片生成」区块）
+    // MARK: - AI 生成说明（自带 Key 入口已移到「自定义服务」）
 
     private var aiGenerationCard: some View {
         VStack(alignment: .leading, spacing: AppSpacing.sm) {
@@ -1378,47 +1477,12 @@ struct SkillsView: View {
             }
             .padding(.horizontal, AppSpacing.md)
 
-            Text("开箱即用，对话里直接说「画一张…」即可生成图片。密钥仅在本机与请求头中保存，不参与聊天内容。")
+            Text("开箱即用，对话里直接说「画一张…」即可生成图片。如需使用自己的 Key，请前往「设置 → 自定义服务 → 图片生成」。")
                 .font(.appCaption2())
                 .foregroundStyle(Color.appSecondaryText)
                 .lineLimit(nil)
                 .padding(.horizontal, AppSpacing.md)
-
-            DisclosureGroup {
-                VStack(alignment: .leading, spacing: AppSpacing.sm) {
-                    HStack(spacing: AppSpacing.sm) {
-                        Image(systemName: "sparkles")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(Color.appSecondaryText)
-                        Text("SiliconFlow API Key（高级）")
-                            .font(.appCaption2().weight(.semibold))
-                            .foregroundStyle(Color.appSecondaryText)
-                        Spacer(minLength: 0)
-                        if !settings.mediaProviderKey.isEmpty {
-                            Text("已配置")
-                                .font(.appMicro())
-                                .foregroundStyle(Color.appSuccess)
-                        }
-                    }
-                    .padding(.leading, AppSpacing.md)
-                    AppSecureField(placeholder: "sk-xxx",
-                                   text: Binding(get: { settings.mediaProviderKey },
-                                                set: { settings.mediaProviderKey = $0 }))
-                        .padding(.horizontal, AppSpacing.md)
-                    Text("填入后优先使用你自己的额度（更高画质 / 自定义尺寸）。留空即可，不影响基础使用。")
-                        .font(.appMicro())
-                        .foregroundStyle(Color.appSecondaryText)
-                        .lineLimit(nil)
-                        .padding(.horizontal, AppSpacing.md)
-                        .padding(.bottom, AppSpacing.sm)
-                }
-            } label: {
-                Text("高级：自带 Key")
-                    .font(.appCaption())
-                    .foregroundStyle(Color.appSecondaryText)
-            }
-            .padding(.horizontal, AppSpacing.md)
-            .padding(.bottom, AppSpacing.sm)
+                .padding(.bottom, AppSpacing.sm)
         }
         .padding(.vertical, AppSpacing.sm)
         .background(Color.appSurface)

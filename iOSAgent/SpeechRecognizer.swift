@@ -143,10 +143,23 @@ final class VoiceRecorder: NSObject, ObservableObject {
 
     private var recorder: AVAudioRecorder?
     private var recordingURL: URL?
+    private var recordStartTime: Date?
 
-    private var recordURL: URL {
-        FileManager.default.temporaryDirectory.appendingPathComponent("iosagent_recording.m4a")
+    /// 录音文件统一放到 Application Support，比 NSTemporaryDirectory 更稳定，不会被系统随时清理。
+    private var recordingsDir: URL {
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+            .appendingPathComponent("VoiceRecordings", isDirectory: true)
+        try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
+        return base
     }
+
+    /// 原始录音文件路径（覆盖写，避免残留）
+    private var rawRecordURL: URL {
+        recordingsDir.appendingPathComponent("iosagent_recording_raw.m4a")
+    }
+
+    /// 当前正在录制中的文件 URL（stop 前有效）
+    var currentRecordingURL: URL? { recordingURL }
 
     func start() async {
         do {
@@ -165,7 +178,7 @@ final class VoiceRecorder: NSObject, ObservableObject {
                 AVNumberOfChannelsKey: 1,
                 AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue
             ]
-            let url = recordURL
+            let url = rawRecordURL
             if FileManager.default.fileExists(atPath: url.path) {
                 try? FileManager.default.removeItem(at: url)
             }
@@ -174,17 +187,52 @@ final class VoiceRecorder: NSObject, ObservableObject {
             recorder?.isMeteringEnabled = true
             recorder?.record()
             recordingURL = url
+            recordStartTime = Date()
             isRecording = true
+            errorMessage = nil
         } catch {
             errorMessage = error.localizedDescription
+            isRecording = false
+            recordingURL = nil
+            recordStartTime = nil
         }
     }
 
+    /// 停止录音。返回的文件位于 Application Support，文件名唯一，便于异步转写时不会被并发删除。
+    /// 返回值 nil 表示没有有效录音。
     @discardableResult
     func stop() -> URL? {
         recorder?.stop()
         isRecording = false
-        return recordingURL
+        guard let src = recordingURL else { return nil }
+        recordingURL = nil
+        recordStartTime = nil
+
+        // 录音太短（< 0.3s）视为无效
+        let duration = recorder?.currentTime ?? 0
+        guard duration >= 0.3 else {
+            try? FileManager.default.removeItem(at: src)
+            return nil
+        }
+
+        // 拷贝到唯一路径，避免原始路径被下一次 start() 覆盖或 defer 误删
+        let dst = recordingsDir.appendingPathComponent("iosagent_recording_\(UUID().uuidString).m4a")
+        do {
+            if FileManager.default.fileExists(atPath: dst.path) {
+                try FileManager.default.removeItem(at: dst)
+            }
+            try FileManager.default.copyItem(at: src, to: dst)
+            return dst
+        } catch {
+            // 拷贝失败则回退返回原始路径
+            return src
+        }
+    }
+
+    /// 回收录音文件（转写完成后调用）
+    func discard(_ url: URL?) {
+        guard let url else { return }
+        try? FileManager.default.removeItem(at: url)
     }
 
     private func requestPermission() async -> Bool {

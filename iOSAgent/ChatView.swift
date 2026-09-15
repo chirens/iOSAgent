@@ -4,6 +4,20 @@ import Photos
 import UniformTypeIdentifiers
 import UIKit
 
+/// 语音录制结束后的处理方式
+enum VoiceFinishMode {
+    case send       // 直接发送语音转写结果
+    case transcribe // 转成文字填入输入框，不切发送
+    case cancel     // 取消，不上屏
+}
+
+/// 录音时手指所处的功能区域
+enum VoiceDragZone {
+    case none       // 中间正常区域，松开发送
+    case cancel     // 左侧，松开取消
+    case transcribe // 右侧，松开后转文字
+}
+
 struct ChatView: View {
     let conversationId: UUID
     @Binding var path: NavigationPath
@@ -23,8 +37,12 @@ struct ChatView: View {
     @State private var awaitingVoice = false
     /// 发送后强制 TextField 重建以读取空值（根治 iOS 多行 TextField 焦点下不清空的已知坑）
     @State private var inputID = UUID()
-    /// v9.0.25 微信式语音切换：true = 语音模式（大横条按住说话），false = 键盘模式
+    /// v9.0.26 微信式语音切换：true = 语音模式（大横条按住说话），false = 键盘模式
     @State private var isVoiceMode = false
+    /// 录音时手指在屏幕上的拖拽偏移，用于判断"取消" / "转文字"
+    @State private var voiceDragOffset: CGSize = .zero
+    /// 录音时当前选中的结束区域（none / cancel / transcribe）
+    @State private var voiceDragZone: VoiceDragZone = .none
 
     // 文件附件（图片或任意本地文件）
     @State private var selectedFileURL: URL?
@@ -203,7 +221,7 @@ struct ChatView: View {
                 skillInstallBanner(url: url)
             }
 
-            // v9.0.25 输入栏：微信式语音/键盘切换 + 大横条按住说话
+            // v9.0.26 输入栏：微信式语音/键盘切换 + 大横条按住说话
             HStack(spacing: 10) {
                 // 左侧：语音/键盘切换
                 Button {
@@ -224,23 +242,39 @@ struct ChatView: View {
                     // 语音模式：大横条「按住 说话」
                     Text("按住 说话")
                         .font(.appBody().weight(.medium))
-                        .foregroundStyle(Color.appPrimaryText)
+                        .foregroundStyle(voice.isRecording ? Color.appSecondaryText : Color.appPrimaryText)
                         .frame(maxWidth: .infinity, minHeight: 44)
-                        .background(Color.appInputFill)
+                        .background(voice.isRecording ? Color.brandAccent.opacity(0.15) : Color.appInputFill)
                         .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
                         .contentShape(Rectangle())
                         .gesture(
                             DragGesture(minimumDistance: 0)
-                                .onChanged { _ in
+                                .onChanged { value in
                                     if !voice.isRecording {
                                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                                         awaitingVoice = true
+                                        voiceDragOffset = .zero
+                                        voiceDragZone = .none
                                         Task { await voice.start() }
+                                    } else {
+                                        voiceDragOffset = value.translation
+                                        voiceDragZone = voiceZone(for: value.translation)
                                     }
                                 }
                                 .onEnded { _ in
+                                    let zone = voiceDragZone
+                                    voiceDragOffset = .zero
+                                    voiceDragZone = .none
                                     if voice.isRecording {
-                                        Task { await finishVoice() }
+                                        switch zone {
+                                        case .cancel:
+                                            voice.stop()
+                                            awaitingVoice = false
+                                        case .transcribe:
+                                            Task { await finishVoice(mode: .transcribe) }
+                                        default:
+                                            Task { await finishVoice(mode: .send) }
+                                        }
                                     }
                                 }
                         )
@@ -305,6 +339,13 @@ struct ChatView: View {
             .background(Color.appBackground)
             .overlay(alignment: .top) {
                 Divider().background(Color.appSeparator).opacity(0.5)
+            }
+            .overlay {
+                // 录音时全屏微信式提示
+                if voice.isRecording {
+                    VoiceRecordingOverlay(zone: $voiceDragZone, dragOffset: voiceDragOffset)
+                        .transition(.opacity)
+                }
             }
         }
         .id(conversationId)
@@ -801,9 +842,16 @@ struct ChatView: View {
         }
     }
 
-    private func finishVoice() async {
+    private func finishVoice(mode: VoiceFinishMode = .send) async {
         guard let url = voice.stop() else { awaitingVoice = false; return }
-        defer { try? FileManager.default.removeItem(at: url) }
+
+        // 文件存在性保护：录音极短或系统清理时可能文件不存在
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            voice.discard(url)
+            errorText = "录音文件未生成，请重试（录音时间过短或麦克风权限未开启）"
+            awaitingVoice = false
+            return
+        }
 
         var lastErrorDesc = ""
 
@@ -813,7 +861,16 @@ struct ChatView: View {
             guard !text.isEmpty else {
                 throw NSError(domain: "Voice", code: 0, userInfo: [NSLocalizedDescriptionKey: "未能识别到语音内容"])
             }
-            if awaitingVoice { input = text }
+            if awaitingVoice {
+                if mode == .transcribe {
+                    // 转文字：切回键盘模式并填入文本，不发送
+                    input = text
+                    isVoiceMode = false
+                } else {
+                    sendVoice(text: text)
+                }
+            }
+            voice.discard(url)
             awaitingVoice = false
             return
         } catch {
@@ -826,7 +883,15 @@ struct ChatView: View {
             guard !text.isEmpty else {
                 throw NSError(domain: "Voice", code: 0, userInfo: [NSLocalizedDescriptionKey: "未能识别到语音内容"])
             }
-            if awaitingVoice { input = text }
+            if awaitingVoice {
+                if mode == .transcribe {
+                    input = text
+                    isVoiceMode = false
+                } else {
+                    sendVoice(text: text)
+                }
+            }
+            voice.discard(url)
             awaitingVoice = false
             return
         } catch {
@@ -839,18 +904,45 @@ struct ChatView: View {
             guard !text.isEmpty else {
                 throw NSError(domain: "Voice", code: 0, userInfo: [NSLocalizedDescriptionKey: "未能识别到语音内容"])
             }
-            if awaitingVoice { input = text }
+            if awaitingVoice {
+                if mode == .transcribe {
+                    input = text
+                    isVoiceMode = false
+                } else {
+                    sendVoice(text: text)
+                }
+            }
+            voice.discard(url)
             awaitingVoice = false
         } catch {
             lastErrorDesc += (lastErrorDesc.isEmpty ? "" : "；") + "[系统] \(error.localizedDescription)"
             if speech.authorizationStatus != .authorized {
                 showMicError = true
-                errorText = "语音识别需要授权：请在系统设置中为 Velos 开启“语音识别”权限。"
+                errorText = "语音识别需要授权：请在系统设置中为「Velos」开启“语音识别”权限。"
             } else {
                 errorText = "语音识别失败：\(lastErrorDesc)"
             }
             awaitingVoice = false
         }
+        voice.discard(url)
+    }
+
+    /// 直接发送语音转写后的文字（语音消息模式）
+    private func sendVoice(text: String) {
+        input = text
+        send()
+    }
+
+    /// 根据手指拖拽偏移判断当前处于哪个功能区
+    private func voiceZone(for translation: CGSize) -> VoiceDragZone {
+        // 水平滑动超过 80pt 触发左右功能区；向上滑动超过 60pt 也视为取消（更顺手）
+        if translation.width < -80 || translation.height < -60 {
+            return .cancel
+        }
+        if translation.width > 80 {
+            return .transcribe
+        }
+        return .none
     }
 
     private func send() {
@@ -998,35 +1090,152 @@ struct ChatView: View {
     }
 }
 
-/// 录音时的全屏居中提示，模仿微信语音的交互反馈
+/// 录音时的全屏微信式提示：中间绿色大泡泡 + 底部左右"取消"/"转文字"胶囊
 struct VoiceRecordingOverlay: View {
+    @Binding var zone: VoiceDragZone
+    let dragOffset: CGSize
+    @State private var wavePhase: Double = 0
+
     var body: some View {
         ZStack {
-            Color.black.opacity(0.45).ignoresSafeArea()
-            VStack(spacing: 18) {
+            // 全屏暗色遮罩，但保留底部输入栏可见
+            Color.black.opacity(0.35).ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                Spacer()
+
+                // 中间绿色大泡泡（微信语音气泡样式）
                 ZStack {
-                    Circle()
-                        .fill(.white.opacity(0.15))
-                        .frame(width: 120, height: 120)
-                    Image(systemName: "mic.fill")
-                        .font(.system(size: 48, weight: .semibold))
-                        .foregroundStyle(.white)
+                    RoundedRectangle(cornerRadius: 24, style: .continuous)
+                        .fill(zone == .cancel ? Color.appError : Color(hex: "#3AC26B"))
+                        .frame(width: 130, height: 110)
+                        .shadow(color: (zone == .cancel ? Color.appError : Color(hex: "#3AC26B")).opacity(0.35), radius: 20, x: 0, y: 10)
+
+                    VStack(spacing: 6) {
+                        // 声波动画
+                        HStack(spacing: 4) {
+                            ForEach(0..<7) { i in
+                                RoundedRectangle(cornerRadius: 2, style: .continuous)
+                                    .fill(.white)
+                                    .frame(width: 4, height: waveHeight(for: i))
+                                    .animation(.easeInOut(duration: 0.25).repeatForever(autoreverses: true).delay(Double(i) * 0.04), value: wavePhase)
+                            }
+                        }
+                        .frame(height: 36)
+
+                        Image(systemName: iconName)
+                            .font(.system(size: 28, weight: .semibold))
+                            .foregroundStyle(.white)
+                    }
+
+                    // 微信气泡小尾巴
+                    SpeechBubbleTail()
+                        .fill(zone == .cancel ? Color.appError : Color(hex: "#3AC26B"))
+                        .frame(width: 24, height: 18)
+                        .rotationEffect(.degrees(180))
+                        .offset(y: 64)
                 }
-                Text("正在录音")
-                    .font(.appTitle2())
+
+                // 提示文字
+                Text(promptText)
+                    .font(.appBody().weight(.medium))
                     .foregroundStyle(.white)
-                Text("松开手指发送")
-                    .font(.appBody())
-                    .foregroundStyle(.white.opacity(0.85))
-                Text("上滑取消")
-                    .font(.appCaption())
-                    .foregroundStyle(.white.opacity(0.65))
+                    .padding(.top, 28)
+                    .padding(.bottom, 46)
+
+                // 底部左右两个胶囊按钮
+                HStack(spacing: 0) {
+                    // 取消
+                    bottomCapsule(
+                        title: "取消",
+                        icon: "xmark",
+                        isActive: zone == .cancel,
+                        alignment: .leading
+                    )
+
+                    Spacer(minLength: 0)
+
+                    // 转文字
+                    bottomCapsule(
+                        title: "滑到这里 转文字",
+                        icon: "text.bubble.fill",
+                        isActive: zone == .transcribe,
+                        alignment: .trailing
+                    )
+                }
+                .padding(.horizontal, 24)
+                .padding(.bottom, 34)
             }
-            .padding(.horizontal, 48)
-            .padding(.vertical, 32)
-            .background(.ultraThinMaterial)
-            .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
         }
+        .onAppear {
+            withAnimation(.linear(duration: 1).repeatForever(autoreverses: false)) {
+                wavePhase = 1
+            }
+        }
+    }
+
+    private var promptText: String {
+        switch zone {
+        case .cancel:
+            return "松开手指，取消发送"
+        case .transcribe:
+            return "松开手指，转为文字"
+        default:
+            return "松开 发语音"
+        }
+    }
+
+    private var iconName: String {
+        switch zone {
+        case .cancel: return "xmark"
+        case .transcribe: return "text.bubble.fill"
+        default: return "mic.fill"
+        }
+    }
+
+    private func waveHeight(for index: Int) -> CGFloat {
+        let base: CGFloat = 10
+        let range: CGFloat = 14
+        let angle = wavePhase * .pi * 2 + Double(index) * 0.6
+        return base + range * CGFloat((sin(angle) + 1) / 2)
+    }
+
+    private func bottomCapsule(title: String, icon: String, isActive: Bool, alignment: HorizontalAlignment) -> some View {
+        HStack(spacing: 8) {
+            if alignment == .trailing { Spacer(minLength: 0) }
+            Image(systemName: icon)
+                .font(.system(size: 14, weight: .semibold))
+            Text(title)
+                .font(.system(size: 14, weight: .semibold, design: .rounded))
+            if alignment == .leading { Spacer(minLength: 0) }
+        }
+        .foregroundStyle(isActive ? .white : .white.opacity(0.7))
+        .padding(.horizontal, 20)
+        .padding(.vertical, 12)
+        .background(
+            Capsule()
+                .fill(isActive ? Color.white.opacity(0.22) : Color.white.opacity(0.12))
+                .overlay(
+                    Capsule()
+                        .stroke(isActive ? Color.white.opacity(0.5) : Color.clear, lineWidth: 1)
+                )
+        )
+        .scaleEffect(isActive ? 1.08 : 1.0)
+        .animation(.easeInOut(duration: 0.15), value: isActive)
+    }
+}
+
+/// 语音气泡小尾巴
+private struct SpeechBubbleTail: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: rect.midX, y: rect.minY))
+        path.addQuadCurve(to: CGPoint(x: rect.minX, y: rect.maxY),
+                          control: CGPoint(x: rect.minX, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+        path.addQuadCurve(to: CGPoint(x: rect.midX, y: rect.minY),
+                          control: CGPoint(x: rect.maxX, y: rect.minY))
+        return path
     }
 }
 

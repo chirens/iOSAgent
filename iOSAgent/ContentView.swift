@@ -1066,6 +1066,7 @@ struct SettingsRootView: View {
                     case .skills: SkillsView()
                     case .account: AccountView()
                     case .crashLog: CrashLogView()
+                    case .customServices: CustomServicesView()
                     }
                 }
                 .toolbar {
