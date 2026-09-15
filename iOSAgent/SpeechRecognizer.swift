@@ -30,8 +30,20 @@ final class SpeechRecognizer: NSObject, ObservableObject {
         return speechStatus == .authorized
     }
 
+    /// 申请麦克风录音权限（AVAudioEngine 取输入节点前必须先获授权，否则录到的是静音、识别不出文字）
+    private func requestMicPermission() async -> Bool {
+        await withCheckedContinuation { continuation in
+            AVAudioSession.sharedInstance().requestRecordPermission { granted in
+                continuation.resume(returning: granted)
+            }
+        }
+    }
+
     func startRecording() async throws {
         guard await requestAuthorization() else {
+            throw RecognizerError.notAuthorized
+        }
+        guard await requestMicPermission() else {
             throw RecognizerError.notAuthorized
         }
         guard let recognizer = speechRecognizer, recognizer.isAvailable else {
