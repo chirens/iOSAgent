@@ -23,6 +23,8 @@ struct ChatView: View {
     @State private var awaitingVoice = false
     /// 发送后强制 TextField 重建以读取空值（根治 iOS 多行 TextField 焦点下不清空的已知坑）
     @State private var inputID = UUID()
+    /// v9.0.25 微信式语音切换：true = 语音模式（大横条按住说话），false = 键盘模式
+    @State private var isVoiceMode = false
 
     // 文件附件（图片或任意本地文件）
     @State private var selectedFileURL: URL?
@@ -73,8 +75,9 @@ struct ChatView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            ScrollViewReader { proxy in
+        ZStack {
+            VStack(spacing: 0) {
+                ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(spacing: AppSpacing.md) {
                         ForEach(messages) { msg in
@@ -200,62 +203,101 @@ struct ChatView: View {
                 skillInstallBanner(url: url)
             }
 
-            // 输入栏
+            // v9.0.25 输入栏：微信式语音/键盘切换 + 大横条按住说话
             HStack(spacing: 10) {
+                // 左侧：语音/键盘切换
+                Button {
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        isVoiceMode.toggle()
+                    }
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                } label: {
+                    Image(systemName: isVoiceMode ? "keyboard.fill" : "mic.fill")
+                        .font(.system(size: 22, weight: .semibold, design: .rounded))
+                        .foregroundStyle(Color.appSecondaryText)
+                        .frame(width: 36, height: 36)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+
+                if isVoiceMode {
+                    // 语音模式：大横条「按住 说话」
+                    Text("按住 说话")
+                        .font(.appBody().weight(.medium))
+                        .foregroundStyle(Color.appPrimaryText)
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                        .background(Color.appInputFill)
+                        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                        .contentShape(Rectangle())
+                        .gesture(
+                            DragGesture(minimumDistance: 0)
+                                .onChanged { _ in
+                                    if !voice.isRecording {
+                                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                        awaitingVoice = true
+                                        Task { await voice.start() }
+                                    }
+                                }
+                                .onEnded { _ in
+                                    if voice.isRecording {
+                                        Task { await finishVoice() }
+                                    }
+                                }
+                        )
+                } else {
+                    // 键盘模式：附件缩略图 + 输入框
+                    HStack(spacing: 8) {
+                        if isLoadingAttachment {
+                            ProgressView()
+                                .frame(width: 32, height: 32)
+                                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        } else if let selectedImage {
+                            Image(uiImage: selectedImage)
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: 32, height: 32)
+                                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                                .overlay(alignment: .topTrailing) {
+                                    Button { self.selectedImage = nil } label: {
+                                        Image(systemName: "xmark.circle.fill")
+                                            .font(.appCaption())
+                                            .foregroundStyle(.white)
+                                    }
+                                }
+                        }
+
+                        TextField("说点什么…", text: $input, axis: .vertical)
+                            .font(.appBody())
+                            .foregroundStyle(Color.appPrimaryText)
+                            .lineLimit(1...5)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .id(inputID)
+                    }
+                    .background(Color.appInputFill)
+                    .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                }
+
+                if !isVoiceMode {
+                    Button(action: send) {
+                        Image(systemName: "arrow.up.circle.fill")
+                            .font(.system(size: 34, weight: .semibold, design: .rounded))
+                            .foregroundStyle(input.isEmpty ? Color.appSecondaryText : Color.brandAccent)
+                    }
+                    .disabled(input.isEmpty || isLoading)
+                    .buttonStyle(.plain)
+                }
+
+                // 附件按钮始终放在右侧
                 Button {
                     showAttachmentSheet = true
                 } label: {
                     Image(systemName: "plus.circle.fill")
                         .font(.system(size: 22, weight: .semibold, design: .rounded))
                         .foregroundStyle(Color.brandAccent)
-                }
-                .buttonStyle(.plain)
-
-                if isLoadingAttachment {
-                    ProgressView()
                         .frame(width: 36, height: 36)
-                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                } else if let selectedImage {
-                    Image(uiImage: selectedImage)
-                        .resizable()
-                        .scaledToFill()
-                        .frame(width: 36, height: 36)
-                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                        .overlay(alignment: .topTrailing) {
-                            Button { self.selectedImage = nil } label: {
-                                Image(systemName: "xmark.circle.fill")
-                                    .font(.appCaption())
-                                    .foregroundStyle(.white)
-                            }
-                        }
+                        .contentShape(Rectangle())
                 }
-
-                HStack(spacing: 8) {
-                    TextField("说点什么…", text: $input, axis: .vertical)
-                        .font(.appBody())
-                        .foregroundStyle(Color.appPrimaryText)
-                        .lineLimit(1...5)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .id(inputID)
-
-                    // 按住说话
-                    VoiceButton(voice: voice,
-                                onStart: {
-                                    awaitingVoice = true
-                                    Task { await voice.start() }
-                                },
-                                onFinish: { Task { await finishVoice() } })
-                }
-                .background(Color.appInputFill)
-                .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-
-                Button(action: send) {
-                    Image(systemName: "arrow.up.circle.fill")
-                        .font(.system(size: 34, weight: .semibold, design: .rounded))
-                        .foregroundStyle(input.isEmpty ? Color.appSecondaryText : Color.brandAccent)
-                }
-                .disabled(input.isEmpty || isLoading)
                 .buttonStyle(.plain)
             }
             .padding(.horizontal, AppSpacing.md)
@@ -263,12 +305,6 @@ struct ChatView: View {
             .background(Color.appBackground)
             .overlay(alignment: .top) {
                 Divider().background(Color.appSeparator).opacity(0.5)
-            }
-            .overlay(alignment: .center) {
-                if voice.isRecording {
-                    VoiceRecordingOverlay()
-                        .transition(.opacity)
-                }
             }
         }
         .id(conversationId)
@@ -365,6 +401,12 @@ struct ChatView: View {
             }
         }
     }
+
+    if voice.isRecording {
+        VoiceRecordingOverlay()
+            .transition(.opacity)
+    }
+}
 
     // MARK: - 添加到对话面板
 
@@ -763,6 +805,8 @@ struct ChatView: View {
         guard let url = voice.stop() else { awaitingVoice = false; return }
         defer { try? FileManager.default.removeItem(at: url) }
 
+        var lastErrorDesc = ""
+
         // 1) 本地 WhisperKit 优先：离线、中文优化、不消耗 API 额度
         do {
             let text = try await WhisperTranscriber.shared.transcribe(audioURL: url)
@@ -773,7 +817,7 @@ struct ChatView: View {
             awaitingVoice = false
             return
         } catch {
-            // 继续 fallback
+            lastErrorDesc = "[本地] \(error.localizedDescription)"
         }
 
         // 2) 云端 OpenAI 兼容 /audio/transcriptions
@@ -786,7 +830,7 @@ struct ChatView: View {
             awaitingVoice = false
             return
         } catch {
-            // 继续 fallback
+            lastErrorDesc += (lastErrorDesc.isEmpty ? "" : "；") + "[云端] \(error.localizedDescription)"
         }
 
         // 3) 系统语音识别（SFSpeechRecognizer）
@@ -798,11 +842,12 @@ struct ChatView: View {
             if awaitingVoice { input = text }
             awaitingVoice = false
         } catch {
+            lastErrorDesc += (lastErrorDesc.isEmpty ? "" : "；") + "[系统] \(error.localizedDescription)"
             if speech.authorizationStatus != .authorized {
                 showMicError = true
-                errorText = "语音识别需要授权：请在系统设置中为「Velos」开启“语音识别”权限。"
+                errorText = "语音识别需要授权：请在系统设置中为 Velos 开启“语音识别”权限。"
             } else {
-                errorText = "语音识别失败：\(error.localizedDescription)"
+                errorText = "语音识别失败：\(lastErrorDesc)"
             }
             awaitingVoice = false
         }
@@ -953,61 +998,34 @@ struct ChatView: View {
     }
 }
 
-// 语音按钮独立成子视图，避免输入栏 HStack 表达式过大导致编译器无法在合理时间内类型检查
-struct VoiceButton: View {
-    @ObservedObject var voice: VoiceRecorder
-    let onStart: () -> Void
-    let onFinish: () -> Void
-    @State private var isPressed = false
-
-    var body: some View {
-        Image(systemName: voice.isRecording ? "waveform.circle.fill" : "mic.fill")
-            .font(.system(size: 24, weight: .semibold, design: .rounded))
-            .foregroundStyle(voice.isRecording ? Color.appError : Color.brandAccent)
-            .frame(width: 44, height: 44)
-            .background(voice.isRecording ? Color.appError.opacity(0.12) : Color.brandAccent.opacity(0.12))
-            .clipShape(Circle())
-            .contentShape(Rectangle())
-            .scaleEffect(isPressed ? 0.9 : 1.0)
-            .animation(.easeInOut(duration: 0.15), value: isPressed)
-            // 同时支持"按住说话（微信式）"和"点按切换"，并加大点按区域
-            .gesture(
-                DragGesture(minimumDistance: 0)
-                    .onChanged { _ in
-                        if !voice.isRecording {
-                            isPressed = true
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                            onStart()
-                        }
-                    }
-                    .onEnded { _ in
-                        isPressed = false
-                        if voice.isRecording { onFinish() }
-                    }
-            )
-    }
-}
-
-/// 录音时的全屏提示遮罩，模仿微信语音的交互反馈
+/// 录音时的全屏居中提示，模仿微信语音的交互反馈
 struct VoiceRecordingOverlay: View {
     var body: some View {
         ZStack {
-            Color.black.opacity(0.35).ignoresSafeArea()
-            VStack(spacing: 16) {
-                Image(systemName: "mic.fill")
-                    .font(.system(size: 56, weight: .semibold))
+            Color.black.opacity(0.45).ignoresSafeArea()
+            VStack(spacing: 18) {
+                ZStack {
+                    Circle()
+                        .fill(.white.opacity(0.15))
+                        .frame(width: 120, height: 120)
+                    Image(systemName: "mic.fill")
+                        .font(.system(size: 48, weight: .semibold))
+                        .foregroundStyle(.white)
+                }
+                Text("正在录音")
+                    .font(.appTitle2())
                     .foregroundStyle(.white)
-                Text("正在录音，松开发送")
-                    .font(.appTitle3())
-                    .foregroundStyle(.white)
+                Text("松开手指发送")
+                    .font(.appBody())
+                    .foregroundStyle(.white.opacity(0.85))
                 Text("上滑取消")
                     .font(.appCaption())
-                    .foregroundStyle(.white.opacity(0.8))
+                    .foregroundStyle(.white.opacity(0.65))
             }
-            .padding(.horizontal, 40)
-            .padding(.vertical, 28)
+            .padding(.horizontal, 48)
+            .padding(.vertical, 32)
             .background(.ultraThinMaterial)
-            .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
         }
     }
 }

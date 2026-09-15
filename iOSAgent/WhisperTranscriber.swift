@@ -16,7 +16,7 @@ final class WhisperTranscriber: ObservableObject {
 
     private init() {}
 
-    /// 加载（按需下载）指定 Whisper 模型，返回可用实例。
+    /// 加载（按需下载）指定 Whisper 模型，返回可用实例。带 30 秒超时，避免 HuggingFace 不可达时无限挂起。
     private func instance(for model: String) async throws -> WhisperKit {
         if let inst = instances[model] { return inst }
         if let task = loadingTasks[model] { return try await task.value }
@@ -33,13 +33,32 @@ final class WhisperTranscriber: ObservableObject {
         }
         loadingTasks[model] = task
         do {
-            let inst = try await task.value
+            let inst = try await withTimeout(seconds: 30) { try await task.value }
             instances[model] = inst
             loadingTasks[model] = nil
             return inst
         } catch {
             loadingTasks[model] = nil
+            if error.localizedDescription.contains("cancelled") || error.localizedDescription.contains("timed out") {
+                throw NSError(domain: "WhisperKit", code: -1,
+                              userInfo: [NSLocalizedDescriptionKey: "本地语音模型下载超时。首次使用需联网从 HuggingFace 下载模型，当前网络可能无法访问。"])
+            }
             throw error
+        }
+    }
+
+    /// 通用超时包装
+    private func withTimeout<T>(seconds: TimeInterval, operation: @escaping () async throws -> T) async throws -> T {
+        try await withThrowingTaskGroup(of: T.self) { group in
+            group.addTask { try await operation() }
+            group.addTask {
+                try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+                throw NSError(domain: "Timeout", code: -1,
+                              userInfo: [NSLocalizedDescriptionKey: "操作超时 \(Int(seconds))s"])
+            }
+            let result = try await group.next()!
+            group.cancelAll()
+            return result
         }
     }
 
