@@ -21,6 +21,9 @@ final class WhisperTranscriber: ObservableObject {
         if let inst = instances[model] { return inst }
         if let task = loadingTasks[model] { return try await task.value }
 
+        // 尝试走 HuggingFace 国内镜像，提高模型下载成功率（WhisperKit 若读取 HF_ENDPOINT 即生效，不影响其他逻辑）
+        setenv("HF_ENDPOINT", "https://hf-mirror.com", 1)
+
         let task = Task<WhisperKit, Error> { [weak self] in
             let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
                 .appendingPathComponent("WhisperKit", isDirectory: true)

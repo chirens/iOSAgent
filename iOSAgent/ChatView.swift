@@ -207,14 +207,14 @@ struct ChatView: View {
                 skillInstallBanner(url: url)
             }
 
-            // v9.0.27 输入栏：始终显示输入框 + 左侧小话筒（按住说话→系统实时流式识别→文字进输入框）
+            // v9.0.28 输入栏：始终显示输入框 + 左侧小话筒（按住说话→本地 WhisperKit 识别→文字进输入框，不发送语音）
             HStack(spacing: 10) {
-                // 左侧：小话筒按钮，按住说话
-                Image(systemName: speech.isRecording ? "waveform" : "mic.fill")
+                // 左侧：小话筒按钮，按住说话（本地 WhisperKit 离线识别，不用系统识别）
+                Image(systemName: voice.isRecording ? "waveform" : "mic.fill")
                     .font(.system(size: 20, weight: .semibold, design: .rounded))
-                    .foregroundStyle(speech.isRecording ? Color.brandAccent : Color.appSecondaryText)
+                    .foregroundStyle(voice.isRecording ? Color.brandAccent : Color.appSecondaryText)
                     .frame(width: 36, height: 36)
-                    .background(speech.isRecording ? Color.brandAccent.opacity(0.15) : Color.clear)
+                    .background(voice.isRecording ? Color.brandAccent.opacity(0.15) : Color.clear)
                     .clipShape(Circle())
                     .contentShape(Circle())
                     .gesture(
@@ -225,30 +225,21 @@ struct ChatView: View {
                                     pendingVoiceBase = input
                                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                                     Task {
-                                        do {
-                                            try await speech.startRecording()
-                                            // 竞态保护：若用户极快松手、start 完成时已不在录音态，立即停掉
-                                            if !awaitingVoice { speech.stopRecording() }
-                                        } catch {
-                                            awaitingVoice = false
-                                            if speech.authorizationStatus != .authorized {
-                                                showMicError = true
-                                            } else {
-                                                errorText = "无法启动语音识别：\(error.localizedDescription)"
-                                            }
-                                        }
+                                        await voice.start()   // VoiceRecorder 内部已处理麦克风权限
+                                        // 竞态保护：若用户极快松手、start 完成时已不在录音态，立即停掉
+                                        if !awaitingVoice { voice.stop() }
                                     }
                                 }
                             }
                             .onEnded { _ in
-                                guard speech.isRecording else { awaitingVoice = false; return }
-                                speech.stopRecording()
-                                let t = speech.transcript.trimmingCharacters(in: .whitespacesAndNewlines)
-                                if t.isEmpty {
-                                    input = pendingVoiceBase
-                                    errorText = "没有识别到语音内容，请重试（或在系统设置中为 Velos 开启“语音识别 / 麦克风”权限）"
+                                guard voice.isRecording else {
+                                    if let msg = voice.errorMessage, msg.contains("麦克风") { showMicError = true }
+                                    awaitingVoice = false
+                                    return
                                 }
+                                // 交给本地 WhisperKit 识别，文字填入输入框（不发送语音）
                                 awaitingVoice = false
+                                Task { await finishVoice(mode: .transcribe) }
                             }
                     )
 
@@ -273,7 +264,7 @@ struct ChatView: View {
                             }
                     }
 
-                    TextField(speech.isRecording ? "正在聆听…" : "说点什么…", text: $input, axis: .vertical)
+                    TextField(voice.isRecording ? "正在聆听…" : (voiceBusy ? "识别中…" : "说点什么…"), text: $input, axis: .vertical)
                         .font(.appBody())
                         .foregroundStyle(Color.appPrimaryText)
                         .lineLimit(1...5)
@@ -400,12 +391,7 @@ struct ChatView: View {
                 }
             )
         }
-        .onReceive(speech.$transcript) { text in
-            if awaitingVoice {
-                let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
-                input = (pendingVoiceBase.isEmpty ? "" : pendingVoiceBase + " ") + t
-            }
-        }
+        // v9.0.28 语音识别改由本地 WhisperKit 在 finishVoice 中完成并填入输入框，不再使用系统实时识别流
     }
     }
 
@@ -813,78 +799,29 @@ struct ChatView: View {
             return
         }
 
-        var lastErrorDesc = ""
+        await MainActor.run { voiceBusy = true }
+        defer { Task { @MainActor in voiceBusy = false } }
 
-        // 1) 本地 WhisperKit 优先：离线、中文优化、不消耗 API 额度
+        // 本地 WhisperKit 识别：离线、中文优化、不消耗 API 额度（用户明确要求本地引擎，不回退系统识别）
         do {
             let text = try await WhisperTranscriber.shared.transcribe(audioURL: url)
             guard !text.isEmpty else {
                 throw NSError(domain: "Voice", code: 0, userInfo: [NSLocalizedDescriptionKey: "未能识别到语音内容"])
             }
-            if awaitingVoice {
-                if mode == .transcribe {
-                    // 转文字：切回键盘模式并填入文本，不发送
-                    input = text
-                    isVoiceMode = false
-                } else {
-                    sendVoice(text: text)
-                }
+            await MainActor.run {
+                input = (pendingVoiceBase.isEmpty ? "" : pendingVoiceBase + " ") + text
             }
             voice.discard(url)
-            awaitingVoice = false
             return
         } catch {
-            lastErrorDesc = "[本地] \(error.localizedDescription)"
-        }
-
-        // 2) 云端 OpenAI 兼容 /audio/transcriptions
-        do {
-            let text = try await AgentClient.shared.transcribe(audioURL: url)
-            guard !text.isEmpty else {
-                throw NSError(domain: "Voice", code: 0, userInfo: [NSLocalizedDescriptionKey: "未能识别到语音内容"])
-            }
-            if awaitingVoice {
-                if mode == .transcribe {
-                    input = text
-                    isVoiceMode = false
-                } else {
-                    sendVoice(text: text)
-                }
-            }
             voice.discard(url)
-            awaitingVoice = false
-            return
-        } catch {
-            lastErrorDesc += (lastErrorDesc.isEmpty ? "" : "；") + "[云端] \(error.localizedDescription)"
-        }
-
-        // 3) 系统语音识别（SFSpeechRecognizer）
-        do {
-            let text = try await speech.transcribeFile(url: url)
-            guard !text.isEmpty else {
-                throw NSError(domain: "Voice", code: 0, userInfo: [NSLocalizedDescriptionKey: "未能识别到语音内容"])
-            }
-            if awaitingVoice {
-                if mode == .transcribe {
-                    input = text
-                    isVoiceMode = false
-                } else {
-                    sendVoice(text: text)
-                }
-            }
-            voice.discard(url)
-            awaitingVoice = false
-        } catch {
-            lastErrorDesc += (lastErrorDesc.isEmpty ? "" : "；") + "[系统] \(error.localizedDescription)"
-            if speech.authorizationStatus != .authorized {
-                showMicError = true
-                errorText = "语音识别需要授权：请在系统设置中为「Velos」开启“语音识别”权限。"
+            let desc = error.localizedDescription
+            if desc.contains("下载超时") || desc.contains("模型") || desc.contains("HuggingFace") {
+                errorText = "本地语音模型下载失败：\(desc)。首次使用需联网从 HuggingFace 下载 Whisper 模型（已尝试国内镜像 hf-mirror.com），请检查网络/代理后重试。"
             } else {
-                errorText = "语音识别失败：\(lastErrorDesc)"
+                errorText = "语音识别失败：\(desc)"
             }
-            awaitingVoice = false
         }
-        voice.discard(url)
     }
 
     /// 直接发送语音转写后的文字（语音消息模式）
