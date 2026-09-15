@@ -7,10 +7,72 @@ import UIKit
 class NotificationsManager: NSObject, ObservableObject, UNUserNotificationCenterDelegate {
     static let shared = NotificationsManager()
     @Published var pendingAlarms: [PendingAlarm] = []
+    /// App 内通知中心历史（notify 工具 / 定时任务触发记录）
+    @Published var history: [AppNotificationItem] = []
 
     override init() {
         super.init()
         loadPending()
+        loadHistory()
+    }
+
+    // MARK: - 软件通知（自签无 APNs，只能本地通知）
+
+    /// 请求本地通知授权（若尚未决定）；已授权/已拒绝时直接返回。
+    func ensureAuth() async {
+        let center = UNUserNotificationCenter.current()
+        let settings = await center.notificationSettings()
+        if settings.authorizationStatus == .notDetermined {
+            _ = try? await center.requestAuthorization(options: [.alert, .badge, .sound])
+        }
+    }
+
+    /// 发送一条软件通知：到点弹出本地通知，并写入 App 内通知中心历史。
+    /// delay 秒为 0 时立即触发（约 1 秒后弹窗）。
+    func notify(title: String, body: String, delay: TimeInterval = 0) async {
+        await ensureAuth()
+        let fireAt = Date().addingTimeInterval(max(delay, 1))
+        let id = "notify:\(UUID().uuidString)"
+        let center = UNUserNotificationCenter.current()
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = body
+        content.sound = .default
+        content.badge = 1
+        content.userInfo = ["kind": "notify", "fireAt": fireAt]
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: max(delay, 1), repeats: false)
+        let request = UNNotificationRequest(identifier: id, content: content, trigger: trigger)
+        try? await center.add(request)
+        logNotify(kind: "notify", title: title, body: body, fireAt: fireAt)
+        refreshPending()
+    }
+
+    /// 记录一条通知中心历史（定时任务触发也复用）。
+    func logNotify(kind: String, title: String, body: String, fireAt: Date) {
+        let item = AppNotificationItem(id: UUID().uuidString, kind: kind, title: title, body: body, date: Date(), fireAt: fireAt)
+        var list = history
+        list.insert(item, at: 0)
+        if list.count > 100 { list = Array(list.prefix(100)) }
+        history = list
+        saveHistory(list)
+    }
+
+    func clearHistory() {
+        history = []
+        saveHistory(history)
+    }
+
+    private func loadHistory() {
+        if let data = UserDefaults.standard.data(forKey: "appNotifyHistory"),
+           let arr = try? JSONDecoder().decode([AppNotificationItem].self, from: data) {
+            history = arr
+        }
+    }
+
+    private func saveHistory(_ list: [AppNotificationItem]) {
+        if let data = try? JSONEncoder().encode(list) {
+            UserDefaults.standard.set(data, forKey: "appNotifyHistory")
+        }
     }
 
     func ensureCategory() {
@@ -142,4 +204,14 @@ struct PendingAlarm: Identifiable, Codable {
     let body: String
     let fireDate: Date
     let repeatPattern: String?   // none / daily / weekly / weekdays / custom
+}
+
+/// App 内通知中心历史条目
+struct AppNotificationItem: Identifiable, Codable {
+    let id: String
+    let kind: String      // notify / task
+    let title: String
+    let body: String
+    let date: Date
+    let fireAt: Date
 }

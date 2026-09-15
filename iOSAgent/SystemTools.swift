@@ -270,6 +270,40 @@ final class SystemTools {
             description: "重新加载 skills/ 目录下的所有用户技能。当用 write_file 写入新 SKILL.md 后调用，使其立即可用。",
             parameters: [:],
             required: []
+        )),
+        ToolSpec(type: "function", function: FunctionSpec(
+            name: "notify",
+            description: "发送一条软件通知（本地通知，自签分发无远程推送也能用）：到点弹出系统通知，并写入 App 内“通知中心”历史列表。用户说“提醒我一下”“发个通知”“到时通知我”时使用。",
+            parameters: [
+                "title": ParameterSpec(type: "string", description: "通知标题。"),
+                "body": ParameterSpec(type: "string", description: "通知内容。"),
+                "delay_seconds": ParameterSpec(type: "integer", description: "可选，多少秒后弹出；默认 0（约 1 秒后立刻弹出）。")
+            ],
+            required: ["title", "body"]
+        )),
+        ToolSpec(type: "function", function: FunctionSpec(
+            name: "schedule_task",
+            description: "安排一个后台定时任务：到指定时间弹出本地通知（重复可调），并写入 App 内“通知中心”。适合“每天/每周/工作日的某个时间做某某”“N分钟后执行某某”。用户打开 App 时会在通知中心看到待办，可 catch-up。",
+            parameters: [
+                "title": ParameterSpec(type: "string", description: "任务标题。"),
+                "body": ParameterSpec(type: "string", description: "任务内容/备注。"),
+                "fire_at": ParameterSpec(type: "string", description: "触发时间 ISO8601（如 2026-09-16T09:00:00+08:00）；或用 fire_in_minutes 相对分钟。"),
+                "fire_in_minutes": ParameterSpec(type: "integer", description: "相对几分钟后触发。"),
+                "repeat": ParameterSpec(type: "string", description: "重复规则：none（默认）/ daily / weekly / weekdays / custom。"),
+                "weekdays": ParameterSpec(type: "array", description: "custom 时指定星期 1=周日…7=周六。")
+            ],
+            required: ["title"]
+        )),
+        ToolSpec(type: "function", function: FunctionSpec(
+            name: "mcp",
+            description: "调用已配置的 MCP（Model Context Protocol）服务器：列出其工具（action=list）或执行某个工具（action=call）。HTTP / Streamable 传输优先，服务器在设置→MCP 里配置（多 endpoint）。当用户说“用某某 MCP 服务做…”或需要连接外部 MCP 工具时使用。",
+            parameters: [
+                "server": ParameterSpec(type: "string", description: "MCP 服务器名称（设置里配置的 name），或留空用第一个已启用的。"),
+                "action": ParameterSpec(type: "string", description: "list（列出可用工具）或 call（调用某个工具）。"),
+                "tool": ParameterSpec(type: "string", description: "action=call 时的工具名。"),
+                "arguments": ParameterSpec(type: "string", description: "action=call 时传给该工具的参数 JSON 字符串，如 {\"q\":\"hello\"}。")
+            ],
+            required: ["action"]
         ))
     ]
 
@@ -441,6 +475,9 @@ final class SystemTools {
             case "list_scheduled": return try await listScheduled(call)
             case "cancel_scheduled": return try await cancelScheduled(call)
             case "reload_skills": return reloadSkills(call)
+            case "notify": return try await notifyTool(call)
+            case "schedule_task": return try await scheduleTaskTool(call)
+            case "mcp": return try await mcpTool(call)
             case "web_request": return try await webRequest(call)
             case "generate_image": return try await generateImage(call)
             case "generate_speech": return try await generateSpeech(call)
@@ -1074,7 +1111,7 @@ final class SystemTools {
         guard let url = URL(string: urlString) else { return ToolResult(success: false, message: "URL 无效", data: nil) }
         var req = URLRequest(url: url)
         req.timeoutInterval = 30
-        req.setValue("Velos/9.0.22", forHTTPHeaderField: "User-Agent")
+        req.setValue("Velos/9.0.23", forHTTPHeaderField: "User-Agent")
         let (data, resp) = try await URLSession.shared.data(for: req)
         guard let http = resp as? HTTPURLResponse, (200...299).contains(http.statusCode), !data.isEmpty else {
             return ToolResult(success: false, message: "下载 SKILL.md 失败：HTTP \((resp as? HTTPURLResponse)?.statusCode ?? 0)", data: nil)
@@ -1297,6 +1334,159 @@ final class SystemTools {
         guard let id = string(call, "id") else { return ToolResult(success: false, message: "需要提供 id 或 cancel_all=true", data: nil) }
         await NotificationsManager.shared.cancelAlarm(id: id)
         return ToolResult(success: true, message: "已取消通知 \(id)", data: nil)
+    }
+
+    // MARK: - 软件通知 / 后台定时任务（自签无 APNs，本地通知）
+
+    private static func notifyTool(_ call: [String: AnyCodable]) async throws -> ToolResult {
+        let title = string(call, "title") ?? "通知"
+        let body = string(call, "body") ?? ""
+        let delay = max(0, int(call, "delay_seconds") ?? 0)
+        await NotificationsManager.shared.notify(title: title, body: body, delay: TimeInterval(delay))
+        let when = delay <= 0 ? "立即" : "\(delay) 秒后"
+        return ToolResult(success: true,
+                          message: "已发送软件通知「\(title)」（\(when)弹出），并记入 App 通知中心。",
+                          data: ["title": AnyCodable(title), "delay": AnyCodable(delay)])
+    }
+
+    private static func scheduleTaskTool(_ call: [String: AnyCodable]) async throws -> ToolResult {
+        let title = string(call, "title") ?? "定时任务"
+        let body = string(call, "body") ?? ""
+        let repeatPattern = string(call, "repeat") ?? "none"
+        let weekdays = (call["weekdays"]?.value as? [Int]) ?? []
+
+        var fireAt: Date?
+        if let mins = int(call, "fire_in_minutes"), mins > 0 {
+            fireAt = Date().addingTimeInterval(TimeInterval(mins) * 60)
+        } else if let iso = string(call, "fire_at"), let d = parseISO(iso) {
+            fireAt = d
+        }
+        guard let fireAt = fireAt else {
+            return ToolResult(success: false, message: "需要提供 fire_at(ISO8601) 或 fire_in_minutes", data: nil)
+        }
+        let id = try await NotificationsManager.shared.scheduleAlarm(
+            title: title, body: body, fireAt: fireAt, repeatPattern: repeatPattern, weekdays: weekdays)
+        NotificationsManager.shared.logNotify(kind: "task", title: title, body: body, fireAt: fireAt)
+        let repeatText = repeatPattern == "none" ? "" : "（重复：\(repeatPattern)）"
+        return ToolResult(success: true,
+                          message: "已安排定时任务「\(title)」，触发时间 \(formatDate(fireAt))\(repeatText)，已记入通知中心。",
+                          data: ["id": AnyCodable(id), "title": AnyCodable(title), "fire_at": AnyCodable(formatDate(fireAt)), "repeat": AnyCodable(repeatPattern)])
+    }
+
+    // MARK: - MCP 客户端（HTTP / Streamable JSON-RPC）
+
+    private static var mcpSessions: [String: String] = [:] // serverURL -> Mcp-Session-Id
+
+    private static func mcpTool(_ call: [String: AnyCodable]) async throws -> ToolResult {
+        let name = string(call, "server") ?? ""
+        let servers = SettingsStore.shared.mcpServers.filter { $0.enabled && !$0.url.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        guard !servers.isEmpty else {
+            return ToolResult(success: false, message: "尚未配置任何启用的 MCP 服务器，请到 设置 → MCP 添加。", data: nil)
+        }
+        let server = servers.first(where: { $0.name == name }) ?? servers[0]
+        let action = (string(call, "action") ?? "list").lowercased()
+        let method: String
+        var params: [String: Any] = [:]
+        if action == "list" {
+            method = "tools/list"
+        } else {
+            method = "tools/call"
+            guard let tool = string(call, "tool"), !tool.isEmpty else {
+                return ToolResult(success: false, message: "action=call 需要提供 tool 名称", data: nil)
+            }
+            var args: [String: Any] = [:]
+            if let aStr = string(call, "arguments"), let d = aStr.data(using: .utf8),
+               let j = try? JSONSerialization.jsonObject(with: d) as? [String: Any] {
+                args = j
+            }
+            params = ["name": tool, "arguments": args]
+        }
+        do {
+            let result = try await mcpJSONRPC(server: server, method: method, params: params)
+            let ok = result["result"] != nil
+            let summary = ok ? summarizeMCP(result)
+                : ((result["error"] as? [String: Any])?["message"] as? String) ?? "未知错误"
+            return ToolResult(success: ok,
+                              message: ok ? "MCP（\(server.name)）\(action) 成功：\(summary)" : "MCP（\(server.name)）失败：\(summary)",
+                              data: ["result": AnyCodable(result)])
+        } catch {
+            return ToolResult(success: false, message: "MCP 调用失败：\(error.localizedDescription)", data: nil)
+        }
+    }
+
+    private static func mcpJSONRPC(server: MCPServer, method: String, params: [String: Any]) async throws -> [String: Any] {
+        let key = server.url.trimmingCharacters(in: .whitespacesAndNewlines)
+        if mcpSessions[key] == nil {
+            // 首次先 initialize（忽略其返回，仅建立 session）
+            _ = try? await mcpRaw(server: server, method: "initialize", params: [
+                "protocolVersion": "2024-11-05",
+                "capabilities": [:],
+                "clientInfo": ["name": "Velos", "version": "9.0.23"]
+            ])
+        }
+        return try await mcpRaw(server: server, method: method, params: params)
+    }
+
+    private static func mcpRaw(server: MCPServer, method: String, params: [String: Any]) async throws -> [String: Any] {
+        guard let u = URL(string: server.url.trimmingCharacters(in: .whitespacesAndNewlines)),
+              let scheme = u.scheme, scheme == "http" || scheme == "https" else {
+            throw NSError(domain: "mcp", code: 0, userInfo: [NSLocalizedDescriptionKey: "MCP URL 无效"])
+        }
+        var req = URLRequest(url: u)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue("application/json, text/event-stream", forHTTPHeaderField: "Accept")
+        if let sid = mcpSessions[server.url.trimmingCharacters(in: .whitespacesAndNewlines)] {
+            req.setValue(sid, forHTTPHeaderField: "Mcp-Session-Id")
+        }
+        if !server.headers.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           let hData = server.headers.data(using: .utf8),
+           let hDict = try? JSONSerialization.jsonObject(with: hData) as? [String: Any] {
+            for (k, v) in hDict { req.setValue("\(v)", forHTTPHeaderField: k) }
+        }
+        let id = Int.random(in: 1...100000)
+        let body: [String: Any] = ["jsonrpc": "2.0", "id": id, "method": method, "params": params]
+        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        req.timeoutInterval = 60
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        if let sid = (resp as? HTTPURLResponse)?.allHeaderFields["Mcp-Session-Id"] as? String {
+            mcpSessions[server.url.trimmingCharacters(in: .whitespacesAndNewlines)] = sid
+        }
+        let status = (resp as? HTTPURLResponse)?.statusCode ?? 0
+        guard status < 400 else {
+            throw NSError(domain: "mcp", code: status, userInfo: [NSLocalizedDescriptionKey: "MCP HTTP \(status)"])
+        }
+        let text = String(data: data, encoding: .utf8) ?? ""
+        return parseMCPResponse(text)
+    }
+
+    private static func parseMCPResponse(_ text: String) -> [String: Any] {
+        if let d = text.data(using: .utf8), let j = try? JSONSerialization.jsonObject(with: d) as? [String: Any] {
+            return j
+        }
+        var last: [String: Any]?
+        for line in text.components(separatedBy: "\n") {
+            let t = line.trimmingCharacters(in: .whitespaces)
+            if t.hasPrefix("data:") {
+                let json = String(t.dropFirst(5)).trimmingCharacters(in: .whitespaces)
+                if let d = json.data(using: .utf8), let j = try? JSONSerialization.jsonObject(with: d) as? [String: Any] {
+                    last = j
+                }
+            }
+        }
+        return last ?? [:]
+    }
+
+    private static func summarizeMCP(_ result: [String: Any]) -> String {
+        if let tools = (result["result"] as? [String: Any])?["tools"] as? [[String: Any]] {
+            let names = tools.compactMap { $0["name"] as? String }
+            return "可用工具 \(names.count) 个：\(names.joined(separator: ", "))"
+        }
+        if let content = (result["result"] as? [String: Any])?["content"] as? [[String: Any]] {
+            let texts = content.compactMap { ($0["text"] as? String) ?? ($0["content"] as? String) }.joined(separator: "\n")
+            return texts.isEmpty ? "已执行" : String(texts.prefix(500))
+        }
+        return "已执行"
     }
 
     // MARK: - 通用 HTTP 请求（类 Manus 连接器，可编排任意外部服务）

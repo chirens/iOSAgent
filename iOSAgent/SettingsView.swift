@@ -18,6 +18,11 @@ struct SettingsView: View {
     @EnvironmentObject var settings: SettingsStore
     @State private var showClearCacheAlert = false
     @State private var cacheSizeText: String = ""
+    @State private var showMCPAdd = false
+    @State private var mcpDraftName = ""
+    @State private var mcpDraftURL = ""
+    @State private var mcpDraftTransport = "streamable"
+    @State private var mcpDraftHeaders = ""
 
     var body: some View {
         ScrollView {
@@ -91,6 +96,43 @@ struct SettingsView: View {
                         .buttonStyle(.plain)
                     }
 
+                    SettingsSection(title: "MCP 服务器") {
+                        if SettingsStore.shared.mcpServers.isEmpty {
+                            Text("还没有配置 MCP 服务器。点击右下「+」添加（HTTP / Streamable 传输）。")
+                                .font(.appCaption()).foregroundStyle(Color.appSecondaryText)
+                                .padding(.vertical, AppSpacing.sm)
+                        } else {
+                            ForEach(SettingsStore.shared.mcpServers) { s in
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(s.name).font(.appBody()).foregroundStyle(Color.appText)
+                                        Text(s.url).font(.appCaption()).foregroundStyle(Color.appSecondaryText)
+                                            .lineLimit(1)
+                                    }
+                                    Spacer()
+                                    if !s.enabled {
+                                        Text("已停用").font(.appCaption()).foregroundStyle(Color.appSecondaryText)
+                                    }
+                                    Button {
+                                        SettingsStore.shared.deleteMcpServer(s.id)
+                                    } label: {
+                                        Image(systemName: "trash").foregroundStyle(Color.appError)
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                                .padding(.vertical, AppSpacing.sm)
+                            }
+                        }
+                        Button {
+                            mcpDraftName = ""; mcpDraftURL = ""; mcpDraftTransport = "streamable"; mcpDraftHeaders = ""
+                            showMCPAdd = true
+                        } label: {
+                            Label("添加 MCP 服务器", systemImage: "plus.circle.fill")
+                                .font(.appBody()).foregroundStyle(Color.brandAccent)
+                        }
+                        .buttonStyle(.plain)
+                    }
+
                     SettingsSection(title: "协议与声明") {
                         SettingsLinkRow(icon: "doc.text.fill", color: .pastelTeal, title: "用户协议", destination: .legal(.userAgreement))
                         Divider().padding(.leading, 48)
@@ -114,6 +156,48 @@ struct SettingsView: View {
             Button("清除", role: .destructive) { clearCache() }
         } message: {
             Text("将删除所有生成的文件（文档 / 演示文稿 / 图片 / PDF 等）与临时附件，历史对话不会被删除。\n当前缓存：\(cacheSizeText)")
+        }
+        .sheet(isPresented: $showMCPAdd) {
+            NavigationStack {
+                Form {
+                    Section("基本信息") {
+                        TextField("名称（如 我的 MCP）", text: $mcpDraftName)
+                        TextField("端点 URL（https://.../mcp）", text: $mcpDraftURL)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                        Picker("传输方式", selection: $mcpDraftTransport) {
+                            Text("Streamable（推荐）").tag("streamable")
+                            Text("HTTP JSON-RPC").tag("http")
+                        }
+                    }
+                    Section("请求头（可选）") {
+                        TextField("{\"Authorization\":\"Bearer xxx\"}", text: $mcpDraftHeaders)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .font(.system(.caption, design: .monospaced))
+                    }
+                }
+                .navigationTitle("添加 MCP 服务器")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .navigationBarLeading) {
+                        Button("取消") { showMCPAdd = false }
+                    }
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Button("保存") {
+                            let s = MCPServer(id: UUID().uuidString,
+                                              name: mcpDraftName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "MCP 服务" : mcpDraftName.trimmingCharacters(in: .whitespacesAndNewlines),
+                                              url: mcpDraftURL.trimmingCharacters(in: .whitespacesAndNewlines),
+                                              transport: mcpDraftTransport,
+                                              headers: mcpDraftHeaders,
+                                              enabled: true)
+                            SettingsStore.shared.saveMcpServer(s)
+                            showMCPAdd = false
+                        }
+                    }
+                }
+            }
+            .presentationDetents([.medium])
         }
         .onAppear { calculateCacheSize() }
     }

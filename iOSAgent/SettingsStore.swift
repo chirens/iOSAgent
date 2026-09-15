@@ -41,6 +41,20 @@ struct APIProfile: Identifiable, Codable, Hashable {
     }
 }
 
+/// 一个 MCP（Model Context Protocol）服务器配置。HTTP / Streamable 传输优先。
+struct MCPServer: Identifiable, Codable, Hashable {
+    var id: String
+    var name: String
+    var url: String              // http(s) 端点，如 https://example.com/mcp
+    var transport: String       // "streamable"（默认，HTTP streamable）| "http"（普通 HTTP JSON-RPC）
+    var headers: String         // 附加请求头 JSON 字符串，如 {"Authorization":"Bearer xxx"}
+    var enabled: Bool
+
+    static var `default`: MCPServer {
+        MCPServer(id: UUID().uuidString, name: "我的 MCP 服务", url: "", transport: "streamable", headers: "", enabled: true)
+    }
+}
+
 /// 账号登录来源
 enum AccountProvider: String, CaseIterable {
     case email = "email"
@@ -119,6 +133,9 @@ class SettingsStore: ObservableObject {
     @Published var profiles: [APIProfile] = []
     @Published var activeProfileID: String = ""
 
+    /// MCP 服务器配置列表（多 endpoint）
+    @Published var mcpServers: [MCPServer] = []
+
     let eventStore = EKEventStore()
     let healthStore = HKHealthStore()
     let contactStore = CNContactStore()
@@ -139,7 +156,39 @@ class SettingsStore: ObservableObject {
     init() {
         loadCapabilities()
         loadProfiles()
+        loadMcpServers()
         refreshAuthStatuses()
+    }
+
+    // MARK: - MCP 服务器配置持久化
+
+    func loadMcpServers() {
+        if let data = UserDefaults.standard.data(forKey: "mcpServers"),
+           let decoded = try? JSONDecoder().decode([MCPServer].self, from: data) {
+            mcpServers = decoded
+        }
+    }
+
+    func persistMcpServers() {
+        if let data = try? JSONEncoder().encode(mcpServers) {
+            UserDefaults.standard.set(data, forKey: "mcpServers")
+        }
+    }
+
+    func saveMcpServer(_ s: MCPServer) {
+        var list = mcpServers
+        if let idx = list.firstIndex(where: { $0.id == s.id }) {
+            list[idx] = s
+        } else {
+            list.append(s)
+        }
+        mcpServers = list
+        persistMcpServers()
+    }
+
+    func deleteMcpServer(_ id: String) {
+        mcpServers = mcpServers.filter { $0.id != id }
+        persistMcpServers()
     }
 
     // MARK: - API 配置持久化
