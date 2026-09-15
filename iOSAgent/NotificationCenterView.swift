@@ -55,7 +55,7 @@ struct NotificationCenterView: View {
     private func sectionHeader(_ title: String, count: Int, icon: String) -> some View {
         HStack(spacing: AppSpacing.sm) {
             Image(systemName: icon).foregroundStyle(Color.brandAccent)
-            Text(title).font(.appHeadline()).foregroundStyle(Color.appText)
+            Text(title).font(.appTitle3()).foregroundStyle(Color.appPrimaryText)
             Text("\(count)").font(.appCaption()).foregroundStyle(Color.appSecondaryText)
                 .padding(.horizontal, 8).padding(.vertical, 2)
                 .background(Color.brandAccent.opacity(0.12), in: Capsule())
@@ -66,7 +66,7 @@ struct NotificationCenterView: View {
         HStack(alignment: .top, spacing: AppSpacing.md) {
             Image(systemName: icon).foregroundStyle(color).frame(width: 22)
             VStack(alignment: .leading, spacing: 4) {
-                Text(title).font(.appBody()).foregroundStyle(Color.appText)
+                Text(title).font(.appBody()).foregroundStyle(Color.appPrimaryText)
                 Text(subtitle).font(.appCaption()).foregroundStyle(Color.appSecondaryText)
             }
             Spacer()

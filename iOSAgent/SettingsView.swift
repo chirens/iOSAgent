@@ -105,7 +105,7 @@ struct SettingsView: View {
                             ForEach(SettingsStore.shared.mcpServers) { s in
                                 HStack {
                                     VStack(alignment: .leading, spacing: 2) {
-                                        Text(s.name).font(.appBody()).foregroundStyle(Color.appText)
+                                        Text(s.name).font(.appBody()).foregroundStyle(Color.appPrimaryText)
                                         Text(s.url).font(.appCaption()).foregroundStyle(Color.appSecondaryText)
                                             .lineLimit(1)
                                     }
