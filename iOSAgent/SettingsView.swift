@@ -600,12 +600,12 @@ struct CustomServicesView: View {
             SectionHeader("MCP 外部工具服务")
 
             VStack(alignment: .leading, spacing: AppSpacing.sm) {
-                Text("MCP 是一种通用接口标准，作用是把外部工具（比如联网搜索、查数据库、控制软件、读取文件等）接到对话里。配置后，AI 就能像调用“技能”一样调用你自己的服务。")
+                Text("MCP（Model Context Protocol，模型上下文协议）可以理解成给 AI 接的“外接插头”。一个 MCP 服务器就是一个独立的小服务程序，它把某一项能力（比如联网搜索、查你的数据库、发邮件、读本地文件）用统一格式暴露出来；Velos 连上它之后，你聊天时 AI 就能直接调用这些能力。")
                     .font(.appCaption())
                     .foregroundStyle(Color.appSecondaryText)
                     .lineLimit(nil)
 
-                Text("普通用户可忽略：如果你有自己的服务地址就添加；没有则完全不影响正常使用。")
+                Text("打个比方：就像给手机配了个蓝牙遥控器——遥控器本身是个“MCP 服务器”，手机连上后就能用遥控器去控制电视。你每添加一个 MCP 服务器，就多一种 Velos 能帮你做的事。没有自己的服务地址就完全不用管，不影响正常使用。")
                     .font(.appCaption2())
                     .foregroundStyle(Color.brandAccent)
                     .lineLimit(nil)

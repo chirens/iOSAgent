@@ -23,9 +23,11 @@ struct ChatView: View {
     @State private var awaitingVoice = false
     /// 发送后强制 TextField 重建以读取空值（根治 iOS 多行 TextField 焦点下不清空的已知坑）
     @State private var inputID = UUID()
-    /// v9.0.26 微信式语音切换：true = 语音模式（大横条按住说话），false = 键盘模式
+    /// 录音前输入框已有文字，语音识别结果追加在其后（避免覆盖用户已输入内容）
+    @State private var pendingVoiceBase = ""
+    /// v9.0.26 微信式语音切换（已弃用，保留声明避免改动面过大）
     @State private var isVoiceMode = false
-    /// 录音时当前选中的结束区域（none / cancel / transcribe）
+    /// 录音时当前选中的结束区域（已弃用）
     @State private var voiceDragZone: VoiceDragZone = .none
 
     // 文件附件（图片或任意本地文件）
@@ -205,103 +207,91 @@ struct ChatView: View {
                 skillInstallBanner(url: url)
             }
 
-            // v9.0.26 输入栏：微信式语音/键盘切换 + 大横条按住说话
+            // v9.0.27 输入栏：始终显示输入框 + 左侧小话筒（按住说话→系统实时流式识别→文字进输入框）
             HStack(spacing: 10) {
-                // 左侧：语音/键盘切换
-                Button {
-                    withAnimation(.easeInOut(duration: 0.15)) {
-                        isVoiceMode.toggle()
-                    }
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                } label: {
-                    Image(systemName: isVoiceMode ? "keyboard.fill" : "mic.fill")
-                        .font(.system(size: 22, weight: .semibold, design: .rounded))
-                        .foregroundStyle(Color.appSecondaryText)
-                        .frame(width: 36, height: 36)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-
-                if isVoiceMode {
-                    // 语音模式：大横条「按住 说话」
-                    Text("按住 说话")
-                        .font(.appBody().weight(.medium))
-                        .foregroundStyle(voice.isRecording ? Color.appSecondaryText : Color.appPrimaryText)
-                        .frame(maxWidth: .infinity, minHeight: 44)
-                        .background(voice.isRecording ? Color.brandAccent.opacity(0.15) : Color.appInputFill)
-                        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-                        .contentShape(Rectangle())
-                        .gesture(
-                            DragGesture(minimumDistance: 0)
-                                .onChanged { value in
-                                    if !voice.isRecording {
-                                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                                        awaitingVoice = true
-                                        voiceDragZone = .none
-                                        Task { await voice.start() }
-                                    } else {
-                                        voiceDragZone = voiceZone(for: value.translation)
-                                    }
-                                }
-                                .onEnded { _ in
-                                    let zone = voiceDragZone
-                                    voiceDragZone = .none
-                                    if voice.isRecording {
-                                        switch zone {
-                                        case .cancel:
-                                            voice.stop()
+                // 左侧：小话筒按钮，按住说话
+                Image(systemName: speech.isRecording ? "waveform" : "mic.fill")
+                    .font(.system(size: 20, weight: .semibold, design: .rounded))
+                    .foregroundStyle(speech.isRecording ? Color.brandAccent : Color.appSecondaryText)
+                    .frame(width: 36, height: 36)
+                    .background(speech.isRecording ? Color.brandAccent.opacity(0.15) : Color.clear)
+                    .clipShape(Circle())
+                    .contentShape(Circle())
+                    .gesture(
+                        DragGesture(minimumDistance: 0)
+                            .onChanged { _ in
+                                if !awaitingVoice {
+                                    awaitingVoice = true
+                                    pendingVoiceBase = input
+                                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                    Task {
+                                        do {
+                                            try await speech.startRecording()
+                                            // 竞态保护：若用户极快松手、start 完成时已不在录音态，立即停掉
+                                            if !awaitingVoice { speech.stopRecording() }
+                                        } catch {
                                             awaitingVoice = false
-                                        case .transcribe:
-                                            Task { await finishVoice(mode: .transcribe) }
-                                        default:
-                                            Task { await finishVoice(mode: .send) }
+                                            if speech.authorizationStatus != .authorized {
+                                                showMicError = true
+                                            } else {
+                                                errorText = "无法启动语音识别：\(error.localizedDescription)"
+                                            }
                                         }
                                     }
                                 }
-                        )
-                } else {
-                    // 键盘模式：附件缩略图 + 输入框
-                    HStack(spacing: 8) {
-                        if isLoadingAttachment {
-                            ProgressView()
-                                .frame(width: 32, height: 32)
-                                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                        } else if let selectedImage {
-                            Image(uiImage: selectedImage)
-                                .resizable()
-                                .scaledToFill()
-                                .frame(width: 32, height: 32)
-                                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                                .overlay(alignment: .topTrailing) {
-                                    Button { self.selectedImage = nil } label: {
-                                        Image(systemName: "xmark.circle.fill")
-                                            .font(.appCaption())
-                                            .foregroundStyle(.white)
-                                    }
+                            }
+                            .onEnded { _ in
+                                guard speech.isRecording else { awaitingVoice = false; return }
+                                speech.stopRecording()
+                                let t = speech.transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+                                if t.isEmpty {
+                                    input = pendingVoiceBase
+                                    errorText = "没有识别到语音内容，请重试（或在系统设置中为 Velos 开启“语音识别 / 麦克风”权限）"
                                 }
-                        }
+                                awaitingVoice = false
+                            }
+                    )
 
-                        TextField("说点什么…", text: $input, axis: .vertical)
-                            .font(.appBody())
-                            .foregroundStyle(Color.appPrimaryText)
-                            .lineLimit(1...5)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
-                            .id(inputID)
+                // 输入框（录音时显示实时识别文字）
+                HStack(spacing: 8) {
+                    if isLoadingAttachment {
+                        ProgressView()
+                            .frame(width: 32, height: 32)
+                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    } else if let selectedImage {
+                        Image(uiImage: selectedImage)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: 32, height: 32)
+                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            .overlay(alignment: .topTrailing) {
+                                Button { self.selectedImage = nil } label: {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .font(.appCaption())
+                                        .foregroundStyle(.white)
+                                }
+                            }
                     }
-                    .background(Color.appInputFill)
-                    .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-                }
 
-                if !isVoiceMode {
-                    Button(action: send) {
-                        Image(systemName: "arrow.up.circle.fill")
-                            .font(.system(size: 34, weight: .semibold, design: .rounded))
-                            .foregroundStyle(input.isEmpty ? Color.appSecondaryText : Color.brandAccent)
-                    }
-                    .disabled(input.isEmpty || isLoading)
-                    .buttonStyle(.plain)
+                    TextField(speech.isRecording ? "正在聆听…" : "说点什么…", text: $input, axis: .vertical)
+                        .font(.appBody())
+                        .foregroundStyle(Color.appPrimaryText)
+                        .lineLimit(1...5)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .id(inputID)
                 }
+                .background(Color.appInputFill)
+                .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+
+                // 发送按钮
+                Button(action: send) {
+                    Image(systemName: "arrow.up.circle.fill")
+                        .font(.system(size: 34, weight: .semibold, design: .rounded))
+                        .foregroundStyle(input.isEmpty ? Color.appSecondaryText : Color.brandAccent)
+                }
+                .disabled(input.isEmpty || isLoading)
+                .buttonStyle(.plain)
 
                 // 附件按钮始终放在右侧
                 Button {
@@ -320,13 +310,6 @@ struct ChatView: View {
             .background(Color.appBackground)
             .overlay(alignment: .top) {
                 Divider().background(Color.appSeparator).opacity(0.5)
-            }
-            .overlay {
-                // 录音时全屏微信式提示
-                if voice.isRecording {
-                    VoiceRecordingOverlay(zone: $voiceDragZone)
-                        .transition(.opacity)
-                }
             }
         }
         .id(conversationId)
@@ -418,8 +401,9 @@ struct ChatView: View {
             )
         }
         .onReceive(speech.$transcript) { text in
-            if !text.isEmpty && awaitingVoice {
-                self.input = text
+            if awaitingVoice {
+                let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                input = (pendingVoiceBase.isEmpty ? "" : pendingVoiceBase + " ") + t
             }
         }
     }
