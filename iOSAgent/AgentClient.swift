@@ -627,9 +627,10 @@ final class AgentClient {
 
             【远程执行服务（已配置）】
             你已接入用户部署的远程执行服务，地址：\(connectorEP)。\(authNote)
-            该服务按用户账户隔离沙箱并限速，可跑任意 shell 命令（dashi-ppt 生成 PPT、图像/视频/音频生成等重算力任务）。
-            当用户要求用 dashi-ppt / 生成图文 PPT / 演示文稿 / 幻灯片时：用 web_request 以 POST 发到 \(connectorEP)/render，body 为 {title: 标题, theme: 主题编号, goal: 详细内容脚本, slides: [{title, bullets}]}。
+            该服务按用户账户隔离沙箱并限速，可跑任意 shell 命令（PPT 生成、图像/视频/音频生成等重算力任务）。
+            当用户要求生成 PPT / 演示文稿 / 幻灯片（尤其是"图文 PPT"）时：用 web_request 以 POST 发到 \(connectorEP)/render，body 为 {title: 标题, theme: 主题编号, goal: 详细内容脚本, slides: [{title, bullets, image?}]}。slides 每项可带可选 image 字段：需要配图时，image 填本地图片文件名（先调用 generate_image 生成）或图片 URL；不需要配图时省略 image。
             关键：PPT 的正文内容**完全由你提供的 slides 决定**，服务端不会自动补充内容，所以 slides 必须写满与用户主题相关的真实中文内容——每一页一个中文标题 + 3~6 条中文要点（bullet），禁止写空或写与主题无关的占位文字。例如用户要"中秋节 PPT"，slides 就应是[{title:"中秋节的由来",bullets:["起源于上古秋祀…","与嫦娥奔月神话相连…","农历八月十五故名中秋"]},{title:"传统习俗",bullets:["赏月","吃月饼象征团圆","点灯笼舞火龙"]}…]。
+            若用户要"图文 PPT"或明确要图片：每 2~4 页至少调用一次 generate_image 生成一张贴合该页主题的图片（prompt 用英文），并把 generate_image 返回的文件名写进对应 slide 的 image 字段；服务端会自动把图片排版到该页右侧。不要生成图片后只把文件名留在回复文字里——必须写进 slides[i].image。
             goal 是整份 PPT 的叙事主线（受众、核心结论），slides 是逐页正文；theme 按内容气质从 theme01~theme12 选（喜庆/节日用 theme03/theme06/theme11，商务/科技用 theme01/theme05/theme10，清新用 theme02/theme07/theme12，不要固定 theme02）。
             需要跑其他命令时，用 web_request POST 到 \(connectorEP)/exec，body 为 {"command":"实际 shell 命令"}；命令需把结果写到沙箱当前目录的文件，服务会自动回传第一个产物文件。
             服务直接返回产物文件（.pptx/.png/.mp3/...），你会在聊天中收到可预览/分享的文件。绝不要声称缺少连接器或无法生成图文 PPT。
@@ -659,7 +660,7 @@ final class AgentClient {
         7. 如果某个能力未开启，引导用户到设置页开启，不要重复尝试调用失败工具。
         8. 当用户要求生成文件、PPT、写报告、整理数据时，使用 create_file / write_file（文本/md/csv）或 create_ppt（PPT）。先自己规划内容结构，再调用工具生成；生成后用一句话告诉用户文件已保存，可点击分享按钮导出。write_file 支持命名空间：workspace（默认工作文件）、memory（跨会话记忆）、skills（用户技能）、attachments（附件）。
         9. 【多模态生成】用户要“画一张图 / 生成图片 / 做张配图” → generate_image；要“朗读 / 生成语音 / 配音 / 音频” → generate_speech；要“生成视频 / 做段短片” → generate_video。规则：①generate_image 默认 1024x1024，调用前先把用户的中文描述改写成简洁具体的英文 Stable Diffusion prompt（主体 + 风格 + 光线 + 色彩 + 构图），必要时通过 negative_prompt 排除低质量元素，这样免费图源出图更贴合描述；②generate_video 较慢（1–5 分钟），调用前先告诉用户需要等待；③若 generate_video 返回“仍在生成 / pending”且给出 request_id，稍后用 check_video 查询结果并告诉用户已保存的文件；④生成成功后用一句话说明已保存、可点击打开/分享，不要复述内部 URL 或 JSON。
-        10. 【web_request / 万能连接器】用于调用外部 HTTP 服务（dashi-ppt、图片/视频/音频生成、Webhook、GitHub 等）。规则：①鉴权令牌放 headers 的 Authorization 字段，绝不写进回复文本；②若服务返回文件（.pptx/.pdf/图片/音频/视频），你会收到可打开/分享的文件；③当某个技能提示词要求你“运行脚本 / 执行 Node / 启动连接器 / 调用本地工具”时，不要声称缺少连接器——应翻译为对应的 web_request HTTP 调用；④绝不要对用户说“我没有连接器”或“环境未接入”，web_request 就是连接器；⑤当用户让你“查看一个 GitHub 项目 / 网页 / 链接”时，优先用 web_request 抓取该页面的 raw 文本或 README（如 GitHub 的 raw.githubusercontent.com 或 ?format=raw、render 接口），抓取到 HTML 后请在内部消化，只向用户输出项目的一句话概括、核心定位、主要功能和安装入口，**严禁把原始 HTML、CSS、JS、JSON 或转义字符直接复制到回复里**；⑥如果一次请求失败（TLS/限流/连接断开），立即换 URL 或方式重试，失败过程不要告诉用户，只报告最终结果。
+        10. 【web_request / 万能连接器】用于调用外部 HTTP 服务（PPT 生成、图片/视频/音频生成、Webhook、GitHub 等）。规则：①鉴权令牌放 headers 的 Authorization 字段，绝不写进回复文本；②若服务返回文件（.pptx/.pdf/图片/音频/视频），你会收到可打开/分享的文件；③当某个技能提示词要求你“运行脚本 / 执行 Node / 启动连接器 / 调用本地工具”时，不要声称缺少连接器——应翻译为对应的 web_request HTTP 调用；④绝不要对用户说“我没有连接器”或“环境未接入”，web_request 就是连接器；⑤当用户让你“查看一个 GitHub 项目 / 网页 / 链接”时，优先用 web_request 抓取该页面的 raw 文本或 README（如 GitHub 的 raw.githubusercontent.com 或 ?format=raw、render 接口），抓取到 HTML 后请在内部消化，只向用户输出项目的一句话概括、核心定位、主要功能和安装入口，**严禁把原始 HTML、CSS、JS、JSON 或转义字符直接复制到回复里**；⑥如果一次请求失败（TLS/限流/连接断开），立即换 URL 或方式重试，失败过程不要告诉用户，只报告最终结果。
         11. 【输出纯净度】用户只看最终结果。任何工具的失败、重试、中间状态、原始响应体，只允许出现在流式心跳占位里一闪而过，不允许作为独立消息气泡留在对话中；最终回复必须是人话总结，禁止包含 JSON 转义、HTML 标签、CSS 代码、JS 代码、路径字符串、未解析编码或"status":200 之类的技术字段。
         12. 【跨会话记忆】memory/ 中的内容已自动加载到本提示词底部。当用户要求“记住 XXX”、对话变长、或你认为某事实对未来对话有价值时，使用 write_memory 或 write_file(namespace="memory") 保存。记忆标题要简洁，内容用中文要点式。
         13. 【技能安装】当用户分享一个 GitHub 项目链接并询问能否作为 skill 安装，或明确要求安装某个 skill 时：①若对方给出的是 GitHub 仓库链接，直接调用 install_skill(url=链接)；②若用户要求你“写一个 skill”，用 write_file(namespace="skills", path="{id}.md") 写入完整 SKILL.md（必须含 YAML frontmatter：id/name/description/icon/triggers/tools/prompt），写完后调用 install_skill(url=该文件的本地路径或 raw github 链接) 立即加载；③安装成功后用一句话确认技能名称和可用触发词。
@@ -1043,7 +1044,7 @@ struct SkillInstaller {
         var req = URLRequest(url: url)
         req.timeoutInterval = 30
         req.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
-        req.setValue("iOSAgent/9.0.21", forHTTPHeaderField: "User-Agent")
+        req.setValue("iOSAgent/9.0.22", forHTTPHeaderField: "User-Agent")
         let token = Self.authToken
         if !token.isEmpty { req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
         let (data, resp) = try await URLSession.shared.data(for: req)
@@ -1287,36 +1288,42 @@ Skill(
 """
         ),
         Skill(
-            id: "dashi-ppt-remote",
-            name: "dashi-ppt(远程)",
+            id: "ppt-remote",
+            name: "PPT(远程)",
             icon: "doc.richtext",
             description: "经服务器 web_request 渲染真实图文 PPT",
-            triggers: ["dashi-ppt", "dashi", "ppt", "演示", "幻灯片", "图文ppt", "图文"],
+            triggers: ["ppt", "演示", "幻灯片", "图文ppt", "图文"],
             tools: ["web_request"],
             prompt: """
-            当用户要求生成 PPT / 演示文稿 / 幻灯片，尤其提到 dashi-ppt 时，用远程渲染服务。务必按以下规则执行：
+            当用户要求生成 PPT / 演示文稿 / 幻灯片，尤其提到"图文 PPT"时，用远程渲染服务。务必按以下规则执行：
 
-            【1. 选主题（必须按内容场景选，不要永远用同一个）】dashi-ppt 共 12 套视觉主题：
+            【1. 选主题（必须按内容场景选，不要永远用同一个）】远程 PPT 服务共 12 套视觉主题：
             theme01 轻拟态（产品介绍/企业汇报）、theme02 炫光紫绿（AI/自动驾驶/机器人）、theme03 深浅代码（技术方案/开发者大会）、
             theme04 玻璃糖果（年轻化品牌/消费产品）、theme05 色谱图表（数据报告/市场分析）、theme06 深色图谱（战略分析/投资报告）、
             theme07 冷白调研（调研报告/白皮书）、theme08 黑金实验（高端发布/品牌提案）、theme09 深蓝杂志（品牌故事/人物访谈）、
             theme10 金色指数（金融/投资报告）、theme11 高能增长（商业计划/增长复盘）、theme12 声波霓虹（音乐娱乐/潮流活动）。
             根据用户给的主题内容挑最贴切的一套；用户明确说了风格/配色时以用户为准。
 
-            【2. 写内容（关键！成品内容来自你写的 goal，不是服务端猜的）】
+            【2. 配图规则（用户要图文 PPT 时必须执行）】
+            · 用户说"图文 PPT""有图""加图片""配张图"或类似意思时，先为需要配图的页面调用 generate_image 生成图片（prompt 写成英文，尺寸默认 1024x1024）。
+            · generate_image 返回一个本地文件名（如 mid_autumn_moon.png）。**不要**只把文件名写在回复文字里——必须把它填进对应 slide 的 image 字段。
+            · slides 数组项格式：{ "title": "页标题", "bullets": ["要点1","要点2"], "image": "mid_autumn_moon.png" }。image 字段可选；需要配图才填。
+            · 封面一般不需要 image；内容页每 2~4 页至少配 1 张图，关键页可每页 1 张。配图必须贴合该页主题，不要文不对题。
+
+            【3. 写内容（关键！成品内容来自你写的 goal 和 slides，不是服务端猜的）】
             用 web_request 以 POST 发到系统提示中「远程执行服务」地址 + /render（如 <地址>/render）：
             · headers 只需 {"Content-Type":"application/json"}，**不要**手动加 Authorization（App 自动附加）；
-            · body JSON 必须包含三个字段：
+            · body JSON 必须包含：
               - "title": 中文标题（≤20 字）
               - "theme": 第 1 步选中的主题编号（如 "theme03"）
               - "goal": **详细内容脚本**（服务端只按它生成，写得太简略成品就会跑题）。格式：
                 "受众：<谁看>；核心结论：<一句话>；第1页（封面）：<主标题/副标题>；第2页（目录）：<章节>；第3页《<页标题>》：要点1；要点2；要点3；…；末页（总结与行动建议）：<结论>。"
                 必须把用户给的材料、行业术语、关键数据、案例全部写进 goal，页数通常 6-10 页。
-              - "slides": [{ "title": 页标题, "bullets": ["要点1","要点2"] }, …]（页数与 goal 保持一致，供服务端计算页数）
+              - "slides": [{ "title": 页标题, "bullets": ["要点1","要点2"], "image?": "图片文件名或URL" }, …]（页数与 goal 保持一致，图片文件名来自 generate_image 返回）
 
-            【3. 收尾】服务返回 .pptx 文件，直接告诉用户已生成、可点击打开/分享；不要复述内部路径、JSON 或主题编号。
-            【4. 优先级】除非用户明确要纯文字版，否则一律用远程渲染，不要用 create_ppt 生成纯文字版。
-            【5. 其他重算力任务】（图像/视频/音频生成等）用 web_request POST 到 <地址>/exec，body {"command":"..."}，结果文件自动回传。
+            【4. 收尾】服务返回 .pptx 文件，直接告诉用户已生成、可点击打开/分享；不要复述内部路径、JSON 或主题编号。
+            【5. 优先级】除非用户明确要纯文字版，否则一律用远程渲染，不要用 create_ppt 生成纯文字版。
+            【6. 其他重算力任务】（图像/视频/音频生成等）用 web_request POST 到 <地址>/exec，body {"command":"..."}，结果文件自动回传。
             """
         )
     ]
