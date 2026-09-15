@@ -423,6 +423,7 @@ struct ChatView: View {
             }
         }
     }
+    }
 
     // MARK: - 添加到对话面板
 
