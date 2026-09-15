@@ -94,8 +94,13 @@ final class SpeechRecognizer: NSObject, ObservableObject {
         transcript = ""
     }
 
-    /// 对录音文件做一次性识别（服务端失败后的回退）
+    /// 对录音文件做一次性识别：优先本地 WhisperKit 模型（离线、质量更好），失败回退系统 SFSpeechRecognizer。
     func transcribeFile(url: URL) async throws -> String {
+        // 1) 本地 WhisperKit（离线，不依赖 Apple 伺服或云端）
+        if let text = try? await WhisperTranscriber.shared.transcribe(audioURL: url), !text.isEmpty {
+            return text
+        }
+        // 2) 回退：系统语音识别（需联网到 Apple 伺服，或设备支持 on-device）
         guard await requestAuthorization() else { throw RecognizerError.notAuthorized }
         guard let recognizer = speechRecognizer, recognizer.isAvailable else { throw RecognizerError.unavailable }
 

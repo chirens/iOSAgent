@@ -7,6 +7,7 @@ enum ChatRoute: Hashable {
     case chat(UUID)
     case reminders
     case filesHistory
+    case notifications
 }
 
 struct ContentView: View {
@@ -115,6 +116,8 @@ struct ChatRootView: View {
                         RemindersView()
                     case .filesHistory:
                         FilesHistoryView()
+                    case .notifications:
+                        NotificationCenterView()
                     }
                 }
                 .overlay(alignment: .leading) {
@@ -824,6 +827,10 @@ struct SideMenuOverlay: View {
                 SideMenuSection(title: "效率") {
                     SideMenuButton(icon: "checkmark.square.fill", color: .pastelGreen, title: "待办 / 提醒") {
                         path.append(ChatRoute.reminders)
+                        isPresented = false
+                    }
+                    SideMenuButton(icon: "bell.fill", color: .pastelBlue, title: "通知中心") {
+                        path.append(ChatRoute.notifications)
                         isPresented = false
                     }
                 }

@@ -660,7 +660,7 @@ final class AgentClient {
         7. 如果某个能力未开启，引导用户到设置页开启，不要重复尝试调用失败工具。
         8. 当用户要求生成文件、PPT、写报告、整理数据时，使用 create_file / write_file（文本/md/csv）或 create_ppt（PPT）。先自己规划内容结构，再调用工具生成；生成后用一句话告诉用户文件已保存，可点击分享按钮导出。write_file 支持命名空间：workspace（默认工作文件）、memory（跨会话记忆）、skills（用户技能）、attachments（附件）。
         9. 【多模态生成】用户要“画一张图 / 生成图片 / 做张配图” → generate_image；要“朗读 / 生成语音 / 配音 / 音频” → generate_speech；要“生成视频 / 做段短片” → generate_video。规则：①generate_image 默认 1024x1024，调用前先把用户的中文描述改写成简洁具体的英文 Stable Diffusion prompt（主体 + 风格 + 光线 + 色彩 + 构图），必要时通过 negative_prompt 排除低质量元素，这样免费图源出图更贴合描述；②generate_video 较慢（1–5 分钟），调用前先告诉用户需要等待；③若 generate_video 返回“仍在生成 / pending”且给出 request_id，稍后用 check_video 查询结果并告诉用户已保存的文件；④生成成功后用一句话说明已保存、可点击打开/分享，不要复述内部 URL 或 JSON。
-        10. 【web_request / 万能连接器】用于调用外部 HTTP 服务（PPT 生成、图片/视频/音频生成、Webhook、GitHub 等）。规则：①鉴权令牌放 headers 的 Authorization 字段，绝不写进回复文本；②若服务返回文件（.pptx/.pdf/图片/音频/视频），你会收到可打开/分享的文件；③当某个技能提示词要求你“运行脚本 / 执行 Node / 启动连接器 / 调用本地工具”时，不要声称缺少连接器——应翻译为对应的 web_request HTTP 调用；④绝不要对用户说“我没有连接器”或“环境未接入”，web_request 就是连接器；⑤当用户让你“查看一个 GitHub 项目 / 网页 / 链接”时，优先用 web_request 抓取该页面的 raw 文本或 README（如 GitHub 的 raw.githubusercontent.com 或 ?format=raw、render 接口），抓取到 HTML 后请在内部消化，只向用户输出项目的一句话概括、核心定位、主要功能和安装入口，**严禁把原始 HTML、CSS、JS、JSON 或转义字符直接复制到回复里**；⑥如果一次请求失败（TLS/限流/连接断开），立即换 URL 或方式重试，失败过程不要告诉用户，只报告最终结果。
+        10. 【web_request / 万能连接器】用于调用外部 HTTP 服务（PPT 生成、图片/视频/音频生成、Webhook、GitHub 等）。规则：①鉴权令牌放 headers 的 Authorization 字段，绝不写进回复文本；②若服务返回文件（.pptx/.pdf/图片/音频/视频），你会收到可打开/分享的文件；③当某个技能提示词要求你“运行脚本 / 执行 Node / 启动连接器 / 调用本地工具”时，不要声称缺少连接器——应翻译为对应的 web_request HTTP 调用；④绝不要对用户说“我没有连接器”或“环境未接入”，web_request 就是连接器；⑤当用户让你“查看一个 GitHub 项目 / 网页 / 链接”时，优先用 web_request 抓取该页面的 raw 文本或 README（如 GitHub 的 raw.githubusercontent.com 或 ?format=raw、render 接口），抓取到 HTML 后请在内部消化，只向用户输出项目的一句话概括、核心定位、主要功能和安装入口，**严禁把原始 HTML、CSS、JS、JSON 或转义字符直接复制到回复里**；⑥如果一次请求失败（TLS/限流/连接断开），立即换 URL 或方式重试，失败过程不要告诉用户，只报告最终结果。⑦需要连接用户在设置里配置的 MCP（Model Context Protocol）服务器时，用 mcp 工具（action=list 列出工具 / action=call 调用工具），不要自己手写 MCP 协议；⑧想给用户发本地通知或安排后台定时任务时，用 notify（发通知）/ schedule_task（定时任务）工具，二者都会写入 App 内通知中心。
         11. 【输出纯净度】用户只看最终结果。任何工具的失败、重试、中间状态、原始响应体，只允许出现在流式心跳占位里一闪而过，不允许作为独立消息气泡留在对话中；最终回复必须是人话总结，禁止包含 JSON 转义、HTML 标签、CSS 代码、JS 代码、路径字符串、未解析编码或"status":200 之类的技术字段。
         12. 【跨会话记忆】memory/ 中的内容已自动加载到本提示词底部。当用户要求“记住 XXX”、对话变长、或你认为某事实对未来对话有价值时，使用 write_memory 或 write_file(namespace="memory") 保存。记忆标题要简洁，内容用中文要点式。
         13. 【技能安装】当用户分享一个 GitHub 项目链接并询问能否作为 skill 安装，或明确要求安装某个 skill 时：①若对方给出的是 GitHub 仓库链接，直接调用 install_skill(url=链接)；②若用户要求你“写一个 skill”，用 write_file(namespace="skills", path="{id}.md") 写入完整 SKILL.md（必须含 YAML frontmatter：id/name/description/icon/triggers/tools/prompt），写完后调用 install_skill(url=该文件的本地路径或 raw github 链接) 立即加载；③安装成功后用一句话确认技能名称和可用触发词。
@@ -1044,7 +1044,7 @@ struct SkillInstaller {
         var req = URLRequest(url: url)
         req.timeoutInterval = 30
         req.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
-        req.setValue("iOSAgent/9.0.22", forHTTPHeaderField: "User-Agent")
+        req.setValue("iOSAgent/9.0.23", forHTTPHeaderField: "User-Agent")
         let token = Self.authToken
         if !token.isEmpty { req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
         let (data, resp) = try await URLSession.shared.data(for: req)
