@@ -264,6 +264,12 @@ struct ChatView: View {
             .overlay(alignment: .top) {
                 Divider().background(Color.appSeparator).opacity(0.5)
             }
+            .overlay(alignment: .center) {
+                if voice.isRecording {
+                    VoiceRecordingOverlay()
+                        .transition(.opacity)
+                }
+            }
         }
         .id(conversationId)
         .navigationTitle(conversationTitle)
@@ -757,6 +763,20 @@ struct ChatView: View {
         guard let url = voice.stop() else { awaitingVoice = false; return }
         defer { try? FileManager.default.removeItem(at: url) }
 
+        // 1) 本地 WhisperKit 优先：离线、中文优化、不消耗 API 额度
+        do {
+            let text = try await WhisperTranscriber.shared.transcribe(audioURL: url)
+            guard !text.isEmpty else {
+                throw NSError(domain: "Voice", code: 0, userInfo: [NSLocalizedDescriptionKey: "未能识别到语音内容"])
+            }
+            if awaitingVoice { input = text }
+            awaitingVoice = false
+            return
+        } catch {
+            // 继续 fallback
+        }
+
+        // 2) 云端 OpenAI 兼容 /audio/transcriptions
         do {
             let text = try await AgentClient.shared.transcribe(audioURL: url)
             guard !text.isEmpty else {
@@ -764,21 +784,27 @@ struct ChatView: View {
             }
             if awaitingVoice { input = text }
             awaitingVoice = false
+            return
         } catch {
-            // 云端转写失败 → 回退本机语音识别
-            do {
-                let text = try await speech.transcribeFile(url: url)
-                if awaitingVoice { input = text }
-                awaitingVoice = false
-            } catch {
-                if speech.authorizationStatus != .authorized {
-                    showMicError = true
-                    errorText = "语音识别需要授权：请在系统设置中为「Velos」开启“语音识别”权限。另外，当前云端 API（如 DeepSeek）通常不支持音频转写，建议改用支持 /audio/transcriptions 的接口（如 OpenAI）以获得更好效果。"
-                } else {
-                    errorText = "语音识别失败：\(error.localizedDescription)"
-                }
-                awaitingVoice = false
+            // 继续 fallback
+        }
+
+        // 3) 系统语音识别（SFSpeechRecognizer）
+        do {
+            let text = try await speech.transcribeFile(url: url)
+            guard !text.isEmpty else {
+                throw NSError(domain: "Voice", code: 0, userInfo: [NSLocalizedDescriptionKey: "未能识别到语音内容"])
             }
+            if awaitingVoice { input = text }
+            awaitingVoice = false
+        } catch {
+            if speech.authorizationStatus != .authorized {
+                showMicError = true
+                errorText = "语音识别需要授权：请在系统设置中为「Velos」开启“语音识别”权限。"
+            } else {
+                errorText = "语音识别失败：\(error.localizedDescription)"
+            }
+            awaitingVoice = false
         }
     }
 
@@ -932,22 +958,57 @@ struct VoiceButton: View {
     @ObservedObject var voice: VoiceRecorder
     let onStart: () -> Void
     let onFinish: () -> Void
+    @State private var isPressed = false
 
     var body: some View {
         Image(systemName: voice.isRecording ? "waveform.circle.fill" : "mic.fill")
-            .font(.system(size: 18, weight: .semibold, design: .rounded))
+            .font(.system(size: 24, weight: .semibold, design: .rounded))
             .foregroundStyle(voice.isRecording ? Color.appError : Color.brandAccent)
-            .padding(8)
+            .frame(width: 44, height: 44)
             .background(voice.isRecording ? Color.appError.opacity(0.12) : Color.brandAccent.opacity(0.12))
             .clipShape(Circle())
-            .onLongPressGesture(minimumDuration: .infinity, perform: {}, onPressingChanged: { pressing in
-                if pressing {
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    onStart()
-                } else {
-                    onFinish()
-                }
-            })
+            .contentShape(Rectangle())
+            .scaleEffect(isPressed ? 0.9 : 1.0)
+            .animation(.easeInOut(duration: 0.15), value: isPressed)
+            // 同时支持"按住说话（微信式）"和"点按切换"，并加大点按区域
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { _ in
+                        if !voice.isRecording {
+                            isPressed = true
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            onStart()
+                        }
+                    }
+                    .onEnded { _ in
+                        isPressed = false
+                        if voice.isRecording { onFinish() }
+                    }
+            )
+    }
+}
+
+/// 录音时的全屏提示遮罩，模仿微信语音的交互反馈
+struct VoiceRecordingOverlay: View {
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.35).ignoresSafeArea()
+            VStack(spacing: 16) {
+                Image(systemName: "mic.fill")
+                    .font(.system(size: 56, weight: .semibold))
+                    .foregroundStyle(.white)
+                Text("正在录音，松开发送")
+                    .font(.appTitle3())
+                    .foregroundStyle(.white)
+                Text("上滑取消")
+                    .font(.appCaption())
+                    .foregroundStyle(.white.opacity(0.8))
+            }
+            .padding(.horizontal, 40)
+            .padding(.vertical, 28)
+            .background(.ultraThinMaterial)
+            .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        }
     }
 }
 

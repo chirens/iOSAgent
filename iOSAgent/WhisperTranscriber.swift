@@ -57,7 +57,8 @@ final class WhisperTranscriber: ObservableObject {
             throw error
         }
         await MainActor.run { self.statusText = "正在识别语音…" }
-        let results = try await wk.transcribe(audioPath: audioURL.path)
+        let decodeOptions = DecodingOptions(language: "zh")
+        let results = try await wk.transcribe(audioPath: audioURL.path, decodeOptions: decodeOptions)
         let text = results.map { $0.text }.joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
         await MainActor.run { self.isBusy = false; self.statusText = "" }
         return text

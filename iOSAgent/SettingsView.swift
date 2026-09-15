@@ -96,9 +96,9 @@ struct SettingsView: View {
                         .buttonStyle(.plain)
                     }
 
-                    SettingsSection(title: "MCP 服务器") {
+                    SettingsSection(title: "MCP 外部工具服务（可选）") {
                         if SettingsStore.shared.mcpServers.isEmpty {
-                            Text("还没有配置 MCP 服务器。点击右下「+」添加（HTTP / Streamable 传输）。")
+                            Text("还没有配置 MCP 服务。没有自己的服务时可忽略，不影响正常使用。")
                                 .font(.appCaption()).foregroundStyle(Color.appSecondaryText)
                                 .padding(.vertical, AppSpacing.sm)
                         } else {

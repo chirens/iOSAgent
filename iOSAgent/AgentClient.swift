@@ -461,6 +461,9 @@ final class AgentClient {
         append("Content-Disposition: form-data; name=\"model\"\r\n\r\n")
         append("\(model)\r\n")
         append("--\(boundary)\r\n")
+        append("Content-Disposition: form-data; name=\"language\"\r\n\r\n")
+        append("zh\r\n")
+        append("--\(boundary)\r\n")
         append("Content-Disposition: form-data; name=\"file\"; filename=\"recording.m4a\"\r\n")
         append("Content-Type: audio/m4a\r\n\r\n")
         body.append(try Data(contentsOf: audioURL))
@@ -1044,7 +1047,7 @@ struct SkillInstaller {
         var req = URLRequest(url: url)
         req.timeoutInterval = 30
         req.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
-        req.setValue("iOSAgent/9.0.23", forHTTPHeaderField: "User-Agent")
+        req.setValue("iOSAgent/9.0.24", forHTTPHeaderField: "User-Agent")
         let token = Self.authToken
         if !token.isEmpty { req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
         let (data, resp) = try await URLSession.shared.data(for: req)
@@ -1305,10 +1308,11 @@ Skill(
             根据用户给的主题内容挑最贴切的一套；用户明确说了风格/配色时以用户为准。
 
             【2. 配图规则（用户要图文 PPT 时必须执行）】
-            · 用户说"图文 PPT""有图""加图片""配张图"或类似意思时，先为需要配图的页面调用 generate_image 生成图片（prompt 写成英文，尺寸默认 1024x1024）。
+            · 用户说"图文 PPT""有图""加图片""配张图"或类似意思时，除封面/目录页外，其余每个内容页都必须有 image。调用 generate_image 为每页生成配图（prompt 写成英文，尺寸默认 1024x1024）。
             · generate_image 返回一个本地文件名（如 mid_autumn_moon.png）。**不要**只把文件名写在回复文字里——必须把它填进对应 slide 的 image 字段。
-            · slides 数组项格式：{ "title": "页标题", "bullets": ["要点1","要点2"], "image": "mid_autumn_moon.png" }。image 字段可选；需要配图才填。
-            · 封面一般不需要 image；内容页每 2~4 页至少配 1 张图，关键页可每页 1 张。配图必须贴合该页主题，不要文不对题。
+            · slides 数组项格式：{ "title": "页标题", "bullets": ["要点1","要点2"], "image": "mid_autumn_moon.png" }。image 字段必填（封面/目录可空）。
+            · 封面和目录页可省略 image；每个正文内容页必须带 image。如生成图片失败，该 slide 的 image 可空，但优先保证每页有图。
+            · 配图必须贴合该页主题，不要文不对题。
 
             【3. 写内容（关键！成品内容来自你写的 goal 和 slides，不是服务端猜的）】
             用 web_request 以 POST 发到系统提示中「远程执行服务」地址 + /render（如 <地址>/render）：
