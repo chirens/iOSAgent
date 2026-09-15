@@ -25,6 +25,8 @@ struct ChatView: View {
     @State private var inputID = UUID()
     /// 录音前输入框已有文字，语音识别结果追加在其后（避免覆盖用户已输入内容）
     @State private var pendingVoiceBase = ""
+    /// 本地 WhisperKit 识别进行中（用于输入栏占位提示，治“说话中无任何提示”）
+    @State private var voiceBusy = false
     /// v9.0.26 微信式语音切换（已弃用，保留声明避免改动面过大）
     @State private var isVoiceMode = false
     /// 录音时当前选中的结束区域（已弃用）
