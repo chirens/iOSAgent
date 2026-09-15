@@ -118,7 +118,7 @@ final class SystemTools {
             description: "根据标题和每页要点生成 .pptx 文件并保存到 App 文档目录，可在聊天中分享。",
             parameters: [
                 "title": ParameterSpec(type: "string", description: "PPT 标题，也会作为文件名（无需 .pptx 后缀）。"),
-                "slides": ParameterSpec(type: "array", description: "幻灯片数组，每项为对象：{title: 本页标题, bullets: [要点1, 要点2, ...]}")
+                "slides": ParameterSpec(type: "array", description: "幻灯片数组，每项为对象：{title: 本页标题, bullets: [要点1, 要点2, ...], image?: 图片文件名或 URL（可选，需配图时填写）}")
             ],
             required: ["title", "slides"]
         )),
@@ -162,7 +162,7 @@ final class SystemTools {
         )),
         ToolSpec(type: "function", function: FunctionSpec(
             name: "web_request",
-            description: "向任意 HTTP(S) 接口发起请求并返回结果，用于调用外部服务（如 dashi-ppt、图像/视频/音频生成 API、Webhook 等）。返回状态码与响应体；若响应为二进制文件（或指定 save_as），自动保存到 App 文档并可在聊天中打开/分享。这是【始终可用】的“万能连接器”：无论是否开启系统权限都能调用。仅在用户明确要求调用某外部服务时使用，密钥放 headers，不要写进回复文本。",
+            description: "向任意 HTTP(S) 接口发起请求并返回结果，用于调用外部服务（如 PPT 生成、图像/视频/音频生成 API、Webhook 等）。返回状态码与响应体；若响应为二进制文件（或指定 save_as），自动保存到 App 文档并可在聊天中打开/分享。这是【始终可用】的“万能连接器”：无论是否开启系统权限都能调用。仅在用户明确要求调用某外部服务时使用，密钥放 headers，不要写进回复文本。",
             parameters: [
                 "method": ParameterSpec(type: "string", description: "请求方法 GET/POST/PUT/DELETE/PATCH，默认 GET。"),
                 "url": ParameterSpec(type: "string", description: "完整请求地址，必须 http(s) 开头。"),
@@ -1074,7 +1074,7 @@ final class SystemTools {
         guard let url = URL(string: urlString) else { return ToolResult(success: false, message: "URL 无效", data: nil) }
         var req = URLRequest(url: url)
         req.timeoutInterval = 30
-        req.setValue("Velos/9.0.21", forHTTPHeaderField: "User-Agent")
+        req.setValue("Velos/9.0.22", forHTTPHeaderField: "User-Agent")
         let (data, resp) = try await URLSession.shared.data(for: req)
         guard let http = resp as? HTTPURLResponse, (200...299).contains(http.statusCode), !data.isEmpty else {
             return ToolResult(success: false, message: "下载 SKILL.md 失败：HTTP \((resp as? HTTPURLResponse)?.statusCode ?? 0)", data: nil)
@@ -1309,6 +1309,67 @@ final class SystemTools {
         return URLSession(configuration: cfg)
     }()
 
+    /// 如果 web_request 目标是远程 PPT /render，且 slides 里的 image 字段指向 App 文档目录的本地图片，
+    /// 则读取图片并内联为 base64 data URI，避免服务端拿不到本地文件。
+    private static func inlineRenderImages(body: String, requestURL: URL) -> String {
+        guard let ep = URL(string: SettingsStore.shared.connectorEndpoint.trimmingCharacters(in: .whitespacesAndNewlines)),
+              let epHost = ep.host,
+              requestURL.host == epHost,
+              requestURL.path.hasSuffix("/render"),
+              let data = body.data(using: .utf8),
+              var json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+              var slides = json["slides"] as? [[String: Any]] else { return body }
+
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        var changed = false
+        for i in slides.indices {
+            guard let img = slides[i]["image"] as? String, !img.isEmpty else { continue }
+            let trimmed = img.trimmingCharacters(in: .whitespacesAndNewlines)
+            let lower = trimmed.lowercased()
+            // 已经是 URL 或 data URI 的不处理
+            if lower.hasPrefix("http://") || lower.hasPrefix("https://") || lower.hasPrefix("data:") { continue }
+            // 尝试在文档目录查找该文件（支持带扩展名或不带扩展名）
+            let candidates: [String]
+            if trimmed.contains(".") {
+                candidates = [trimmed]
+            } else {
+                candidates = ["\(trimmed).png", "\(trimmed).jpg", "\(trimmed).jpeg", "\(trimmed).webp"]
+            }
+            var found: URL?
+            for c in candidates {
+                let url = docs.appendingPathComponent(c)
+                if FileManager.default.fileExists(atPath: url.path) {
+                    found = url
+                    break
+                }
+            }
+            guard let fileURL = found,
+                  let fileData = try? Data(contentsOf: fileURL),
+                  !fileData.isEmpty else {
+                // 找不到文件就去掉 image 字段，避免服务端报错
+                slides[i].removeValue(forKey: "image")
+                changed = true
+                continue
+            }
+            let ext = fileURL.pathExtension.lowercased()
+            let mime: String
+            switch ext {
+            case "jpg", "jpeg": mime = "image/jpeg"
+            case "png": mime = "image/png"
+            case "gif": mime = "image/gif"
+            case "webp": mime = "image/webp"
+            default: mime = "image/png"
+            }
+            slides[i]["image"] = "data:\(mime);base64,\(fileData.base64EncodedString())"
+            changed = true
+        }
+        guard changed else { return body }
+        json["slides"] = slides
+        guard let newData = try? JSONSerialization.data(withJSONObject: json),
+              let newString = String(data: newData, encoding: .utf8) else { return body }
+        return newString
+    }
+
     private static func webRequest(_ call: [String: AnyCodable]) async throws -> ToolResult {
         guard let rawURL = string(call, "url"),
               let u = URL(string: rawURL.trimmingCharacters(in: .whitespacesAndNewlines)),
@@ -1347,7 +1408,9 @@ final class SystemTools {
         }
 
         if let bStr = string(call, "body"), !bStr.isEmpty {
-            req.httpBody = Data(bStr.utf8)
+            // 对远程 PPT /render 请求：把 slides 里引用的本地图片内联为 base64，服务端才能渲染进 PPTX
+            let processedBody = inlineRenderImages(body: bStr, requestURL: u)
+            req.httpBody = Data(processedBody.utf8)
             if req.value(forHTTPHeaderField: "Content-Type") == nil {
                 req.setValue("application/json", forHTTPHeaderField: "Content-Type")
             }
@@ -1577,7 +1640,7 @@ final class SystemTools {
         return lower.contains("text/") || lower.contains("json") || lower.contains("xml")
     }
 
-    /// v9.0.14 修复：dashi-ppt / 各类下载接口返回的是**标准 OOXML mime**
+    /// v9.0.14 修复：PPT / 各类下载接口返回的是**标准 OOXML mime**
     /// （application/vnd.openxmlformats-officedocument.presentationml.presentation），
     /// 里面根本没有 "pptx" 字样，旧逻辑一律落到 `else → .bin`，用户拿到打不开的 .bin 文件。
     /// 现在按「Content-Disposition → mime 映射 → 文件头嗅探」三级推断。
