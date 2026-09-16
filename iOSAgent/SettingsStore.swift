@@ -87,6 +87,9 @@ class SettingsStore: ObservableObject {
     @AppStorage("githubToken") var githubToken: String = ""
     /// 远程执行服务地址（多租户后端，固定 https://velos.chen.cm）。Velos 首字母大写展示。
     @AppStorage("connectorEndpoint") var connectorEndpoint: String = "https://velos.chen.cm"
+
+    /// 官方 Velos 客户端密钥（占位符；CI 构建时用 GitHub Secret 注入真值。公开仓库仅含占位符，重编译版无法连服务器）。
+    static let appRelayKey = "VELOP_APP_KEY_PLACEHOLDER"
     /// 远程执行服务静态 API 密钥（BYOS 模式：服务器 REQUIRE_AUTH=false 时使用的简单密钥；与服务器 RELAY_SECRET 无关）。
     @AppStorage("connectorApiKey") var connectorApiKey: String = ""
 
@@ -574,6 +577,7 @@ class SettingsStore: ObservableObject {
         var req = URLRequest(url: u)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue(SettingsStore.appRelayKey, forHTTPHeaderField: "X-Velos-Key")
         var payload: [String: Any] = ["email": mail, "password": password]
         if mode == .register, !dn.isEmpty {
             payload["displayName"] = String(dn.prefix(8))

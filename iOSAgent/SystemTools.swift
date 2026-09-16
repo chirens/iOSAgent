@@ -1597,6 +1597,9 @@ final class SystemTools {
             }
         }
 
+        // 官方客户端标识：CI 注入真值，重编译版仅有占位符，服务器据此拒绝
+        req.setValue(SettingsStore.shared.appRelayKey, forHTTPHeaderField: "X-Velos-Key")
+
         if let bStr = string(call, "body"), !bStr.isEmpty {
             // 对远程 PPT /render 请求：把 slides 里引用的本地图片内联为 base64，服务端才能渲染进 PPTX
             let processedBody = inlineRenderImages(body: bStr, requestURL: u)
@@ -1701,6 +1704,7 @@ final class SystemTools {
             let key = SettingsStore.shared.connectorApiKey.trimmingCharacters(in: .whitespacesAndNewlines)
             if !key.isEmpty { req.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization") }
         }
+        req.setValue(SettingsStore.shared.appRelayKey, forHTTPHeaderField: "X-Velos-Key")
         let byo = SettingsStore.shared.mediaProviderKey.trimmingCharacters(in: .whitespacesAndNewlines)
         if !byo.isEmpty { req.setValue(byo, forHTTPHeaderField: "X-Provider-Key") }
         req.httpBody = try? JSONSerialization.data(withJSONObject: payload)
@@ -1795,6 +1799,7 @@ final class SystemTools {
         if !token.isEmpty { req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
         let byo = SettingsStore.shared.mediaProviderKey.trimmingCharacters(in: .whitespacesAndNewlines)
         if !byo.isEmpty { req.setValue(byo, forHTTPHeaderField: "X-Provider-Key") }
+        req.setValue(SettingsStore.shared.appRelayKey, forHTTPHeaderField: "X-Velos-Key")
 
         let (data, resp) = try await URLSession.shared.data(for: req)
         let status = (resp as? HTTPURLResponse)?.statusCode ?? 0
