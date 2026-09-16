@@ -1489,7 +1489,7 @@ final class SystemTools {
         return "已执行"
     }
 
-    // MARK: - 通用 HTTP 请求（类 Manus 连接器，可编排任意外部服务）
+    // MARK: - 通用 HTTP 请求（可编排任意外部服务）
 
     private static let webSession: URLSession = {
         let cfg = URLSessionConfiguration.default

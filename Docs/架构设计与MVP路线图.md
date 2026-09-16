@@ -1,6 +1,6 @@
 # iOSAgent —— 手机端 Agent IPA 架构设计与 MVP 路线图
 
-> 定位：一款能装进 iPhone、**独立运行**、对标 OpenMinis 但更强的 Agent App。
+> 定位：一款能装进 iPhone、**独立运行**、能力完整的 Agent App。
 > 分发：当前**自签/侧载**（你有证书），App Store 上架为后续选项。
 > 大脑：MVP 用**云端 API**（OpenAI 兼容）快速验证；成熟后切**端侧模型**或**付费模式**。
 
@@ -8,7 +8,7 @@
 
 ## 一、产品定位与差异化
 
-| 维度 | OpenMinis | iOSAgent（目标） |
+| 维度 | 同类产品 | iOSAgent（目标） |
 |---|---|---|
 | 大脑 | 纯云端 API key | 云端 API 起步 → 端侧模型（iOS 19 Foundation Models / Core AI）兜底，断网可用 |
 | 视觉 | 仅自带浏览器内截图 | 端侧 VLM 读**相册截图**识位（离线闭环） |
@@ -110,7 +110,7 @@ Photos、HealthKit、Contacts、Calendar、Reminders、Location、Motion、HomeK
 
 ---
 
-## 六之二、v2.0 已交付（2026-08-25，对标 OpenMinis 强化系统能力）
+## 六之二、v2.0 已交付（2026-08-25，强化系统能力）
 
 把 1.0 的「纯聊天壳」升级为真正能「动手」的 agent：
 
@@ -118,15 +118,15 @@ Photos、HealthKit、Contacts、Calendar、Reminders、Location、Motion、HomeK
 - `AgentClient.run()` 改为带 `tool_calling` 的循环：发消息 → 若模型返回 `tool_calls` → 在 Swift 里执行 → 结果回灌模型 → 直到模型给出最终自然语言回复（最多 6 轮）。
 - 模型用 DeepSeek（默认 `deepseek-chat`，支持 function calling）。你在对话里说「明早 8 点提醒我开会」，模型自动调用 `create_reminder` 工具，app 用 EventKit 真实写入「提醒事项」App。
 
-**2. 与 OpenMinis 的对比（它怎么做的 / 我们怎么做的）**
-| 能力 | OpenMinis 实现方式 | iOSAgent 2.0 实现方式 |
+**2. 与同类产品的对比（它怎么做的 / 我们怎么做的）**
+| 能力 | 同类产品实现方式 | iOSAgent 2.0 实现方式 |
 |---|---|---|
 | 提醒 / 日历 | iSH(Alpine) 里写 CLI 桥接 EventKit | 直接在 Swift 调 EventKit（同等效果，更轻更稳） |
 | 健康数据 | iSH + HealthKit CLI | 直接在 Swift 调 HealthKit |
 | 闹钟 | 本地通知 / 日历提醒（非系统时钟） | `UNUserNotificationCenter` 本地通知（同样非系统时钟） |
 | 权限控制 | App 内细粒度开关 | 设置里逐项开关 + 按需弹系统授权 |
 
-> 结论：**两者底层都只能用苹果开放的框架（EventKit/HealthKit/通知），都不能写系统「时钟」App 的闹钟、不能读别的 App 界面/系统截图**——这是 iOS 沙盒硬墙。Minis 的"16 个闹钟"本质是循环创建本地通知/日历提醒。我们走同效但更直接的路线，不塞一个 Linux 进 App。
+> 结论：**两者底层都只能用苹果开放的框架（EventKit/HealthKit/通知），都不能写系统「时钟」App 的闹钟、不能读别的 App 界面/系统截图**——这是 iOS 沙盒硬墙。同类产品的"16 个闹钟"本质是循环创建本地通知/日历提醒。我们走同效但更直接的路线，不塞一个 Linux 进 App。
 
 **3. 已接入的系统工具（随设置开关启用）**
 `create_reminder` / `list_reminders` / `create_calendar_event` / `schedule_alarm`（本地通知）/ `read_health`（步数/心率/睡眠/活动能量/体重）。
@@ -139,7 +139,7 @@ Photos、HealthKit、Contacts、Calendar、Reminders、Location、Motion、HomeK
 **5. 设置页增强**
 - API 配置（Base URL / Key / 模型）+ 连接测试（保留）。
 - **系统能力开关**：提醒事项 / 日历 / 健康数据 / 闹钟·本地提醒 / 通讯录（预留），开关打开时即时请求系统授权并展示授权状态。
-- 内置说明：解释 iOSAgent 与 Minis 的差异，以及"闹钟=本地通知"的限制。
+- 内置说明：解释与同类产品的差异，以及"闹钟=本地通知"的限制。
 
 **6. 版本与权限**
 - `MARKETING_VERSION = 2.0`。

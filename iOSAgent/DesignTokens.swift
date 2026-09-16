@@ -56,7 +56,7 @@ extension Color {
     /// 微信品牌绿（两种模式同色）
     static let appWechat = Color(uiColor: UIColor(hex: "07C160"))
 
-    /// 品牌强调色：WorkBuddy 绿
+    /// 品牌强调色
     static let brandAccent = Color(uiColor: UIColor(hex: "10B981"))
 
     // MARK: - 分类图标色（v9.0.12 重写：放弃 pastel 浅色块，Apple 标准做法）
