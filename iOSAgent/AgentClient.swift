@@ -37,7 +37,7 @@ struct HeartbeatStep: Identifiable, Equatable {
 }
 
 /// 云端 API 客户端：支持**工具调用循环**（agent 核心）。
-/// 与 OpenMinis 用 iSH+CLI 让 LLM 调系统能力不同，这里直接在 Swift 里实现：
+/// 与用 iSH+CLI 让 LLM 调系统能力的方式不同，这里直接在 Swift 里实现：
 /// LLM 决定调用工具 → app 用 EventKit/HealthKit/通知执行 → 结果喂回 LLM → 生成自然语言回复。
 @MainActor
 final class AgentClient {

@@ -143,7 +143,7 @@ struct ChatView: View {
             attachmentRow
 
             // v9.0.12 心跳卡：在输入框上方显示中间过程（思考 / 工具调用 / 工具执行 / 工具结果）。
-            // 设计参照用户截图里的 manus 心跳条：浅色小卡片 + 小图标 + 状态文字 + 旋转指示器。
+            // 设计参照心跳条样式：浅色小卡片 + 小图标 + 状态文字 + 旋转指示器。
             if !heartbeatSteps.isEmpty {
                 heartbeatCard
                     .padding(.horizontal, AppSpacing.md)
