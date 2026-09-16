@@ -1421,7 +1421,7 @@ final class SystemTools {
             _ = try? await mcpRaw(server: server, method: "initialize", params: [
                 "protocolVersion": "2024-11-05",
                 "capabilities": [:],
-                "clientInfo": ["name": "Velos", "version": "9.0.28"]
+                "clientInfo": ["name": "Velos", "version": "9.0.29"]
             ])
         }
         return try await mcpRaw(server: server, method: method, params: params)
