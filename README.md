@@ -1,7 +1,7 @@
 # Velos
 
 <p align="center">
-  <img src="https://velos.chen.cm/img/logo.png" width="96" alt="Velos Logo">
+  <img src="https://velos.chen.cm/img/cover.png" width="100%" alt="Velos">
 </p>
 
 <p align="center">
@@ -11,12 +11,6 @@
 <p align="center">
   AI 对话、绘图、做 PPT、设提醒、看日程、执行复杂任务——一个 App 全搞定。<br>
   高度融合 iOS、多模型自由切换，数据跑在手机上，隐私强。
-</p>
-
-<p align="center">
-  <a href="https://velos.chen.cm">官网</a> ·
-  <a href="https://github.com/chirens/velos/releases/latest/download/velos-latest.ipa">IPA 直接下载</a> ·
-  <a href="https://velos.chen.cm">velos.chen.cm</a>
 </p>
 
 ---
