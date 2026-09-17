@@ -29,6 +29,8 @@ struct ChatView: View {
     @State private var voiceBusy = false
     /// 点按切换语音：true=正在聆听（已点开录音），false=空闲
     @State private var isListening = false
+    /// 语音识别阶段文案（第二次点击即置“正在识别语音…”，保证识别期输入框始终有可见状态，不再静默）
+    @State private var voicePhase: String = ""
     /// v9.0.26 微信式语音切换（已弃用，保留声明避免改动面过大）
     @State private var isVoiceMode = false
     /// 录音时当前选中的结束区域（已弃用）
@@ -230,6 +232,7 @@ struct ChatView: View {
                         if isListening {
                             // 第二次点击：停止录音并转写
                             isListening = false
+                            voicePhase = "正在识别语音…"
                             Task { await finishVoice(mode: .transcribe) }
                         } else {
                             // 第一次点击：立即进入录音态（图标/提示同步变化），再异步启动录音
@@ -269,7 +272,14 @@ struct ChatView: View {
                             }
                     }
 
-                    TextField(isListening ? "正在聆听…" : (voiceBusy ? (whisper.statusText.isEmpty ? "识别中…" : whisper.statusText) : "说点什么…"), text: $input, axis: .vertical)
+                    TextField(
+                        isListening
+                            ? "正在聆听…（再点话筒结束）"
+                            : (voiceBusy
+                                ? (whisper.statusText.isEmpty ? (voicePhase.isEmpty ? "识别中…" : voicePhase) : whisper.statusText)
+                                : "说点什么…"),
+                        text: $input, axis: .vertical
+                    )
                         .font(.appBody())
                         .foregroundStyle(Color.appPrimaryText)
                         .lineLimit(1...5)
@@ -810,7 +820,15 @@ struct ChatView: View {
     }
 
     private func finishVoice(mode: VoiceFinishMode = .send) async {
-        guard let url = voice.stop() else { awaitingVoice = false; return }
+        guard let url = voice.stop() else {
+            // 未捕获到有效录音（录音未启动/时间过短/麦克风未授权）→ 显式报错，避免静默无反馈
+            await MainActor.run {
+                voicePhase = ""
+                errorText = "未捕获到有效录音（录音过短或麦克风未授权）。请解锁屏幕、允许麦克风后再试。"
+            }
+            awaitingVoice = false
+            return
+        }
 
         // 文件存在性保护：录音极短或系统清理时可能文件不存在
         guard FileManager.default.fileExists(atPath: url.path) else {
@@ -821,7 +839,7 @@ struct ChatView: View {
         }
 
         await MainActor.run { voiceBusy = true }
-        defer { Task { @MainActor in voiceBusy = false } }
+        defer { Task { @MainActor in voiceBusy = false; voicePhase = "" } }
 
         // 本地 WhisperKit 识别：离线、中文优化、不消耗 API 额度（用户明确要求本地引擎，不回退系统识别）
         do {
