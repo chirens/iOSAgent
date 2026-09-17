@@ -977,6 +977,7 @@ struct LegalView: View {
 
 struct AboutView: View {
     @State private var hasCrashRecord = false
+    @ObservedObject private var versionChecker = VersionChecker.shared
 
     var body: some View {
         ScrollView {
@@ -991,7 +992,33 @@ struct AboutView: View {
 
                         Divider().padding(.leading, AppSpacing.md)
 
-                        InfoRow(title: "版本", value: appVersion)
+                        // 版本号：有新版本时右侧显示红点（点击跳转下载）；红点持续到本机版本与 GitHub 一致才消失
+                        Button {
+                            if versionChecker.updateAvailable {
+                                if let url = URL(string: "https://github.com/chirens/velos/releases/latest") {
+                                    UIApplication.shared.open(url)
+                                }
+                            }
+                        } label: {
+                            HStack {
+                                Text("版本")
+                                    .font(.appBody().weight(.semibold))
+                                    .foregroundStyle(Color.appPrimaryText)
+                                Spacer()
+                                if versionChecker.updateAvailable {
+                                    Circle()
+                                        .fill(Color.appError)
+                                        .frame(width: 8, height: 8)
+                                        .padding(.trailing, 6)
+                                }
+                                Text(appVersion)
+                                    .font(.appCaption())
+                                    .foregroundStyle(Color.appSecondaryText)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.horizontal, AppSpacing.md)
+                        .padding(.vertical, AppSpacing.md)
 
                         Divider().padding(.leading, AppSpacing.md)
 

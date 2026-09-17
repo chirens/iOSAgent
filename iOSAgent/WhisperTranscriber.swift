@@ -36,7 +36,7 @@ final class WhisperTranscriber: ObservableObject {
         }
         loadingTasks[model] = task
         do {
-            let inst = try await withTimeout(seconds: 30) { try await task.value }
+            let inst = try await withTimeout(seconds: 600) { try await task.value }
             instances[model] = inst
             loadingTasks[model] = nil
             return inst

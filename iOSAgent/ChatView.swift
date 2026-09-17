@@ -27,6 +27,8 @@ struct ChatView: View {
     @State private var pendingVoiceBase = ""
     /// 本地 WhisperKit 识别进行中（用于输入栏占位提示，治“说话中无任何提示”）
     @State private var voiceBusy = false
+    /// 点按切换语音：true=正在聆听（已点开录音），false=空闲
+    @State private var isListening = false
     /// v9.0.26 微信式语音切换（已弃用，保留声明避免改动面过大）
     @State private var isVoiceMode = false
     /// 录音时当前选中的结束区域（已弃用）
@@ -867,6 +869,7 @@ struct ChatView: View {
         errorText = nil
         input = ""
         awaitingVoice = false
+        isListening = false
         inputID = UUID()
         voice.stop()
 

@@ -102,6 +102,9 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
             SettingsStore.shared.refreshAuthStatuses()
         }
 
+        // 启动后比对 GitHub 最新 Release：发现新版本时驱动「关于」页红点 + 一次性弹窗
+        VersionChecker.shared.checkForUpdate()
+
         // 【v9.0.12 重新配置】浅色模式下滚动导航栏变黑。
         //
         // v9.0.11 配了三段 UINavigationBarAppearance 用 UIColor(hex: "E0E0E0")，但截图仍是黑底——

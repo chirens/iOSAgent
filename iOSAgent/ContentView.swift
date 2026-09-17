@@ -18,6 +18,7 @@ struct ContentView: View {
     @State private var showSettings = false
     @State private var showAccount = false
     @State private var path = NavigationPath()
+    @ObservedObject private var versionChecker = VersionChecker.shared
 
     private var preferredScheme: ColorScheme? {
         switch AppColorScheme(rawValue: appColorSchemeRaw) ?? .dark {

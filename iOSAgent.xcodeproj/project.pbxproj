@@ -30,6 +30,7 @@
 		1A0000000000000000000308 /* EKEventStoreBridge.m in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000307 /* EKEventStoreBridge.m */; };
 		1A0000000000000000000216 /* WhisperTranscriber.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000118 /* WhisperTranscriber.swift */; };
 		1A0000000000000000000217 /* VoiceRecordingOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000119 /* VoiceRecordingOverlay.swift */; };
+		1A0000000000000000000218 /* VersionChecker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0000000000000000000121 /* VersionChecker.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -60,6 +61,7 @@
 		1A0000000000000000000307 /* EKEventStoreBridge.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = EKEventStoreBridge.m; sourceTree = "<group>"; };
 		1A0000000000000000000118 /* WhisperTranscriber.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WhisperTranscriber.swift; sourceTree = "<group>"; };
 		1A0000000000000000000119 /* VoiceRecordingOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceRecordingOverlay.swift; sourceTree = "<group>"; };
+		1A0000000000000000000121 /* VersionChecker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VersionChecker.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -127,6 +129,7 @@
 				1A0000000000000000000307 /* EKEventStoreBridge.m */,
 				1A0000000000000000000118 /* WhisperTranscriber.swift */,
 				1A0000000000000000000119 /* VoiceRecordingOverlay.swift */,
+				1A0000000000000000000121 /* VersionChecker.swift */,
 				1A0000000000000000000116 /* Assets.xcassets */,
 				1A0000000000000000000120 /* iOSAgent.entitlements */,
 			);
@@ -238,6 +241,7 @@
 				1A0000000000000000000308 /* EKEventStoreBridge.m in Sources */,
 				1A0000000000000000000216 /* WhisperTranscriber.swift in Sources */,
 				1A0000000000000000000217 /* VoiceRecordingOverlay.swift in Sources */,
+				1A0000000000000000000218 /* VersionChecker.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -347,7 +351,7 @@
 				"$(inherited)",
 				"@executable_path/Frameworks",
 			);
-			MARKETING_VERSION = 9.0.31;
+			MARKETING_VERSION = 9.0.32;
 			PRODUCT_BUNDLE_IDENTIFIER = com.chen.iOSAgent;
 			PRODUCT_NAME = "$(TARGET_NAME)";
 			SWIFT_EMIT_LOC_STRINGS = YES;
@@ -389,7 +393,7 @@
 				"$(inherited)",
 				"@executable_path/Frameworks",
 			);
-			MARKETING_VERSION = 9.0.31;
+			MARKETING_VERSION = 9.0.32;
 			PRODUCT_BUNDLE_IDENTIFIER = com.chen.iOSAgent;
 			PRODUCT_NAME = "$(TARGET_NAME)";
 			SWIFT_EMIT_LOC_STRINGS = YES;
