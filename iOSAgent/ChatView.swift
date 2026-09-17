@@ -50,6 +50,9 @@ struct ChatView: View {
     @State private var showAttachmentSheet = false
     @State private var pinnedSkillID: String?
 
+    // v9.0.36 观察本地语音引擎，展示首次语音模型下载进度（百分比），避免用户无法区分“下载中/卡死”
+    @ObservedObject private var whisper = WhisperTranscriber.shared
+
     // v9.0.5 图片附件加载状态： PhotosPicker / FileImporter 读取大图时展示进度，避免用户以为没点中
     @State private var isLoadingAttachment = false
     // v9.0.12 心跳：输入框上方的小卡片，展示中间过程（思考 / 工具调用 / 工具执行 / 工具结果）。
@@ -266,7 +269,7 @@ struct ChatView: View {
                             }
                     }
 
-                    TextField(isListening ? "正在聆听…" : (voiceBusy ? "识别中…" : "说点什么…"), text: $input, axis: .vertical)
+                    TextField(isListening ? "正在聆听…" : (voiceBusy ? (whisper.isDownloadingModel ? whisper.statusText : "识别中…") : "说点什么…"), text: $input, axis: .vertical)
                         .font(.appBody())
                         .foregroundStyle(Color.appPrimaryText)
                         .lineLimit(1...5)
@@ -276,6 +279,22 @@ struct ChatView: View {
                 }
                 .background(Color.appInputFill)
                 .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+
+                // v9.0.36 首次下载语音模型时展示真实进度条 + 百分比
+                if voiceBusy, whisper.isDownloadingModel {
+                    HStack(spacing: 8) {
+                        ProgressView(value: whisper.downloadProgress)
+                            .progressViewStyle(.linear)
+                            .tint(Color.brandAccent)
+                            .frame(height: 4)
+                        Text("\(Int(whisper.downloadProgress * 100))%")
+                            .font(.appCaption())
+                            .foregroundStyle(Color.appSecondaryText)
+                            .frame(minWidth: 36, alignment: .trailing)
+                    }
+                    .padding(.horizontal, 4)
+                    .padding(.top, 2)
+                }
 
                 // 发送按钮
                 Button(action: send) {
