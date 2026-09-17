@@ -46,11 +46,8 @@ final class WhisperTranscriber: ObservableObject {
                 from: "argmaxinc/whisperkit-coreml",
                 endpoint: self?.mirrorEndpoint ?? "https://hf-mirror.com"
             ) { prog in
-                // 兼容 WhisperKit 进度回调的两种可能签名（Progress 或 Double）
-                let fraction: Double
-                if let p = prog as? Progress { fraction = p.fractionCompleted }
-                else if let d = prog as? Double { fraction = d }
-                else { fraction = 0 }
+                // WhisperKit 1.1.0 进度回调入参即为 Progress 类型
+                let fraction = max(0, min(1, prog.fractionCompleted))
                 let pct = Int(fraction * 100)
                 Task { @MainActor in
                     self?.downloadProgress = fraction
@@ -63,13 +60,14 @@ final class WhisperTranscriber: ObservableObject {
             }
 
             // 沿用原先可工作的加载路径（downloadBase + model），仅额外显式指定镜像端点，确保 tokenizer 等也从镜像拉取
+            // 注意：WhisperKitConfig 成员初始化器要求参数按声明顺序排列，modelEndpoint 必须排在 verbose 之前
             let config = WhisperKitConfig(
                 model: model,
                 downloadBase: base,
+                modelEndpoint: self?.mirrorEndpoint ?? "https://hf-mirror.com",
                 verbose: false,
                 load: true,
-                download: true,
-                modelEndpoint: self?.mirrorEndpoint ?? "https://hf-mirror.com"
+                download: true
             )
             return try await WhisperKit(config)
         }
