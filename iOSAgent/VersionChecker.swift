@@ -30,8 +30,14 @@ final class VersionChecker: ObservableObject {
         Task {
             defer { Task { @MainActor in self.isChecking = false } }
             do {
-                let tag = try await fetchLatestReleaseTag()
-                let normalized = tag.trimmingCharacters(in: CharacterSet(charactersIn: "vV"))
+                let normalized: String
+                do {
+                    let tag = try await fetchLatestReleaseTag()
+                    normalized = tag.trimmingCharacters(in: CharacterSet(charactersIn: "vV"))
+                } catch {
+                    // GitHub 在国内常被墙 / 网络不可达 → 改用官网版本号兜底
+                    normalized = try await fetchLatestFromSite()
+                }
                 await MainActor.run { self.latestVersion = normalized }
                 guard !normalized.isEmpty else { return }
 
@@ -46,7 +52,7 @@ final class VersionChecker: ObservableObject {
                     }
                 }
             } catch {
-                // 网络不可达 / GitHub 被墙：保持 updateAvailable=false，无红点无弹窗
+                // GitHub 与官网都不可达：保持 updateAvailable=false，无红点无弹窗
             }
         }
     }
@@ -66,6 +72,23 @@ final class VersionChecker: ObservableObject {
             throw NSError(domain: "Version", code: 0, userInfo: [NSLocalizedDescriptionKey: "无法解析版本"])
         }
         return tag
+    }
+
+    /// GitHub 不可达时的兜底：直接读官网首页 HTML 中 `id="ipaVer">X.Y.Z<` 的版本号（官网稳定可达）。
+    private func fetchLatestFromSite() async throws -> String {
+        guard let url = URL(string: "https://velos.chen.cm") else {
+            throw NSError(domain: "Version", code: 0, userInfo: [NSLocalizedDescriptionKey: "URL 非法"])
+        }
+        var req = URLRequest(url: url)
+        req.timeoutInterval = 8
+        let (data, _) = try await URLSession.shared.data(for: req)
+        guard let html = String(data: data, encoding: .utf8) else {
+            throw NSError(domain: "Version", code: 0, userInfo: [NSLocalizedDescriptionKey: "无法解析官网"])
+        }
+        if let range = html.range(of: #"id="ipaVer">\d+\.\d+\.\d+"#, options: .regularExpression) {
+            return String(html[range]).replacingOccurrences(of: "id=\"ipaVer\">", with: "")
+        }
+        throw NSError(domain: "Version", code: 0, userInfo: [NSLocalizedDescriptionKey: "官网未含版本号"])
     }
 
     // MARK: - 版本号比较（按 . 分段数值比较）
