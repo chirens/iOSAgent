@@ -211,41 +211,39 @@ struct ChatView: View {
                 skillInstallBanner(url: url)
             }
 
-            // v9.0.28 输入栏：始终显示输入框 + 左侧小话筒（按住说话→本地 WhisperKit 识别→文字进输入框，不发送语音）
+            // v9.0.28 输入栏：始终显示输入框 + 左侧小话筒
+            // v9.0.34 交互改为「点按切换」：点一下开始录音（图标立即变 waveform + 输入框显示"正在聆听…"，即使手指抬起也持续录音）；
+            // 再点一下停止并交本地 WhisperKit 识别，文字进输入框（不发送语音）。彻底避免按住说话的竞态与手势不灵敏。
             HStack(spacing: 10) {
-                // 左侧：小话筒按钮，按住说话（本地 WhisperKit 离线识别，不用系统识别）
-                Image(systemName: voice.isRecording ? "waveform" : "mic.fill")
+                // 左侧：小话筒按钮，点按切换（本地 WhisperKit 离线识别，不用系统识别）
+                Image(systemName: (isListening || voiceBusy) ? "waveform" : "mic.fill")
                     .font(.system(size: 20, weight: .semibold, design: .rounded))
-                    .foregroundStyle(voice.isRecording ? Color.brandAccent : Color.appSecondaryText)
+                    .foregroundStyle((isListening || voiceBusy) ? Color.brandAccent : Color.appSecondaryText)
                     .frame(width: 36, height: 36)
-                    .background(voice.isRecording ? Color.brandAccent.opacity(0.15) : Color.clear)
+                    .background((isListening || voiceBusy) ? Color.brandAccent.opacity(0.15) : Color.clear)
                     .clipShape(Circle())
                     .contentShape(Circle())
-                    .gesture(
-                        DragGesture(minimumDistance: 0)
-                            .onChanged { _ in
-                                if !awaitingVoice {
-                                    awaitingVoice = true
-                                    pendingVoiceBase = input
-                                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                                    Task {
-                                        await voice.start()   // VoiceRecorder 内部已处理麦克风权限
-                                        // 竞态保护：若用户极快松手、start 完成时已不在录音态，立即停掉
-                                        if !awaitingVoice { voice.stop() }
+                    .onTapGesture {
+                        if isListening {
+                            // 第二次点击：停止录音并转写
+                            isListening = false
+                            Task { await finishVoice(mode: .transcribe) }
+                        } else {
+                            // 第一次点击：立即进入录音态（图标/提示同步变化），再异步启动录音
+                            pendingVoiceBase = input
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            isListening = true
+                            Task {
+                                await voice.start()   // VoiceRecorder 内部已处理麦克风权限
+                                if let msg = voice.errorMessage, msg.contains("麦克风") {
+                                    await MainActor.run {
+                                        isListening = false
+                                        showMicError = true
                                     }
                                 }
                             }
-                            .onEnded { _ in
-                                guard voice.isRecording else {
-                                    if let msg = voice.errorMessage, msg.contains("麦克风") { showMicError = true }
-                                    awaitingVoice = false
-                                    return
-                                }
-                                // 交给本地 WhisperKit 识别，文字填入输入框（不发送语音）
-                                awaitingVoice = false
-                                Task { await finishVoice(mode: .transcribe) }
-                            }
-                    )
+                        }
+                    }
 
                 // 输入框（录音时显示实时识别文字）
                 HStack(spacing: 8) {
@@ -268,7 +266,7 @@ struct ChatView: View {
                             }
                     }
 
-                    TextField(voice.isRecording ? "正在聆听…" : (voiceBusy ? "识别中…" : "说点什么…"), text: $input, axis: .vertical)
+                    TextField(isListening ? "正在聆听…" : (voiceBusy ? "识别中…" : "说点什么…"), text: $input, axis: .vertical)
                         .font(.appBody())
                         .foregroundStyle(Color.appPrimaryText)
                         .lineLimit(1...5)
