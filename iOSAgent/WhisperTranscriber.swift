@@ -16,7 +16,7 @@ final class WhisperTranscriber: ObservableObject {
 
     private init() {}
 
-    /// 加载（按需下载）指定 Whisper 模型，返回可用实例。带 30 秒超时，避免 HuggingFace 不可达时无限挂起。
+    /// 加载（按需下载）指定 Whisper 模型，返回可用实例。带 600 秒超时，避免 HuggingFace 不可达时无限挂起；small 模型约 480MB，弱网下需数分钟下载。
     private func instance(for model: String) async throws -> WhisperKit {
         if let inst = instances[model] { return inst }
         if let task = loadingTasks[model] { return try await task.value }
