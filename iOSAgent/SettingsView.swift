@@ -508,12 +508,25 @@ struct APISettingsView: View {
     private func testConnection() {
         isTesting = true
         testResult = nil
+        let settings = SettingsStore.shared
+        let active = settings.activeProfile
+        // 表单草稿与当前激活配置（对话框实际使用的配置）是否不同
+        let draftChanged = draftBase.trimmingCharacters(in: .whitespaces) != active.baseURL.trimmingCharacters(in: .whitespaces)
+            || draftKey.trimmingCharacters(in: .whitespaces) != active.apiKey.trimmingCharacters(in: .whitespaces)
+            || draftModel.trimmingCharacters(in: .whitespaces) != active.modelName.trimmingCharacters(in: .whitespaces)
+        // 默认测试对话框实际使用的激活配置，避免「测的是草稿、用的是另一份」导致的 401 困惑；
+        // 草稿有未保存改动时测试草稿，并明确标注测试对象。
+        let (b, k, m) = draftChanged
+            ? (draftBase, draftKey, draftModel)
+            : (active.baseURL, active.apiKey, active.modelName)
+        let who = draftChanged ? "草稿配置" : "当前生效配置（\(active.name)）"
         Task {
             do {
-                _ = try await AgentClient.shared.testConnection(baseURL: draftBase, apiKey: draftKey, model: draftModel)
-                testResult = "连接成功 / OK"
+                _ = try await AgentClient.shared.testConnection(baseURL: b, apiKey: k, model: m)
+                let note = draftChanged ? "（草稿未保存，对话框当前使用「\(active.name)」）" : ""
+                testResult = "连接成功 / OK（测试对象：\(who)）\(note)"
             } catch {
-                testResult = error.localizedDescription
+                testResult = "[\(who)] \(error.localizedDescription)"
             }
             isTesting = false
         }

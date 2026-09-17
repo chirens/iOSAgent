@@ -68,8 +68,9 @@ final class WhisperTranscriber: ObservableObject {
     /// 转写音频文件（m4a / wav / mp3 / flac 等），返回识别文本。
     /// - Parameters:
     ///   - audioURL: 本地音频文件 URL。
-    ///   - model: Whisper 模型名，默认 `base`（中文场景准确度与体积的平衡点；追求更高准确度可传 `small`）。
-    func transcribe(audioURL: URL, model: String = "base") async throws -> String {
+    ///   - model: Whisper 模型名，默认 `openai_whisper-small`（中文多语言、离线、识别准）。
+    ///     必须以 `openai_whisper-` 前缀命名，WhisperKit 才能正确解析 HuggingFace 仓库；裸名（如 `base`）会加载失败。
+    func transcribe(audioURL: URL, model: String = "openai_whisper-small") async throws -> String {
         await MainActor.run { self.isBusy = true; self.statusText = "正在准备本地语音模型…" }
         let wk: WhisperKit
         do {
