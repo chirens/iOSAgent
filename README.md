@@ -73,24 +73,13 @@ Velos 独创多模态系统，聊天一句话出图，无需多模态大模型�
   <img src="https://velos.chen.cm/img/feat-native.png" width="320" alt="原生 Swift 开源打造">
 </p>
 
-## 界面预览
-
-左侧功能、右侧真机预览，滚动时自动联动展示对应界面：
-
-<p align="center">
-  <img src="https://velos.chen.cm/img/shot-home.png" width="280" alt="首页">
-  <img src="https://velos.chen.cm/img/shot-a.png" width="280" alt="对话">
-  <img src="https://velos.chen.cm/img/shot-b.png" width="280" alt="功能">
-</p>
-
-## 装上 Velos（四步）
+## 装上 Velos（三步）
 
 Velos 以**未签名 IPA** 形式分发，用自签工具重签后即可安装到手机。
 
 1. **下载自签工具**：[Feather](https://feathercab.net) 或 [ESign](https://esign.yourepo.com)
 2. **导入 IPA 并自签**：用工具打开下面的安装包，填入你的 Apple ID 完成重签
 3. **安装到手机**：信任开发者证书后安装
-4. **IPA 直接下载**：[点击下载最新未签名安装包](https://github.com/chirens/velos/releases/latest/download/velos-latest.ipa)
 
 > 自签证书通常 7 天有效，到期重新签名即可。企业证书可长期安装。
 
@@ -104,7 +93,6 @@ Velos 以**未签名 IPA** 形式分发，用自签工具重签后即可安装�
 
 - 官网：[https://velos.chen.cm](https://velos.chen.cm)
 - 最新安装包：[GitHub Releases](https://github.com/chirens/velos/releases/latest)
-- 源码：[github.com/chirens/velos](https://github.com/chirens/velos)
 
 ---
 
