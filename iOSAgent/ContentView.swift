@@ -897,12 +897,14 @@ struct SideMenuOverlay: View {
                 HStack {
                     Spacer()
                     ZStack(alignment: .topTrailing) {
-                        RoundedRectangle(cornerRadius: AppRadius.sm, style: .continuous)
-                            .fill(Color.appInputFill)
-                            .frame(width: 32, height: 32)
                         Image(systemName: "gearshape.fill")
                             .font(.system(size: 15, weight: .semibold, design: .rounded))
                             .foregroundStyle(Color.appSecondaryText)
+                            .frame(width: 32, height: 32)
+                            .background(
+                                RoundedRectangle(cornerRadius: AppRadius.sm, style: .continuous)
+                                    .fill(Color.appInputFill)
+                            )
                         if VersionChecker.shared.updateAvailable {
                             UpdateDot()
                                 .offset(x: 6, y: -6)

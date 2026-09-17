@@ -269,7 +269,7 @@ struct ChatView: View {
                             }
                     }
 
-                    TextField(isListening ? "正在聆听…" : (voiceBusy ? (whisper.isDownloadingModel ? whisper.statusText : "识别中…") : "说点什么…"), text: $input, axis: .vertical)
+                    TextField(isListening ? "正在聆听…" : (voiceBusy ? (whisper.statusText.isEmpty ? "识别中…" : whisper.statusText) : "说点什么…"), text: $input, axis: .vertical)
                         .font(.appBody())
                         .foregroundStyle(Color.appPrimaryText)
                         .lineLimit(1...5)
