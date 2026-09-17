@@ -104,7 +104,7 @@ struct SettingsView: View {
                     }
 
                     SettingsSection(title: "关于") {
-                        SettingsLinkRow(icon: "info.circle.fill", color: .pastelGray, title: "关于 Velos", destination: .about)
+                        SettingsLinkRow(icon: "info.circle.fill", color: .pastelGray, title: "关于 Velos", destination: .about, badge: true)
                     }
                 }
                 .padding(.horizontal, AppSpacing.lg)
@@ -230,6 +230,9 @@ struct SettingsLinkRow: View {
     let title: String
     var showChevron: Bool = true
     var destination: SettingsRoute?
+    /// 为 true 时，若检测到新版本则在标题右侧显示红点（读取 VersionChecker 单例，响应式）
+    var badge: Bool = false
+    @ObservedObject private var versionChecker = VersionChecker.shared
 
     var body: some View {
         if let destination = destination {
@@ -269,6 +272,11 @@ struct SettingsLinkRow: View {
                 .lineLimit(1)
 
             Spacer(minLength: 0)
+
+            if badge && versionChecker.updateAvailable {
+                UpdateDot()
+                    .padding(.trailing, 4)
+            }
 
             if showChevron {
                 Image(systemName: "chevron.right")
@@ -1006,9 +1014,7 @@ struct AboutView: View {
                                     .foregroundStyle(Color.appPrimaryText)
                                 Spacer()
                                 if versionChecker.updateAvailable {
-                                    Circle()
-                                        .fill(Color.appError)
-                                        .frame(width: 8, height: 8)
+                                    UpdateDot()
                                         .padding(.trailing, 6)
                                 }
                                 Text(appVersion)

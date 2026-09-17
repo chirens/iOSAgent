@@ -67,6 +67,45 @@ struct ContentView: View {
                 .zIndex(4)
             }
         }
+        // 启动版本检查：发现新版本时弹一次窗（同版本只弹一次，点“稍后”红点保留）
+        .alert("发现新版本", isPresented: $versionChecker.showUpdateAlert) {
+            Button("前往官网下载") {
+                if let url = URL(string: "https://velos.chen.cm") { UIApplication.shared.open(url) }
+            }
+            Button("前往 GitHub") {
+                if let url = URL(string: "https://github.com/chirens/velos/releases/latest") { UIApplication.shared.open(url) }
+            }
+            Button("稍后", role: .cancel) {}
+        } message: {
+            if let latest = versionChecker.latestVersion {
+                Text("Velos \(latest) 已发布，建议更新以获得最新功能与修复。")
+            } else {
+                Text("发现新版本，建议更新。")
+            }
+        }
+    }
+}
+
+/// 新版本提示红点（强提示版）：11px 实心红点 + 外圈呼吸光晕 + 轻微缩放，比静态 8px 点更醒目。
+/// 用于：侧边栏设置图标、设置页「关于 Velos」入口、关于页版本号右侧。
+struct UpdateDot: View {
+    @State private var breathe = false
+    var size: CGFloat = 11
+
+    var body: some View {
+        Circle()
+            .fill(Color.appError)
+            .frame(width: size, height: size)
+            .overlay(
+                Circle()
+                    .stroke(Color.appError.opacity(0.35), lineWidth: 3)
+            )
+            .scaleEffect(breathe ? 1.12 : 1.0)
+            .onAppear {
+                withAnimation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true)) {
+                    breathe = true
+                }
+            }
     }
 }
 
@@ -857,13 +896,17 @@ struct SideMenuOverlay: View {
             } label: {
                 HStack {
                     Spacer()
-                    ZStack {
+                    ZStack(alignment: .topTrailing) {
                         RoundedRectangle(cornerRadius: AppRadius.sm, style: .continuous)
                             .fill(Color.appInputFill)
                             .frame(width: 32, height: 32)
                         Image(systemName: "gearshape.fill")
                             .font(.system(size: 15, weight: .semibold, design: .rounded))
                             .foregroundStyle(Color.appSecondaryText)
+                        if VersionChecker.shared.updateAvailable {
+                            UpdateDot()
+                                .offset(x: 6, y: -6)
+                        }
                     }
                 }
                 .padding(.horizontal, AppSpacing.lg)
