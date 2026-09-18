@@ -66,10 +66,11 @@ final class WhisperTranscriber: ObservableObject {
                     self?.statusText = "正在加载语音模型…"
                 }
                 // 用 download 返回的确切路径加载（download:false 不再 resolve 旧缓存），tokenizer 等已随模型一并下载
+                // 注意：WhisperKitConfig 成员初始化器要求参数按声明顺序，load 必须排在 download 之前
                 let config = WhisperKitConfig(
                     modelFolder: downloaded.path,
-                    download: false,
-                    load: true
+                    load: true,
+                    download: false
                 )
                 return try await WhisperKit(config)
             }
