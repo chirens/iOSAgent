@@ -24,6 +24,17 @@ final class WhisperTranscriber: ObservableObject {
 
     private init() {}
 
+    /// 检查本地模型目录是否完整：3 个 mlmodelc 的 weights/weight.bin 均存在，且 config.json / generation_config.json 存在
+    private static func isModelFolderComplete(_ folder: URL) -> Bool {
+        let fm = FileManager.default
+        for sub in ["MelSpectrogram", "AudioEncoder", "TextDecoder"] {
+            let weight = folder.appendingPathComponent("\(sub).mlmodelc").appendingPathComponent("weights/weight.bin")
+            guard fm.fileExists(atPath: weight.path) else { return false }
+        }
+        return fm.fileExists(atPath: folder.appendingPathComponent("config.json").path)
+            && fm.fileExists(atPath: folder.appendingPathComponent("generation_config.json").path)
+    }
+
     /// 加载（按需下载）指定 Whisper 模型，返回可用实例。带 600 秒超时，避免镜像不可达时无限挂起；small 模型约 480–500MB，弱网下需数分钟。
     private func instance(for model: String) async throws -> WhisperKit {
         if let inst = instances[model] { return inst }
@@ -37,20 +48,10 @@ final class WhisperTranscriber: ObservableObject {
             // 显式下载以展示真实进度（缓存有效时秒回；缓存损坏时由下方 force 分支重新完整下载）。
             // 关键：用 download 返回的确切 modelFolder 加载，避免 WhisperKit(config) 内部重新 resolve 到
             // 之前 HF_ENDPOINT / hf-mirror 时代半路下载留下的损坏/不完整缓存（会报 invalid metadata 错误）。
-            /// 检查本地模型目录是否完整：3 个 mlmodelc 的 weights/weight.bin 均存在，且 config.json / generation_config.json 存在
-            private static func isModelFolderComplete(_ folder: URL) -> Bool {
-                let fm = FileManager.default
-                for sub in ["MelSpectrogram", "AudioEncoder", "TextDecoder"] {
-                    let weight = folder.appendingPathComponent("\(sub).mlmodelc").appendingPathComponent("weights/weight.bin")
-                    guard fm.fileExists(atPath: weight.path) else { return false }
-                }
-                return fm.fileExists(atPath: folder.appendingPathComponent("config.json").path)
-                    && fm.fileExists(atPath: folder.appendingPathComponent("generation_config.json").path)
-            }
             func downloadAndLoad(force: Bool) async throws -> WhisperKit {
                 let modelFolder = base.appendingPathComponent(model, isDirectory: true)
                 // 自愈：若本地模型目录缺失关键文件（损坏/不完整缓存），清理后重新下载
-                if force || !Self.isModelFolderComplete(modelFolder) {
+                if force || !WhisperTranscriber.isModelFolderComplete(modelFolder) {
                     try? FileManager.default.removeItem(at: modelFolder)
                 }
                 await MainActor.run {
