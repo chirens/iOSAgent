@@ -245,6 +245,9 @@ final class VoiceRecorder: NSObject, ObservableObject {
             errorMessage = "录音未能启动（麦克风可能被其他应用占用或音频异常），请重试"
             return nil
         }
+        // 必须在 recorder.stop() 之前读取时长——stop() 会把 currentTime 清零，之后再读必为 0
+        let elapsed = Date().timeIntervalSince(recordStartTime ?? Date())
+        let duration = max(recorder.currentTime, elapsed)
         recorder.stop()
         isRecording = false
         guard let src = recordingURL else { return nil }
@@ -252,7 +255,6 @@ final class VoiceRecorder: NSObject, ObservableObject {
         recordStartTime = nil
 
         // 录音太短（< 0.15s）视为无效
-        let duration = recorder.currentTime
         guard duration >= 0.15 else {
             try? FileManager.default.removeItem(at: src)
             errorMessage = "录音时长过短，请说完话后再点话筒结束"
