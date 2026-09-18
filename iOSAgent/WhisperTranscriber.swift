@@ -32,44 +32,58 @@ final class WhisperTranscriber: ObservableObject {
                 .appendingPathComponent("WhisperKit", isDirectory: true)
             try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
 
-            // 显式下载以展示进度（缓存命中时秒回，不会重复下载）。同时强制走国内镜像。
-            // 注意：WhisperKit(config) 初始化内部调用 download 时不透传进度回调，故必须在此显式下载拿进度。
-            await MainActor.run {
-                self?.isDownloadingModel = true
-                self?.downloadProgress = 0
-                self?.statusText = "正在下载语音模型 0%"
-            }
-            _ = try await WhisperKit.download(
-                variant: model,
-                downloadBase: base,
-                useBackgroundSession: false,
-                from: "argmaxinc/whisperkit-coreml",
-                endpoint: self?.mirrorEndpoint ?? "https://hf-mirror.com"
-            ) { prog in
-                // WhisperKit 1.1.0 进度回调入参即为 Progress 类型
-                let fraction = max(0, min(1, prog.fractionCompleted))
-                let pct = Int(fraction * 100)
-                Task { @MainActor in
-                    self?.downloadProgress = fraction
-                    self?.statusText = "正在下载语音模型 \(pct)%"
+            // 显式下载以展示真实进度（缓存有效时秒回；缓存损坏时由下方 force 分支重新完整下载）。
+            // 关键：用 download 返回的确切 modelFolder 加载，避免 WhisperKit(config) 内部重新 resolve 到
+            // 之前 HF_ENDPOINT 时代半路下载留下的损坏/不完整缓存（会报 invalid metadata 错误）。
+            func downloadAndLoad(force: Bool) async throws -> WhisperKit {
+                let modelFolder = base.appendingPathComponent(model, isDirectory: true)
+                if force {
+                    // 清理损坏/不完整的旧缓存，强制重新从镜像完整下载并生成正确的 metadata.json
+                    try? FileManager.default.removeItem(at: modelFolder)
                 }
-            }
-            await MainActor.run {
-                self?.isDownloadingModel = false
-                self?.statusText = "正在加载语音模型…"
+                await MainActor.run {
+                    self?.isDownloadingModel = true
+                    self?.downloadProgress = 0
+                    self?.statusText = "正在下载语音模型 0%"
+                }
+                let downloaded = try await WhisperKit.download(
+                    variant: model,
+                    downloadBase: base,
+                    useBackgroundSession: false,
+                    from: "argmaxinc/whisperkit-coreml",
+                    endpoint: self?.mirrorEndpoint ?? "https://hf-mirror.com"
+                ) { prog in
+                    // WhisperKit 1.1.0 进度回调入参即为 Progress 类型
+                    let fraction = max(0, min(1, prog.fractionCompleted))
+                    let pct = Int(fraction * 100)
+                    Task { @MainActor in
+                        self?.downloadProgress = fraction
+                        self?.statusText = "正在下载语音模型 \(pct)%"
+                    }
+                }
+                await MainActor.run {
+                    self?.isDownloadingModel = false
+                    self?.statusText = "正在加载语音模型…"
+                }
+                // 用 download 返回的确切路径加载（download:false 不再 resolve 旧缓存），tokenizer 等已随模型一并下载
+                let config = WhisperKitConfig(
+                    modelFolder: downloaded.path,
+                    download: false,
+                    load: true
+                )
+                return try await WhisperKit(config)
             }
 
-            // 沿用原先可工作的加载路径（downloadBase + model），仅额外显式指定镜像端点，确保 tokenizer 等也从镜像拉取
-            // 注意：WhisperKitConfig 成员初始化器要求参数按声明顺序排列，modelEndpoint 必须排在 verbose 之前
-            let config = WhisperKitConfig(
-                model: model,
-                downloadBase: base,
-                modelEndpoint: self?.mirrorEndpoint ?? "https://hf-mirror.com",
-                verbose: false,
-                load: true,
-                download: true
-            )
-            return try await WhisperKit(config)
+            do {
+                return try await downloadAndLoad(force: false)
+            } catch {
+                let desc = error.localizedDescription
+                if desc.contains("metadata") || desc.contains("invalid") || desc.contains("retrieved from server") {
+                    // 旧缓存损坏（如之前时代半路下载导致 metadata 缺服务端字段），清理后完整重下再加载（自愈）
+                    return try await downloadAndLoad(force: true)
+                }
+                throw error
+            }
         }
         loadingTasks[model] = task
         do {
