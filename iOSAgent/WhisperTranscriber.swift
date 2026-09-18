@@ -2,7 +2,7 @@ import Foundation
 import WhisperKit
 
 /// 本地 WhisperKit 语音识别封装。
-/// 完全离线运行：首次使用时显式从 HuggingFace 国内镜像(hf-mirror.com)下载指定 Whisper 模型到沙盒 Application Support 目录，
+/// 完全离线运行：首次使用时从 HuggingFace(huggingface.co)下载指定 Whisper 模型到沙盒 Application Support 目录（国内需 VPN），
 /// 之后直接调用 Apple Neural Engine / CPU 本地推理。IPA 体积不因此增大。
 final class WhisperTranscriber: ObservableObject {
     @Published var isBusy: Bool = false
@@ -17,8 +17,10 @@ final class WhisperTranscriber: ObservableObject {
     private var instances: [String: WhisperKit] = [:]
     private var loadingTasks: [String: Task<WhisperKit, Error>] = [:]
 
-    /// 国内镜像端点（显式传给 WhisperKit 的 endpoint 参数，规避 HF_ENDPOINT 环境变量在 1.1.0 不一定生效的问题）
-    private let mirrorEndpoint = "https://hf-mirror.com"
+    /// 官方 HuggingFace 端点。argmaxinc/whisperkit-coreml 模型仓库在国内镜像(hf-mirror.com)上仅镜像了 API 元数据、
+    /// 未镜像文件下载(返回404)，故必须使用官方端点；国内网络需开启可访问 huggingface.co 的 VPN/境外网络才能首次
+    /// 下载(约480MB)，后续复用本地缓存则无需联网。
+    private let modelEndpoint = "https://huggingface.co"
 
     private init() {}
 
@@ -34,11 +36,21 @@ final class WhisperTranscriber: ObservableObject {
 
             // 显式下载以展示真实进度（缓存有效时秒回；缓存损坏时由下方 force 分支重新完整下载）。
             // 关键：用 download 返回的确切 modelFolder 加载，避免 WhisperKit(config) 内部重新 resolve 到
-            // 之前 HF_ENDPOINT 时代半路下载留下的损坏/不完整缓存（会报 invalid metadata 错误）。
+            // 之前 HF_ENDPOINT / hf-mirror 时代半路下载留下的损坏/不完整缓存（会报 invalid metadata 错误）。
+            /// 检查本地模型目录是否完整：3 个 mlmodelc 的 weights/weight.bin 均存在，且 config.json / generation_config.json 存在
+            private static func isModelFolderComplete(_ folder: URL) -> Bool {
+                let fm = FileManager.default
+                for sub in ["MelSpectrogram", "AudioEncoder", "TextDecoder"] {
+                    let weight = folder.appendingPathComponent("\(sub).mlmodelc").appendingPathComponent("weights/weight.bin")
+                    guard fm.fileExists(atPath: weight.path) else { return false }
+                }
+                return fm.fileExists(atPath: folder.appendingPathComponent("config.json").path)
+                    && fm.fileExists(atPath: folder.appendingPathComponent("generation_config.json").path)
+            }
             func downloadAndLoad(force: Bool) async throws -> WhisperKit {
                 let modelFolder = base.appendingPathComponent(model, isDirectory: true)
-                if force {
-                    // 清理损坏/不完整的旧缓存，强制重新从镜像完整下载并生成正确的 metadata.json
+                // 自愈：若本地模型目录缺失关键文件（损坏/不完整缓存），清理后重新下载
+                if force || !Self.isModelFolderComplete(modelFolder) {
                     try? FileManager.default.removeItem(at: modelFolder)
                 }
                 await MainActor.run {
@@ -51,7 +63,7 @@ final class WhisperTranscriber: ObservableObject {
                     downloadBase: base,
                     useBackgroundSession: false,
                     from: "argmaxinc/whisperkit-coreml",
-                    endpoint: self?.mirrorEndpoint ?? "https://hf-mirror.com"
+                    endpoint: self?.modelEndpoint ?? "https://huggingface.co"
                 ) { prog in
                     // WhisperKit 1.1.0 进度回调入参即为 Progress 类型
                     let fraction = max(0, min(1, prog.fractionCompleted))
@@ -97,7 +109,7 @@ final class WhisperTranscriber: ObservableObject {
             await MainActor.run { self.isDownloadingModel = false; self.downloadProgress = 0 }
             if error.localizedDescription.contains("cancelled") || error.localizedDescription.contains("timed out") {
                 throw NSError(domain: "WhisperKit", code: -1,
-                              userInfo: [NSLocalizedDescriptionKey: "本地语音模型下载超时。首次使用需联网从 HuggingFace 镜像(hf-mirror.com)下载模型，当前网络可能无法访问。"])
+                              userInfo: [NSLocalizedDescriptionKey: "本地语音模型下载超时（600s）。首次使用需联网从 HuggingFace(huggingface.co)下载模型(约480MB)，当前网络可能无法访问。如在国内，请开启可访问 huggingface.co 的 VPN 后重试。"])
             }
             throw error
         }
