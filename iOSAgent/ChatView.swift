@@ -239,14 +239,10 @@ struct ChatView: View {
                             pendingVoiceBase = input
                             UIImpactFeedbackGenerator(style: .light).impactOccurred()
                             isListening = true
-                            Task {
-                                await voice.start()   // VoiceRecorder 内部已处理麦克风权限
-                                if let msg = voice.errorMessage, msg.contains("麦克风") {
-                                    await MainActor.run {
-                                        isListening = false
-                                        showMicError = true
-                                    }
-                                }
+                            voice.start()   // 已授权时同步启动录音，消除异步竞态（第二次点击结束前录音必已就绪）
+                            if let msg = voice.errorMessage, !msg.isEmpty {
+                                isListening = false
+                                if msg.contains("拒绝") { showMicError = true }
                             }
                         }
                     }
@@ -824,7 +820,11 @@ struct ChatView: View {
             // 未捕获到有效录音（录音未启动/时间过短/麦克风未授权）→ 显式报错，避免静默无反馈
             await MainActor.run {
                 voicePhase = ""
-                errorText = "未捕获到有效录音（录音过短或麦克风未授权）。请解锁屏幕、允许麦克风后再试。"
+                if let msg = voice.errorMessage, !msg.isEmpty {
+                    errorText = msg
+                } else {
+                    errorText = "未捕获到有效录音（录音过短或麦克风未授权）。请解锁屏幕、允许麦克风后再试。"
+                }
             }
             awaitingVoice = false
             return

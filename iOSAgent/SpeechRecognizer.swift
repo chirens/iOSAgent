@@ -173,14 +173,34 @@ final class VoiceRecorder: NSObject, ObservableObject {
     /// 当前正在录制中的文件 URL（stop 前有效）
     var currentRecordingURL: URL? { recordingURL }
 
-    func start() async {
+    /// 开始录音。已授权时同步立即启动（消除异步竞态）；首次/被拒绝时内部异步或直接报错。
+    func start() {
+        let session = AVAudioSession.sharedInstance()
+        let status = session.recordPermission
+        if status == .denied {
+            errorMessage = "麦克风权限被拒绝，请在系统设置中开启后重试"
+            return
+        }
+        if status == .undetermined {
+            // 首次使用：异步请求权限并触发系统弹窗
+            Task {
+                let granted = await self.requestPermission()
+                if granted {
+                    self.beginRecording()
+                } else {
+                    self.errorMessage = "需要麦克风权限才能使用语音"
+                }
+            }
+            return
+        }
+        // 已授权：立即同步开始录音。这样第二次点击结束录音时录音必定已就绪，不再发生竞态。
+        beginRecording()
+    }
+
+    /// 真正启动录音（同步），并检查 record() 返回值，避免"假录音"——UI 显示正在聆听但实际没录到。
+    private func beginRecording() {
         do {
             let session = AVAudioSession.sharedInstance()
-            let granted = await requestPermission()
-            guard granted else {
-                errorMessage = "需要麦克风权限"
-                return
-            }
             try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetooth])
             try session.setActive(true)
 
@@ -194,10 +214,17 @@ final class VoiceRecorder: NSObject, ObservableObject {
             if FileManager.default.fileExists(atPath: url.path) {
                 try? FileManager.default.removeItem(at: url)
             }
-            recorder = try AVAudioRecorder(url: url, settings: settings)
-            recorder?.delegate = self
-            recorder?.isMeteringEnabled = true
-            recorder?.record()
+            let rec = try AVAudioRecorder(url: url, settings: settings)
+            rec.delegate = self
+            rec.isMeteringEnabled = true
+            guard rec.record() else {
+                errorMessage = "录音启动失败：麦克风可能被其他应用占用或系统音频异常，请重试"
+                isRecording = false
+                recordingURL = nil
+                recordStartTime = nil
+                return
+            }
+            recorder = rec
             recordingURL = url
             recordStartTime = Date()
             isRecording = true
@@ -214,16 +241,21 @@ final class VoiceRecorder: NSObject, ObservableObject {
     /// 返回值 nil 表示没有有效录音。
     @discardableResult
     func stop() -> URL? {
-        recorder?.stop()
+        guard let recorder = recorder, recorder.isRecording else {
+            errorMessage = "录音未能启动（麦克风可能被其他应用占用或音频异常），请重试"
+            return nil
+        }
+        recorder.stop()
         isRecording = false
         guard let src = recordingURL else { return nil }
         recordingURL = nil
         recordStartTime = nil
 
-        // 录音太短（< 0.3s）视为无效
-        let duration = recorder?.currentTime ?? 0
-        guard duration >= 0.3 else {
+        // 录音太短（< 0.15s）视为无效
+        let duration = recorder.currentTime
+        guard duration >= 0.15 else {
             try? FileManager.default.removeItem(at: src)
+            errorMessage = "录音时长过短，请说完话后再点话筒结束"
             return nil
         }
 
